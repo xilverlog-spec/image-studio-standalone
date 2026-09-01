@@ -1,0 +1,107 @@
+
+> image-studio-standalone@1.0.0 dev
+> vite
+
+Port 5174 is in use, trying another one...
+Port 5175 is in use, trying another one...
+Port 5176 is in use, trying another one...
+Port 5177 is in use, trying another one...
+Port 5178 is in use, trying another one...
+Port 5179 is in use, trying another one...
+
+  [32m[1mVITE[22m v8.2.2[39m  [2mready in [0m[1m230[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5180[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m오후 5:09:02[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1704:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1704 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+[2m오후 5:09:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1704:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1704 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+[2m오후 5:09:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1703:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1703 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+[2m오후 5:09:44[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1703:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1703 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 5:10:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1703:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1703 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+[2m오후 5:10:28[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:1703:18 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1703 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m                  │ 
+ [38;5;240m     │[0m                  ╰─ 
+[38;5;246m──────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 5:13:25[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:16:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"Not Found"}
+[2m오후 5:26:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:26:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:26:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:26:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m

@@ -1,0 +1,828 @@
+[32m[INFO][0m setup plugin alembic.autogenerate.schemas
+[32m[INFO][0m setup plugin alembic.autogenerate.tables
+[32m[INFO][0m setup plugin alembic.autogenerate.types
+[32m[INFO][0m setup plugin alembic.autogenerate.constraints
+[32m[INFO][0m setup plugin alembic.autogenerate.defaults
+[32m[INFO][0m setup plugin alembic.autogenerate.comments
+[32m[INFO][0m setup plugin alembic.autogenerate.checkconstraint_byname
+[32m[INFO][0m Found comfy_kitchen backend hip: {'available': False, 'disabled': False, 'unavailable_reason': 'PyTorch ROCm/HIP runtime not available', 'capabilities': []}
+[32m[INFO][0m Found comfy_kitchen backend cuda: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['adaln', 'apply_rope', 'apply_rope1', 'apply_rope1_', 'apply_rope_', 'apply_rope_split_half', 'apply_rope_split_half1', 'apply_rope_split_half1_', 'apply_rope_split_half_', 'convrot_w4a4_linear', 'dequantize_convrot_w4a4_weight', 'dequantize_int8_convrot_weight', 'dequantize_int8_convrot_weight_dtype', 'dequantize_int8_simple', 'dequantize_int8_simple_dtype', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'dequantize_w4a8_int8_weight', 'gemv_awq_w4a16', 'int8_linear', 'na3d', 'prepare_int4_weight_for_int8_linear', 'quantize_and_rotate_rowwise', 'quantize_convrot_w4a4_weight', 'quantize_int8_convrot_weight', 'quantize_int8_rowwise', 'quantize_int8_tensorwise', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'quantize_w4a8_int8_weight', 'rms_adaln', 'rms_rope', 'rms_rope1', 'rms_rope1_', 'rms_rope_', 'rms_rope_split_half', 'rms_rope_split_half1', 'rms_rope_split_half1_', 'rms_rope_split_half_', 'rotate_int8_convrot_weight', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8', 'w4a8_int8_linear']}
+[32m[INFO][0m Found comfy_kitchen backend eager: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['adaln', 'apply_rope', 'apply_rope1', 'apply_rope1_', 'apply_rope_', 'apply_rope_split_half', 'apply_rope_split_half1', 'apply_rope_split_half1_', 'apply_rope_split_half_', 'convrot_w4a4_linear', 'dequantize_convrot_w4a4_weight', 'dequantize_int8_convrot_weight', 'dequantize_int8_convrot_weight_dtype', 'dequantize_int8_embedding', 'dequantize_int8_simple', 'dequantize_int8_simple_dtype', 'dequantize_mxfp8', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'dequantize_w4a8_int8_weight', 'gemv_awq_w4a16', 'int8_linear', 'na3d', 'prepare_int4_weight_for_int8_linear', 'quantize_and_rotate_rowwise', 'quantize_convrot_w4a4_weight', 'quantize_int8_convrot_weight', 'quantize_int8_rowwise', 'quantize_int8_tensorwise', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'quantize_w4a8_int8_weight', 'rms_adaln', 'rms_rope', 'rms_rope1', 'rms_rope1_', 'rms_rope_', 'rms_rope_split_half', 'rms_rope_split_half1', 'rms_rope_split_half1_', 'rms_rope_split_half_', 'rotate_int8_convrot_weight', 'scaled_mm_mxfp8', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8', 'w4a8_int8_linear']}
+[32m[INFO][0m Found comfy_kitchen backend triton: {'available': False, 'disabled': True, 'unavailable_reason': "ImportError: No module named 'triton'", 'capabilities': []}
+[32m[INFO][0m Checkpoint files will always be loaded safely.
+[32m[INFO][0m Total VRAM 8192 MB, total RAM 32444 MB
+[32m[INFO][0m pytorch version: 2.13.0+cu130
+[32m[INFO][0m Set vram state to: NORMAL_VRAM
+[32m[INFO][0m Device: cuda:0 NVIDIA GeForce RTX 3060 : cudaMallocAsync
+[32m[INFO][0m Using async weight offloading with 2 streams
+[32m[INFO][0m Enabled pinned memory 12977.0
+[32m[INFO][0m Using pytorch attention
+[32m[INFO][0m aimdo: src-win/cuda-detour.c:38:INFO:aimdo_setup_hooks: installing 6 hooks
+[32m[INFO][0m aimdo: src/control.c:262:INFO:comfy-aimdo NVML pressure enabled
+[32m[INFO][0m aimdo: src-win/shmem-detect.c:80:INFO:comfy-aimdo WDDM adapter match: NVIDIA GeForce RTX 3060 runtime_luid=00000000:0000dc02 dxgi_luid=00000000:0000dc02
+[32m[INFO][0m aimdo: src/control.c:277:INFO:comfy-aimdo inited for GPU: NVIDIA GeForce RTX 3060 (VRAM: 8191 MB)
+[32m[INFO][0m DynamicVRAM support detected and enabled
+[32m[INFO][0m Python version: 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[32m[INFO][0m ComfyUI version: 0.34.0
+[32m[INFO][0m comfy-aimdo version: 0.4.15
+[32m[INFO][0m comfy-kitchen version: 0.2.31
+[32m[INFO][0m comfyui-frontend-package version: 1.51.9
+[32m[INFO][0m comfyui-workflow-templates version: 0.11.48
+[32m[INFO][0m comfyui-embedded-docs version: 0.5.10
+[32m[INFO][0m comfy-kitchen version: 0.2.31
+[32m[INFO][0m comfy-aimdo version: 0.4.15
+[32m[INFO][0m [Prompt Server] web root: C:\ComfyUI\venv\Lib\site-packages\comfyui_frontend_package\static
+[32m[INFO][0m Asset seeder disabled
+[32m[INFO][0m No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+[32m[INFO][0m ComfyUI-GGUF: Allowing full torch compile
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Pack (V8.28.3)
+[32m[INFO][0m [Impact Pack] Wildcard total size (0.00 MB) is within cache limit (50.00 MB). Using full cache mode.
+[32m[INFO][0m [Impact Pack] Wildcards loading done.
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Subpack (V1.3.5)
+[32m[INFO][0m [Impact Pack/Subpack] Using folder_paths to determine whitelist path: C:\ComfyUI\user\default\ComfyUI-Impact-Subpack\model-whitelist.txt
+[32m[INFO][0m [Impact Pack/Subpack] Ensured whitelist directory exists: C:\ComfyUI\user\default\ComfyUI-Impact-Subpack
+[32m[INFO][0m [Impact Pack/Subpack] Loaded 0 model(s) from whitelist: C:\ComfyUI\user\default\ComfyUI-Impact-Subpack\model-whitelist.txt
+[32m[INFO][0m [Impact Subpack] ultralytics_bbox: C:\ComfyUI\models\ultralytics\bbox
+[32m[INFO][0m [Impact Subpack] ultralytics_segm: C:\ComfyUI\models\ultralytics\segm
+[32m[INFO][0m 
+Import times for custom nodes:
+[32m[INFO][0m    0.0 seconds: C:\ComfyUI\custom_nodes\websocket_image_save.py
+[32m[INFO][0m    0.0 seconds: C:\ComfyUI\custom_nodes\ComfyUI-GGUF
+[32m[INFO][0m    0.1 seconds: C:\ComfyUI\custom_nodes\fooocus_prompt_expansion.py
+[32m[INFO][0m    0.1 seconds: C:\ComfyUI\custom_nodes\ComfyUI-Impact-Subpack
+[32m[INFO][0m    0.3 seconds: C:\ComfyUI\custom_nodes\ComfyUI-Impact-Pack
+[32m[INFO][0m 
+[32m[INFO][0m Context impl SQLiteImpl.
+[32m[INFO][0m Will assume non-transactional DDL.
+[32m[INFO][0m Using RAM pressure cache.
+[32m[INFO][0m Starting server
+
+[32m[INFO][0m To see the GUI go to: http://127.0.0.1:8188
+[32m[INFO][0m got prompt
+Loading weights:   0%|          | 0/149 [00:00<?, ?it/s]Loading weights: 100%|##########| 149/149 [00:00<00:00, 5206.02it/s]
+[transformers] [1mGPT2LMHeadModel LOAD REPORT[0m from: C:\ComfyUI\custom_nodes\..\models\prompt_expansion\fooocus_expansion
+Key                                     | Status     |  | 
+----------------------------------------+------------+--+-
+transformer.h.{0...11}.attn.masked_bias | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+[32m[INFO][0m model weight dtype torch.float16, manual cast: None
+[32m[INFO][0m model_type EPS
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.bfloat16
+[32m[INFO][0m CLIP/text encoder model load device: cuda:0, offload device: cpu, current: cpu, dtype: torch.float16
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Requested to load SDXL
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] Engine loaded on cuda.
+[Fooocus Expansion] a small house in the woods, very intricate, beautiful, atmosphere, perfect, sharp focus, detailed, artistic, cinematic, fine still, highly coherent, colorful, strong dramatic, ambient background, scenic, professional, thought, best, light, silent, infinite, unique, thoughtful, peaceful, cool, amazing, awesome, elegant, epic, singular, incredible, shiny
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:03<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:03<01:37,  3.36s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<01:37,  3.36s/it]                                     7%|6         | 2/30 [00:01<00:22,  1.26it/s] 10%|#         | 3/30 [00:02<00:20,  1.29it/s] 13%|#3        | 4/30 [00:03<00:21,  1.23it/s] 17%|#6        | 5/30 [00:03<00:19,  1.26it/s] 20%|##        | 6/30 [00:04<00:18,  1.28it/s] 23%|##3       | 7/30 [00:05<00:17,  1.30it/s] 27%|##6       | 8/30 [00:06<00:17,  1.26it/s] 30%|###       | 9/30 [00:07<00:16,  1.27it/s] 33%|###3      | 10/30 [00:07<00:15,  1.29it/s] 37%|###6      | 11/30 [00:08<00:14,  1.28it/s] 40%|####      | 12/30 [00:09<00:13,  1.29it/s] 43%|####3     | 13/30 [00:10<00:13,  1.26it/s] 47%|####6     | 14/30 [00:11<00:12,  1.25it/s] 50%|#####     | 15/30 [00:11<00:12,  1.23it/s] 53%|#####3    | 16/30 [00:12<00:10,  1.28it/s] 57%|#####6    | 17/30 [00:13<00:10,  1.28it/s] 60%|######    | 18/30 [00:14<00:09,  1.28it/s] 63%|######3   | 19/30 [00:14<00:08,  1.27it/s] 67%|######6   | 20/30 [00:15<00:07,  1.27it/s] 70%|#######   | 21/30 [00:16<00:07,  1.28it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.23it/s] 77%|#######6  | 23/30 [00:18<00:05,  1.24it/s] 80%|########  | 24/30 [00:18<00:04,  1.28it/s] 83%|########3 | 25/30 [00:19<00:03,  1.27it/s] 87%|########6 | 26/30 [00:20<00:03,  1.26it/s] 90%|######### | 27/30 [00:21<00:02,  1.27it/s] 93%|#########3| 28/30 [00:22<00:01,  1.29it/s] 97%|#########6| 29/30 [00:22<00:00,  1.24it/s]100%|##########| 30/30 [00:23<00:00,  1.25it/s]100%|##########| 30/30 [00:23<00:00,  1.27it/s]
+[32m[INFO][0m Requested to load AutoencoderKL
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 31.49 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, color spread, crisp vibrant colors, ambient light, dynamic dramatic cinematic perfect, detailed, structured, deep aesthetic, highly original, intricate, very inspirational, rich, beautiful, classic, contemporary, colorful, clear, artistic, winning, new, great
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:03<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:03<01:42,  3.53s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<01:42,  3.53s/it]                                     7%|6         | 2/30 [00:01<00:27,  1.03it/s] 10%|#         | 3/30 [00:02<00:28,  1.06s/it] 13%|#3        | 4/30 [00:03<00:24,  1.06it/s] 17%|#6        | 5/30 [00:04<00:23,  1.07it/s] 20%|##        | 6/30 [00:05<00:22,  1.05it/s] 23%|##3       | 7/30 [00:06<00:22,  1.02it/s] 27%|##6       | 8/30 [00:07<00:21,  1.01it/s] 30%|###       | 9/30 [00:08<00:20,  1.00it/s] 33%|###3      | 10/30 [00:09<00:20,  1.03s/it] 37%|###6      | 11/30 [00:10<00:18,  1.02it/s] 40%|####      | 12/30 [00:11<00:17,  1.03it/s] 43%|####3     | 13/30 [00:12<00:16,  1.03it/s] 47%|####6     | 14/30 [00:13<00:15,  1.02it/s] 50%|#####     | 15/30 [00:14<00:15,  1.02s/it] 53%|#####3    | 16/30 [00:15<00:14,  1.00s/it] 57%|#####6    | 17/30 [00:16<00:13,  1.01s/it] 60%|######    | 18/30 [00:17<00:12,  1.04s/it] 63%|######3   | 19/30 [00:18<00:11,  1.01s/it] 67%|######6   | 20/30 [00:19<00:09,  1.09it/s] 70%|#######   | 21/30 [00:20<00:08,  1.02it/s] 73%|#######3  | 22/30 [00:21<00:07,  1.01it/s] 77%|#######6  | 23/30 [00:22<00:06,  1.02it/s] 80%|########  | 24/30 [00:23<00:05,  1.01it/s] 83%|########3 | 25/30 [00:24<00:05,  1.01s/it] 87%|########6 | 26/30 [00:25<00:04,  1.03s/it] 90%|######### | 27/30 [00:26<00:02,  1.06it/s] 93%|#########3| 28/30 [00:27<00:01,  1.08it/s] 97%|#########6| 29/30 [00:28<00:00,  1.12it/s]100%|##########| 30/30 [00:29<00:00,  1.10it/s]100%|##########| 30/30 [00:29<00:00,  1.02it/s]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 36.00 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, dramatic light, gorgeous, perfect detailed, intricate, beautiful, sharp focus, highly detail, cinematic, still, sunny, open, scenic, professional, artistic, appealing, cute, adorable, elegant, best, fair, true colors, clear, innocent, full, whole, rational, hopeful, pretty, attractive, very coherent, creative
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:31,  1.10s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:31,  1.10s/it]                                     7%|6         | 2/30 [00:01<00:24,  1.16it/s] 10%|#         | 3/30 [00:02<00:24,  1.11it/s] 13%|#3        | 4/30 [00:03<00:22,  1.18it/s] 17%|#6        | 5/30 [00:04<00:21,  1.18it/s] 20%|##        | 6/30 [00:05<00:20,  1.19it/s] 23%|##3       | 7/30 [00:06<00:19,  1.20it/s] 27%|##6       | 8/30 [00:06<00:18,  1.21it/s] 30%|###       | 9/30 [00:07<00:17,  1.19it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:15,  1.19it/s] 40%|####      | 12/30 [00:10<00:15,  1.20it/s] 43%|####3     | 13/30 [00:11<00:14,  1.19it/s] 47%|####6     | 14/30 [00:11<00:13,  1.20it/s] 50%|#####     | 15/30 [00:12<00:12,  1.19it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.19it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.19it/s] 60%|######    | 18/30 [00:15<00:10,  1.19it/s] 63%|######3   | 19/30 [00:16<00:09,  1.20it/s] 67%|######6   | 20/30 [00:16<00:08,  1.17it/s] 70%|#######   | 21/30 [00:17<00:07,  1.18it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.17it/s] 77%|#######6  | 23/30 [00:19<00:06,  1.17it/s] 80%|########  | 24/30 [00:20<00:05,  1.16it/s] 83%|########3 | 25/30 [00:21<00:04,  1.18it/s] 87%|########6 | 26/30 [00:22<00:03,  1.19it/s] 90%|######### | 27/30 [00:22<00:02,  1.16it/s] 93%|#########3| 28/30 [00:23<00:01,  1.14it/s] 97%|#########6| 29/30 [00:24<00:00,  1.23it/s]100%|##########| 30/30 [00:25<00:00,  1.21it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.1ms
+Speed: 6.6ms preprocess, 16.1ms inference, 1.8ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 29.14 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, dramatic light, gorgeous, perfect detailed, intricate, beautiful, sharp focus, highly detail, cinematic, still, sunny, open, scenic, professional, artistic, appealing, cute, adorable, elegant, best, fair, true colors, clear, innocent, full, whole, rational, hopeful, pretty, attractive, very coherent, creative
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:33,  1.15s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:33,  1.15s/it]                                     7%|6         | 2/30 [00:01<00:22,  1.24it/s] 10%|#         | 3/30 [00:02<00:21,  1.24it/s] 13%|#3        | 4/30 [00:03<00:21,  1.21it/s] 17%|#6        | 5/30 [00:04<00:20,  1.22it/s] 20%|##        | 6/30 [00:04<00:19,  1.21it/s] 23%|##3       | 7/30 [00:05<00:17,  1.28it/s] 27%|##6       | 8/30 [00:06<00:17,  1.23it/s] 30%|###       | 9/30 [00:07<00:16,  1.26it/s] 33%|###3      | 10/30 [00:08<00:15,  1.26it/s] 37%|###6      | 11/30 [00:08<00:15,  1.25it/s] 40%|####      | 12/30 [00:09<00:14,  1.22it/s] 43%|####3     | 13/30 [00:10<00:13,  1.24it/s] 47%|####6     | 14/30 [00:11<00:12,  1.24it/s] 50%|#####     | 15/30 [00:12<00:11,  1.26it/s] 53%|#####3    | 16/30 [00:12<00:11,  1.26it/s] 57%|#####6    | 17/30 [00:13<00:10,  1.26it/s] 60%|######    | 18/30 [00:14<00:09,  1.29it/s] 63%|######3   | 19/30 [00:15<00:08,  1.25it/s] 67%|######6   | 20/30 [00:16<00:07,  1.25it/s] 70%|#######   | 21/30 [00:16<00:07,  1.24it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.26it/s] 77%|#######6  | 23/30 [00:18<00:05,  1.25it/s] 80%|########  | 24/30 [00:19<00:04,  1.28it/s] 83%|########3 | 25/30 [00:20<00:03,  1.26it/s] 87%|########6 | 26/30 [00:20<00:03,  1.25it/s] 90%|######### | 27/30 [00:21<00:02,  1.26it/s] 93%|#########3| 28/30 [00:22<00:01,  1.28it/s] 97%|#########6| 29/30 [00:23<00:00,  1.26it/s]100%|##########| 30/30 [00:24<00:00,  1.25it/s]100%|##########| 30/30 [00:24<00:00,  1.25it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 26.89 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, sharp focus, beautiful, intricate, cinematic, light, clear, crisp, extremely aesthetic, shiny, rich, great composition, highly detail, perfect full color, classic, dynamic, appealing, epic, stunning, fantastic, thought worthy, artistic, imposing, symmetry, fine balanced, brilliant, unique, iconic, best, awesome
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:33,  1.17s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:33,  1.17s/it]                                     7%|6         | 2/30 [00:01<00:23,  1.19it/s] 10%|#         | 3/30 [00:02<00:22,  1.19it/s] 13%|#3        | 4/30 [00:03<00:22,  1.14it/s] 17%|#6        | 5/30 [00:04<00:22,  1.13it/s] 20%|##        | 6/30 [00:05<00:21,  1.13it/s] 23%|##3       | 7/30 [00:06<00:19,  1.18it/s] 27%|##6       | 8/30 [00:06<00:18,  1.18it/s] 30%|###       | 9/30 [00:07<00:17,  1.20it/s] 33%|###3      | 10/30 [00:08<00:16,  1.19it/s] 37%|###6      | 11/30 [00:09<00:16,  1.16it/s] 40%|####      | 12/30 [00:10<00:15,  1.17it/s] 43%|####3     | 13/30 [00:11<00:14,  1.15it/s] 47%|####6     | 14/30 [00:11<00:14,  1.14it/s] 50%|#####     | 15/30 [00:12<00:12,  1.16it/s] 53%|#####3    | 16/30 [00:13<00:12,  1.14it/s] 57%|#####6    | 17/30 [00:14<00:11,  1.14it/s] 60%|######    | 18/30 [00:15<00:10,  1.16it/s] 63%|######3   | 19/30 [00:16<00:09,  1.15it/s] 67%|######6   | 20/30 [00:17<00:08,  1.12it/s] 70%|#######   | 21/30 [00:18<00:07,  1.15it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.16it/s] 77%|#######6  | 23/30 [00:19<00:06,  1.15it/s] 80%|########  | 24/30 [00:20<00:05,  1.13it/s] 83%|########3 | 25/30 [00:21<00:04,  1.12it/s] 87%|########6 | 26/30 [00:22<00:03,  1.13it/s] 90%|######### | 27/30 [00:23<00:02,  1.13it/s] 93%|#########3| 28/30 [00:24<00:01,  1.14it/s] 97%|#########6| 29/30 [00:25<00:00,  1.20it/s]100%|##########| 30/30 [00:25<00:00,  1.21it/s]100%|##########| 30/30 [00:25<00:00,  1.16it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.5ms
+Speed: 1.8ms preprocess, 16.5ms inference, 1.1ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 28.74 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, sharp focus, beautiful, intricate, cinematic, light, clear, crisp, extremely aesthetic, shiny, rich, great composition, highly detail, perfect full color, classic, dynamic, appealing, epic, stunning, fantastic, thought worthy, artistic, imposing, symmetry, fine balanced, brilliant, unique, iconic, best, awesome
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:32,  1.12s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:32,  1.12s/it]                                     7%|6         | 2/30 [00:01<00:23,  1.18it/s][32m[INFO][0m got prompt
+ 10%|#         | 3/30 [00:02<00:21,  1.23it/s] 13%|#3        | 4/30 [00:03<00:20,  1.24it/s] 17%|#6        | 5/30 [00:04<00:20,  1.25it/s] 20%|##        | 6/30 [00:04<00:19,  1.23it/s] 23%|##3       | 7/30 [00:05<00:18,  1.21it/s] 27%|##6       | 8/30 [00:06<00:18,  1.21it/s] 30%|###       | 9/30 [00:07<00:17,  1.23it/s] 33%|###3      | 10/30 [00:08<00:16,  1.24it/s] 37%|###6      | 11/30 [00:09<00:15,  1.24it/s] 40%|####      | 12/30 [00:09<00:14,  1.25it/s] 43%|####3     | 13/30 [00:10<00:13,  1.25it/s] 47%|####6     | 14/30 [00:11<00:13,  1.22it/s] 50%|#####     | 15/30 [00:12<00:12,  1.25it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.17it/s] 57%|#####6    | 17/30 [00:13<00:10,  1.21it/s] 60%|######    | 18/30 [00:14<00:10,  1.20it/s] 63%|######3   | 19/30 [00:15<00:08,  1.23it/s] 67%|######6   | 20/30 [00:16<00:08,  1.24it/s] 70%|#######   | 21/30 [00:17<00:07,  1.25it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.22it/s] 77%|#######6  | 23/30 [00:18<00:05,  1.24it/s] 80%|########  | 24/30 [00:19<00:04,  1.24it/s] 83%|########3 | 25/30 [00:20<00:04,  1.25it/s] 87%|########6 | 26/30 [00:21<00:03,  1.23it/s] 90%|######### | 27/30 [00:22<00:02,  1.22it/s] 93%|#########3| 28/30 [00:22<00:01,  1.20it/s] 97%|#########6| 29/30 [00:23<00:00,  1.25it/s]100%|##########| 30/30 [00:24<00:00,  1.24it/s]100%|##########| 30/30 [00:24<00:00,  1.23it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.16 seconds[0m
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] eco-friendly luxury residence, natural wooden panels, stone walls, warm integration with surrounding forest landscape, award-winning design, architectural photography, beautiful detailed intricate complex highly colorful glowing epic surreal stunning dynamic dramatic light, gorgeous calm cinematic color, focus, great composition, spectacular atmosphere, artistic, very inspirational, rich deep colors, open aesthetic,, professional, winning, rational, elegant
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:43,  1.51s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:43,  1.51s/it]                                     7%|6         | 2/30 [00:01<00:26,  1.05it/s] 10%|#         | 3/30 [00:02<00:22,  1.22it/s] 13%|#3        | 4/30 [00:03<00:20,  1.26it/s] 17%|#6        | 5/30 [00:04<00:19,  1.25it/s] 20%|##        | 6/30 [00:05<00:19,  1.24it/s] 23%|##3       | 7/30 [00:05<00:18,  1.26it/s] 27%|##6       | 8/30 [00:06<00:18,  1.20it/s] 30%|###       | 9/30 [00:07<00:17,  1.22it/s] 33%|###3      | 10/30 [00:08<00:15,  1.28it/s] 37%|###6      | 11/30 [00:09<00:15,  1.23it/s] 40%|####      | 12/30 [00:09<00:14,  1.22it/s] 43%|####3     | 13/30 [00:10<00:15,  1.12it/s] 47%|####6     | 14/30 [00:11<00:12,  1.24it/s] 50%|#####     | 15/30 [00:12<00:12,  1.21it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.25it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.24it/s] 60%|######    | 18/30 [00:14<00:09,  1.26it/s] 63%|######3   | 19/30 [00:15<00:08,  1.27it/s] 67%|######6   | 20/30 [00:16<00:07,  1.25it/s] 70%|#######   | 21/30 [00:17<00:07,  1.22it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.24it/s] 77%|#######6  | 23/30 [00:18<00:05,  1.26it/s] 80%|########  | 24/30 [00:19<00:04,  1.25it/s] 83%|########3 | 25/30 [00:20<00:04,  1.23it/s] 87%|########6 | 26/30 [00:21<00:03,  1.20it/s] 90%|######### | 27/30 [00:22<00:02,  1.23it/s] 93%|#########3| 28/30 [00:22<00:01,  1.26it/s] 97%|#########6| 29/30 [00:23<00:00,  1.27it/s]100%|##########| 30/30 [00:24<00:00,  1.26it/s]100%|##########| 30/30 [00:24<00:00,  1.22it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.56 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, dramatic light, cinematic, highly detail, refined, sharp focus, beautiful, divine, enhanced, intricate, elegant, complex, artistic color, ambient background, scenic romantic, innocent, unique, inspiring, peaceful, vibrant, inspired, loving, generous, warm, wonderful, cute, symmetry, perfect, coherent, pretty, clear
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:26,  1.10it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:26,  1.10it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.19it/s] 10%|#         | 3/30 [00:02<00:22,  1.18it/s] 13%|#3        | 4/30 [00:03<00:22,  1.17it/s] 17%|#6        | 5/30 [00:04<00:21,  1.18it/s] 20%|##        | 6/30 [00:05<00:20,  1.19it/s] 23%|##3       | 7/30 [00:05<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.18it/s] 30%|###       | 9/30 [00:07<00:17,  1.19it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:15,  1.20it/s] 40%|####      | 12/30 [00:10<00:15,  1.13it/s] 43%|####3     | 13/30 [00:11<00:15,  1.12it/s] 47%|####6     | 14/30 [00:11<00:13,  1.16it/s] 50%|#####     | 15/30 [00:12<00:13,  1.15it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.20it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.19it/s] 60%|######    | 18/30 [00:15<00:10,  1.17it/s] 63%|######3   | 19/30 [00:16<00:09,  1.21it/s] 67%|######6   | 20/30 [00:16<00:08,  1.19it/s] 70%|#######   | 21/30 [00:17<00:07,  1.19it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.19it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.20it/s] 80%|########  | 24/30 [00:20<00:05,  1.19it/s] 83%|########3 | 25/30 [00:21<00:04,  1.20it/s] 87%|########6 | 26/30 [00:22<00:03,  1.20it/s] 90%|######### | 27/30 [00:22<00:02,  1.20it/s] 93%|#########3| 28/30 [00:23<00:01,  1.19it/s] 97%|#########6| 29/30 [00:24<00:00,  1.25it/s]100%|##########| 30/30 [00:25<00:00,  1.23it/s]100%|##########| 30/30 [00:25<00:00,  1.19it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.1ms
+Speed: 1.9ms preprocess, 16.1ms inference, 0.6ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 27.95 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, dramatic light, cinematic, highly detail, refined, sharp focus, beautiful, divine, enhanced, intricate, elegant, complex, artistic color, ambient background, scenic romantic, innocent, unique, inspiring, peaceful, vibrant, inspired, loving, generous, warm, wonderful, cute, symmetry, perfect, coherent, pretty, clear
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:26,  1.08it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:26,  1.08it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.20it/s] 10%|#         | 3/30 [00:02<00:21,  1.28it/s] 13%|#3        | 4/30 [00:03<00:20,  1.27it/s] 17%|#6        | 5/30 [00:04<00:20,  1.21it/s] 20%|##        | 6/30 [00:04<00:19,  1.25it/s] 23%|##3       | 7/30 [00:05<00:17,  1.29it/s] 27%|##6       | 8/30 [00:06<00:17,  1.28it/s] 30%|###       | 9/30 [00:07<00:16,  1.25it/s] 33%|###3      | 10/30 [00:08<00:16,  1.23it/s] 37%|###6      | 11/30 [00:08<00:14,  1.29it/s] 40%|####      | 12/30 [00:09<00:13,  1.30it/s] 43%|####3     | 13/30 [00:10<00:13,  1.29it/s] 47%|####6     | 14/30 [00:11<00:12,  1.28it/s] 50%|#####     | 15/30 [00:11<00:11,  1.26it/s] 53%|#####3    | 16/30 [00:12<00:10,  1.30it/s] 57%|#####6    | 17/30 [00:13<00:09,  1.31it/s] 60%|######    | 18/30 [00:14<00:09,  1.29it/s] 63%|######3   | 19/30 [00:14<00:08,  1.32it/s] 67%|######6   | 20/30 [00:15<00:08,  1.23it/s] 70%|#######   | 21/30 [00:16<00:07,  1.24it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.28it/s] 77%|#######6  | 23/30 [00:18<00:05,  1.27it/s] 80%|########  | 24/30 [00:18<00:04,  1.23it/s] 83%|########3 | 25/30 [00:19<00:04,  1.24it/s] 87%|########6 | 26/30 [00:20<00:03,  1.20it/s] 90%|######### | 27/30 [00:21<00:02,  1.31it/s] 93%|#########3| 28/30 [00:22<00:01,  1.28it/s] 97%|#########6| 29/30 [00:22<00:00,  1.24it/s]100%|##########| 30/30 [00:23<00:00,  1.27it/s]100%|##########| 30/30 [00:23<00:00,  1.26it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 26.53 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very colorful, beautiful, atmosphere, cinematic, dynamic, sunny, vivid, detailed, color, intricate, dramatic, thought, majestic, epic, extremely inspirational, stunning, creative, amazing, illuminated, sharp focus, professional, winning, bright, artistic, hopeful, pretty, confident, passionate, smart, best, glowing, peaceful, unique
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:31,  1.07s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:31,  1.07s/it]                                     7%|6         | 2/30 [00:01<00:24,  1.16it/s] 10%|#         | 3/30 [00:02<00:23,  1.17it/s] 13%|#3        | 4/30 [00:03<00:21,  1.19it/s] 17%|#6        | 5/30 [00:04<00:21,  1.19it/s] 20%|##        | 6/30 [00:05<00:20,  1.20it/s] 23%|##3       | 7/30 [00:05<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.19it/s] 30%|###       | 9/30 [00:07<00:17,  1.20it/s] 33%|###3      | 10/30 [00:08<00:16,  1.19it/s] 37%|###6      | 11/30 [00:09<00:15,  1.19it/s] 40%|####      | 12/30 [00:10<00:15,  1.15it/s] 43%|####3     | 13/30 [00:11<00:14,  1.18it/s] 47%|####6     | 14/30 [00:11<00:13,  1.20it/s] 50%|#####     | 15/30 [00:12<00:12,  1.21it/s] 53%|#####3    | 16/30 [00:13<00:13,  1.07it/s] 57%|#####6    | 17/30 [00:14<00:11,  1.15it/s] 60%|######    | 18/30 [00:15<00:10,  1.17it/s] 63%|######3   | 19/30 [00:16<00:09,  1.17it/s] 67%|######6   | 20/30 [00:17<00:08,  1.17it/s] 70%|#######   | 21/30 [00:17<00:07,  1.18it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.19it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.23it/s] 80%|########  | 24/30 [00:20<00:05,  1.19it/s] 83%|########3 | 25/30 [00:21<00:04,  1.20it/s] 87%|########6 | 26/30 [00:22<00:03,  1.14it/s] 90%|######### | 27/30 [00:22<00:02,  1.20it/s] 93%|#########3| 28/30 [00:23<00:01,  1.21it/s] 97%|#########6| 29/30 [00:24<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.28it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 15.9ms
+Speed: 2.2ms preprocess, 15.9ms inference, 0.7ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 27.92 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very colorful, beautiful, atmosphere, cinematic, dynamic, sunny, vivid, detailed, color, intricate, dramatic, thought, majestic, epic, extremely inspirational, stunning, creative, amazing, illuminated, sharp focus, professional, winning, bright, artistic, hopeful, pretty, confident, passionate, smart, best, glowing, peaceful, unique
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:26,  1.09it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:26,  1.09it/s]                                     7%|6         | 2/30 [00:01<00:21,  1.31it/s] 10%|#         | 3/30 [00:02<00:20,  1.29it/s] 13%|#3        | 4/30 [00:03<00:20,  1.29it/s] 17%|#6        | 5/30 [00:03<00:19,  1.26it/s] 20%|##        | 6/30 [00:04<00:19,  1.24it/s] 23%|##3       | 7/30 [00:05<00:17,  1.29it/s] 27%|##6       | 8/30 [00:06<00:16,  1.31it/s] 30%|###       | 9/30 [00:06<00:15,  1.31it/s] 33%|###3      | 10/30 [00:07<00:15,  1.28it/s] 37%|###6      | 11/30 [00:08<00:14,  1.28it/s] 40%|####      | 12/30 [00:09<00:14,  1.28it/s] 43%|####3     | 13/30 [00:10<00:13,  1.23it/s] 47%|####6     | 14/30 [00:10<00:12,  1.26it/s] 50%|#####     | 15/30 [00:11<00:11,  1.30it/s] 53%|#####3    | 16/30 [00:12<00:10,  1.29it/s] 57%|#####6    | 17/30 [00:13<00:10,  1.29it/s] 60%|######    | 18/30 [00:14<00:09,  1.29it/s] 63%|######3   | 19/30 [00:14<00:08,  1.30it/s] 67%|######6   | 20/30 [00:15<00:07,  1.29it/s] 70%|#######   | 21/30 [00:16<00:07,  1.28it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.28it/s] 77%|#######6  | 23/30 [00:17<00:05,  1.28it/s] 80%|########  | 24/30 [00:18<00:04,  1.27it/s] 83%|########3 | 25/30 [00:19<00:04,  1.18it/s] 87%|########6 | 26/30 [00:20<00:03,  1.28it/s] 90%|######### | 27/30 [00:21<00:02,  1.27it/s] 93%|#########3| 28/30 [00:21<00:01,  1.28it/s] 97%|#########6| 29/30 [00:22<00:00,  1.30it/s]100%|##########| 30/30 [00:23<00:00,  1.29it/s]100%|##########| 30/30 [00:23<00:00,  1.28it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 26.00 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] eco-friendly luxury residence, natural wooden panels, stone walls, warm integration with surrounding forest landscape, award-winning design, architectural photography, aesthetic, beautiful detailed, sharp focus, open, charming, elegant, magical atmosphere, glowing, highly intricate, cinematic, complex, stunning, rich creative, color, ambient light, professional, cute, lovely, marvelous, epic, fabulous
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:44,  1.53s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:44,  1.53s/it]                                     7%|6         | 2/30 [00:01<00:21,  1.28it/s] 10%|#         | 3/30 [00:02<00:16,  1.61it/s] 13%|#3        | 4/30 [00:02<00:16,  1.59it/s] 17%|#6        | 5/30 [00:03<00:15,  1.58it/s] 20%|##        | 6/30 [00:04<00:16,  1.50it/s] 23%|##3       | 7/30 [00:04<00:14,  1.62it/s] 27%|##6       | 8/30 [00:05<00:13,  1.61it/s] 30%|###       | 9/30 [00:05<00:12,  1.63it/s] 33%|###3      | 10/30 [00:06<00:11,  1.67it/s] 37%|###6      | 11/30 [00:07<00:14,  1.29it/s] 40%|####      | 12/30 [00:08<00:13,  1.38it/s] 43%|####3     | 13/30 [00:08<00:11,  1.46it/s] 47%|####6     | 14/30 [00:09<00:14,  1.13it/s] 50%|#####     | 15/30 [00:10<00:10,  1.40it/s] 53%|#####3    | 16/30 [00:10<00:08,  1.62it/s] 57%|#####6    | 17/30 [00:11<00:08,  1.58it/s] 60%|######    | 18/30 [00:12<00:07,  1.62it/s] 63%|######3   | 19/30 [00:12<00:07,  1.54it/s] 67%|######6   | 20/30 [00:13<00:06,  1.60it/s] 70%|#######   | 21/30 [00:14<00:05,  1.52it/s] 73%|#######3  | 22/30 [00:14<00:05,  1.51it/s] 77%|#######6  | 23/30 [00:15<00:04,  1.58it/s] 80%|########  | 24/30 [00:16<00:03,  1.58it/s] 83%|########3 | 25/30 [00:16<00:03,  1.56it/s] 87%|########6 | 26/30 [00:17<00:02,  1.56it/s] 90%|######### | 27/30 [00:18<00:01,  1.57it/s] 93%|#########3| 28/30 [00:18<00:01,  1.38it/s] 97%|#########6| 29/30 [00:19<00:00,  1.48it/s]100%|##########| 30/30 [00:20<00:00,  1.50it/s]100%|##########| 30/30 [00:20<00:00,  1.50it/s]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 23.11 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] eco-friendly luxury residence, natural wooden panels, stone walls, warm integration with surrounding forest landscape, award-winning design, architectural photography, beautiful detailed intricate stunning breathtaking fine detail, professional color, best focus, gentle ambient light, vivid colors, dynamic, elegant, luxurious, designed, rich deep vibrant complex highly colorful, full cinematic quality, inspired, epic, amazing, surreal
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:25,  1.15it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:25,  1.15it/s]                                     7%|6         | 2/30 [00:01<00:18,  1.54it/s] 10%|#         | 3/30 [00:01<00:17,  1.55it/s] 13%|#3        | 4/30 [00:02<00:16,  1.60it/s] 17%|#6        | 5/30 [00:03<00:15,  1.57it/s] 20%|##        | 6/30 [00:03<00:15,  1.53it/s] 23%|##3       | 7/30 [00:04<00:17,  1.33it/s] 27%|##6       | 8/30 [00:05<00:13,  1.62it/s] 30%|###       | 9/30 [00:05<00:12,  1.62it/s] 33%|###3      | 10/30 [00:06<00:12,  1.56it/s] 37%|###6      | 11/30 [00:07<00:12,  1.54it/s] 40%|####      | 12/30 [00:07<00:11,  1.58it/s] 43%|####3     | 13/30 [00:08<00:10,  1.59it/s] 47%|####6     | 14/30 [00:09<00:10,  1.56it/s] 50%|#####     | 15/30 [00:09<00:09,  1.56it/s] 53%|#####3    | 16/30 [00:10<00:08,  1.57it/s] 57%|#####6    | 17/30 [00:10<00:07,  1.63it/s] 60%|######    | 18/30 [00:11<00:07,  1.54it/s] 63%|######3   | 19/30 [00:12<00:06,  1.62it/s] 67%|######6   | 20/30 [00:12<00:06,  1.47it/s] 70%|#######   | 21/30 [00:13<00:05,  1.53it/s] 73%|#######3  | 22/30 [00:14<00:05,  1.56it/s] 77%|#######6  | 23/30 [00:14<00:04,  1.57it/s] 80%|########  | 24/30 [00:15<00:03,  1.56it/s] 83%|########3 | 25/30 [00:16<00:03,  1.38it/s] 87%|########6 | 26/30 [00:16<00:02,  1.56it/s] 90%|######### | 27/30 [00:17<00:01,  1.51it/s] 93%|#########3| 28/30 [00:18<00:01,  1.47it/s] 97%|#########6| 29/30 [00:18<00:00,  1.54it/s]100%|##########| 30/30 [00:19<00:00,  1.62it/s]100%|##########| 30/30 [00:19<00:00,  1.54it/s]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 21.24 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, dynamic composition, color, epic light, colorful, vivid, detailed, cinematic, extremely, highly saturated colors, surreal, sharp focus, beautiful fine detail, full crisp, very intricate, elegant, creative, positive, innocent, atmosphere, aesthetic, great
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:29,  1.02s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:29,  1.02s/it]                                     7%|6         | 2/30 [00:01<00:26,  1.06it/s] 10%|#         | 3/30 [00:02<00:21,  1.25it/s] 13%|#3        | 4/30 [00:03<00:18,  1.39it/s] 17%|#6        | 5/30 [00:04<00:17,  1.47it/s] 20%|##        | 6/30 [00:04<00:17,  1.36it/s] 23%|##3       | 7/30 [00:05<00:14,  1.57it/s] 27%|##6       | 8/30 [00:06<00:14,  1.49it/s] 30%|###       | 9/30 [00:06<00:13,  1.58it/s] 33%|###3      | 10/30 [00:07<00:14,  1.37it/s] 37%|###6      | 11/30 [00:08<00:13,  1.40it/s] 40%|####      | 12/30 [00:08<00:11,  1.62it/s] 43%|####3     | 13/30 [00:09<00:10,  1.61it/s] 47%|####6     | 14/30 [00:10<00:09,  1.68it/s] 50%|#####     | 15/30 [00:10<00:09,  1.61it/s] 53%|#####3    | 16/30 [00:11<00:08,  1.62it/s] 57%|#####6    | 17/30 [00:11<00:08,  1.52it/s] 60%|######    | 18/30 [00:12<00:07,  1.60it/s] 63%|######3   | 19/30 [00:13<00:06,  1.58it/s] 67%|######6   | 20/30 [00:13<00:06,  1.54it/s] 70%|#######   | 21/30 [00:14<00:05,  1.58it/s] 73%|#######3  | 22/30 [00:15<00:04,  1.62it/s] 77%|#######6  | 23/30 [00:15<00:04,  1.54it/s] 80%|########  | 24/30 [00:16<00:04,  1.33it/s] 83%|########3 | 25/30 [00:17<00:03,  1.43it/s] 87%|########6 | 26/30 [00:17<00:02,  1.39it/s] 90%|######### | 27/30 [00:18<00:02,  1.31it/s] 93%|#########3| 28/30 [00:19<00:01,  1.52it/s] 97%|#########6| 29/30 [00:19<00:00,  1.50it/s]100%|##########| 30/30 [00:20<00:00,  1.54it/s]100%|##########| 30/30 [00:20<00:00,  1.45it/s]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 22.36 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, innocent, elegant, rich deep colors, epic light, stunning focus, cinematic, great composition, dynamic, atmosphere, highly coherent, vibrant, complex, colorful, amazing, symmetry, clear, aesthetic, very inspirational
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:26,  1.10it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:26,  1.10it/s]                                     7%|6         | 2/30 [00:01<00:18,  1.54it/s] 10%|#         | 3/30 [00:01<00:18,  1.48it/s] 13%|#3        | 4/30 [00:02<00:17,  1.52it/s] 17%|#6        | 5/30 [00:03<00:16,  1.50it/s] 20%|##        | 6/30 [00:03<00:15,  1.56it/s] 23%|##3       | 7/30 [00:04<00:16,  1.41it/s] 27%|##6       | 8/30 [00:05<00:13,  1.59it/s] 30%|###       | 9/30 [00:05<00:13,  1.59it/s] 33%|###3      | 10/30 [00:06<00:13,  1.45it/s] 37%|###6      | 11/30 [00:07<00:12,  1.46it/s] 40%|####      | 12/30 [00:08<00:15,  1.18it/s] 43%|####3     | 13/30 [00:08<00:10,  1.61it/s] 47%|####6     | 14/30 [00:09<00:10,  1.58it/s] 50%|#####     | 15/30 [00:10<00:09,  1.58it/s] 53%|#####3    | 16/30 [00:10<00:08,  1.61it/s] 57%|#####6    | 17/30 [00:11<00:08,  1.54it/s] 60%|######    | 18/30 [00:11<00:08,  1.46it/s] 63%|######3   | 19/30 [00:12<00:07,  1.38it/s] 67%|######6   | 20/30 [00:13<00:07,  1.41it/s] 70%|#######   | 21/30 [00:14<00:05,  1.54it/s] 73%|#######3  | 22/30 [00:14<00:05,  1.54it/s] 77%|#######6  | 23/30 [00:15<00:04,  1.54it/s] 80%|########  | 24/30 [00:15<00:03,  1.61it/s] 83%|########3 | 25/30 [00:16<00:03,  1.59it/s] 87%|########6 | 26/30 [00:17<00:02,  1.58it/s] 90%|######### | 27/30 [00:17<00:02,  1.43it/s] 93%|#########3| 28/30 [00:18<00:01,  1.58it/s] 97%|#########6| 29/30 [00:19<00:00,  1.62it/s]100%|##########| 30/30 [00:19<00:00,  1.57it/s]100%|##########| 30/30 [00:19<00:00,  1.51it/s]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 21.61 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, epic composition, cinematic light, sharp focus, elegant, open, highly saturated colors, inspired, rich deep complex, glowing, magical, creative, positive, imaginative, exciting, perfect, sleek, futuristic, symmetry
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:47,  1.64s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:47,  1.64s/it]                                     7%|6         | 2/30 [00:02<00:39,  1.41s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:37,  1.43s/it] 17%|#6        | 5/30 [00:06<00:33,  1.36s/it] 20%|##        | 6/30 [00:08<00:32,  1.37s/it] 23%|##3       | 7/30 [00:09<00:31,  1.37s/it] 27%|##6       | 8/30 [00:11<00:31,  1.42s/it] 30%|###       | 9/30 [00:12<00:28,  1.37s/it] 33%|###3      | 10/30 [00:13<00:27,  1.36s/it] 37%|###6      | 11/30 [00:15<00:25,  1.37s/it] 40%|####      | 12/30 [00:16<00:24,  1.34s/it] 43%|####3     | 13/30 [00:17<00:23,  1.37s/it] 47%|####6     | 14/30 [00:19<00:21,  1.37s/it] 50%|#####     | 15/30 [00:20<00:20,  1.37s/it] 53%|#####3    | 16/30 [00:22<00:19,  1.36s/it] 57%|#####6    | 17/30 [00:23<00:17,  1.37s/it] 60%|######    | 18/30 [00:24<00:16,  1.37s/it] 63%|######3   | 19/30 [00:26<00:15,  1.40s/it] 67%|######6   | 20/30 [00:27<00:13,  1.35s/it] 70%|#######   | 21/30 [00:28<00:12,  1.36s/it] 73%|#######3  | 22/30 [00:30<00:11,  1.39s/it] 77%|#######6  | 23/30 [00:31<00:09,  1.37s/it] 80%|########  | 24/30 [00:33<00:08,  1.39s/it] 83%|########3 | 25/30 [00:34<00:06,  1.36s/it] 87%|########6 | 26/30 [00:35<00:05,  1.38s/it] 90%|######### | 27/30 [00:37<00:04,  1.36s/it] 93%|#########3| 28/30 [00:38<00:02,  1.38s/it] 97%|#########6| 29/30 [00:39<00:01,  1.34s/it]100%|##########| 30/30 [00:41<00:00,  1.32s/it]100%|##########| 30/30 [00:41<00:00,  1.37s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 45.01 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color rich colors, intricate, dramatic, cinematic, highly saturated, complex, vibrant, sharp focus, surreal, innocent, aesthetic, sublime, very inspirational, fine detail, clear, artistic, enhanced, epic, grand composition, colorful
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:45,  1.57s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:45,  1.57s/it]                                     7%|6         | 2/30 [00:02<00:38,  1.38s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:36,  1.39s/it] 17%|#6        | 5/30 [00:06<00:35,  1.40s/it] 20%|##        | 6/30 [00:08<00:32,  1.34s/it] 23%|##3       | 7/30 [00:09<00:32,  1.40s/it] 27%|##6       | 8/30 [00:11<00:30,  1.40s/it] 30%|###       | 9/30 [00:12<00:28,  1.38s/it] 33%|###3      | 10/30 [00:13<00:28,  1.41s/it] 37%|###6      | 11/30 [00:15<00:25,  1.36s/it] 40%|####      | 12/30 [00:16<00:24,  1.37s/it] 43%|####3     | 13/30 [00:17<00:23,  1.39s/it] 47%|####6     | 14/30 [00:19<00:22,  1.38s/it] 50%|#####     | 15/30 [00:20<00:20,  1.39s/it] 53%|#####3    | 16/30 [00:22<00:21,  1.55s/it] 57%|#####6    | 17/30 [00:23<00:19,  1.48s/it] 60%|######    | 18/30 [00:25<00:17,  1.43s/it] 63%|######3   | 19/30 [00:26<00:15,  1.41s/it] 67%|######6   | 20/30 [00:27<00:13,  1.38s/it] 70%|#######   | 21/30 [00:29<00:12,  1.41s/it] 73%|#######3  | 22/30 [00:30<00:12,  1.55s/it] 77%|#######6  | 23/30 [00:32<00:09,  1.39s/it] 80%|########  | 24/30 [00:33<00:08,  1.42s/it] 83%|########3 | 25/30 [00:35<00:06,  1.40s/it] 87%|########6 | 26/30 [00:36<00:05,  1.47s/it] 90%|######### | 27/30 [00:37<00:04,  1.38s/it] 93%|#########3| 28/30 [00:39<00:02,  1.40s/it] 97%|#########6| 29/30 [00:40<00:01,  1.34s/it]100%|##########| 30/30 [00:42<00:00,  1.32s/it]100%|##########| 30/30 [00:42<00:00,  1.40s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 44.58 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] dramatic night view rendering of architectural villa, cozy interior lights glowing through big glass windows, modern exterior lighting, dark blue night sky, warm ambiance, architectural photography, sharp focus, highly detailed, cinematic, candid, transparent background, very intricate, innocent, beautiful, stunning, light, surreal, contemporary, romantic, inspiring, thought, rich deep colors, perfect
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:44,  1.52s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:44,  1.52s/it]                                     7%|6         | 2/30 [00:02<00:38,  1.36s/it] 10%|#         | 3/30 [00:04<00:36,  1.35s/it] 13%|#3        | 4/30 [00:05<00:35,  1.38s/it] 17%|#6        | 5/30 [00:06<00:33,  1.34s/it] 20%|##        | 6/30 [00:08<00:32,  1.36s/it] 23%|##3       | 7/30 [00:09<00:31,  1.38s/it] 27%|##6       | 8/30 [00:10<00:30,  1.36s/it] 30%|###       | 9/30 [00:12<00:28,  1.36s/it] 33%|###3      | 10/30 [00:13<00:27,  1.36s/it] 37%|###6      | 11/30 [00:14<00:25,  1.36s/it] 40%|####      | 12/30 [00:16<00:24,  1.34s/it] 43%|####3     | 13/30 [00:17<00:23,  1.36s/it] 47%|####6     | 14/30 [00:19<00:24,  1.50s/it] 50%|#####     | 15/30 [00:20<00:20,  1.38s/it] 53%|#####3    | 16/30 [00:21<00:19,  1.40s/it] 57%|#####6    | 17/30 [00:23<00:17,  1.37s/it] 60%|######    | 18/30 [00:24<00:16,  1.38s/it] 63%|######3   | 19/30 [00:26<00:15,  1.39s/it] 67%|######6   | 20/30 [00:27<00:14,  1.42s/it] 70%|#######   | 21/30 [00:28<00:12,  1.41s/it] 73%|#######3  | 22/30 [00:30<00:11,  1.38s/it] 77%|#######6  | 23/30 [00:31<00:09,  1.38s/it] 80%|########  | 24/30 [00:33<00:08,  1.36s/it] 83%|########3 | 25/30 [00:34<00:06,  1.39s/it] 87%|########6 | 26/30 [00:35<00:05,  1.39s/it] 90%|######### | 27/30 [00:37<00:04,  1.39s/it] 93%|#########3| 28/30 [00:38<00:02,  1.40s/it] 97%|#########6| 29/30 [00:40<00:01,  1.53s/it]100%|##########| 30/30 [00:41<00:00,  1.33s/it]100%|##########| 30/30 [00:41<00:00,  1.38s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 43.90 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] dramatic night view rendering of architectural villa, cozy interior lights glowing through big glass windows, modern exterior lighting, dark blue night sky, warm ambiance, architectural photography, sharp focus, highly detailed, intricate, very inspirational, innocent, beautiful, elegant, inspired, thought, cinematic, colorful, light shining, epic, coherent, magical atmosphere, artistic, pure
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:50,  1.75s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:50,  1.75s/it]                                     7%|6         | 2/30 [00:02<00:40,  1.46s/it] 10%|#         | 3/30 [00:04<00:37,  1.39s/it] 13%|#3        | 4/30 [00:05<00:35,  1.36s/it] 17%|#6        | 5/30 [00:07<00:33,  1.34s/it] 20%|##        | 6/30 [00:08<00:31,  1.33s/it] 23%|##3       | 7/30 [00:09<00:30,  1.34s/it] 27%|##6       | 8/30 [00:10<00:28,  1.31s/it] 30%|###       | 9/30 [00:12<00:28,  1.34s/it] 33%|###3      | 10/30 [00:13<00:26,  1.34s/it] 37%|###6      | 11/30 [00:15<00:27,  1.46s/it] 40%|####      | 12/30 [00:16<00:24,  1.36s/it] 43%|####3     | 13/30 [00:17<00:22,  1.34s/it] 47%|####6     | 14/30 [00:19<00:22,  1.40s/it] 50%|#####     | 15/30 [00:20<00:21,  1.40s/it] 53%|#####3    | 16/30 [00:22<00:19,  1.40s/it] 57%|#####6    | 17/30 [00:23<00:18,  1.42s/it] 60%|######    | 18/30 [00:24<00:16,  1.41s/it] 63%|######3   | 19/30 [00:26<00:15,  1.42s/it] 67%|######6   | 20/30 [00:27<00:14,  1.45s/it] 70%|#######   | 21/30 [00:29<00:12,  1.38s/it] 73%|#######3  | 22/30 [00:30<00:11,  1.41s/it] 77%|#######6  | 23/30 [00:31<00:09,  1.37s/it] 80%|########  | 24/30 [00:33<00:08,  1.39s/it] 83%|########3 | 25/30 [00:34<00:06,  1.38s/it] 87%|########6 | 26/30 [00:36<00:05,  1.37s/it] 90%|######### | 27/30 [00:37<00:04,  1.37s/it] 93%|#########3| 28/30 [00:38<00:02,  1.36s/it] 97%|#########6| 29/30 [00:40<00:01,  1.35s/it]100%|##########| 30/30 [00:41<00:00,  1.33s/it]100%|##########| 30/30 [00:41<00:00,  1.38s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 43.79 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 0 patches attached. Force pre-loaded 512 weights: 1197 KB.
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:45,  1.57s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:45,  1.57s/it]                                     7%|6         | 2/30 [00:02<00:37,  1.35s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:34,  1.34s/it] 17%|#6        | 5/30 [00:06<00:34,  1.37s/it] 20%|##        | 6/30 [00:08<00:32,  1.37s/it] 23%|##3       | 7/30 [00:09<00:31,  1.37s/it] 27%|##6       | 8/30 [00:10<00:31,  1.42s/it] 30%|###       | 9/30 [00:12<00:30,  1.46s/it] 33%|###3      | 10/30 [00:13<00:28,  1.41s/it] 37%|###6      | 11/30 [00:15<00:26,  1.40s/it] 40%|####      | 12/30 [00:16<00:26,  1.48s/it] 43%|####3     | 13/30 [00:18<00:27,  1.60s/it] 47%|####6     | 14/30 [00:19<00:24,  1.55s/it] 50%|#####     | 15/30 [00:21<00:22,  1.53s/it] 53%|#####3    | 16/30 [00:22<00:22,  1.60s/it] 57%|#####6    | 17/30 [00:24<00:19,  1.50s/it] 60%|######    | 18/30 [00:25<00:16,  1.40s/it] 63%|######3   | 19/30 [00:27<00:15,  1.40s/it] 67%|######6   | 20/30 [00:28<00:14,  1.41s/it] 70%|#######   | 21/30 [00:30<00:12,  1.40s/it] 73%|#######3  | 22/30 [00:31<00:11,  1.40s/it] 77%|#######6  | 23/30 [00:32<00:09,  1.40s/it] 80%|########  | 24/30 [00:34<00:08,  1.38s/it] 83%|########3 | 25/30 [00:35<00:06,  1.38s/it] 87%|########6 | 26/30 [00:37<00:05,  1.40s/it] 90%|######### | 27/30 [00:38<00:04,  1.34s/it] 93%|#########3| 28/30 [00:39<00:02,  1.40s/it] 97%|#########6| 29/30 [00:41<00:01,  1.33s/it]100%|##########| 30/30 [00:42<00:00,  1.28s/it]100%|##########| 30/30 [00:42<00:00,  1.41s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 47.73 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 0 patches attached. Force pre-loaded 512 weights: 1197 KB.
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:23,  1.25it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:23,  1.25it/s]                                     7%|6         | 2/30 [00:01<00:22,  1.24it/s] 10%|#         | 3/30 [00:02<00:21,  1.26it/s] 13%|#3        | 4/30 [00:03<00:20,  1.28it/s] 17%|#6        | 5/30 [00:03<00:19,  1.25it/s] 20%|##        | 6/30 [00:04<00:18,  1.28it/s] 23%|##3       | 7/30 [00:05<00:17,  1.29it/s] 27%|##6       | 8/30 [00:06<00:17,  1.28it/s] 30%|###       | 9/30 [00:07<00:16,  1.29it/s] 33%|###3      | 10/30 [00:07<00:15,  1.28it/s] 37%|###6      | 11/30 [00:08<00:14,  1.27it/s] 40%|####      | 12/30 [00:09<00:14,  1.28it/s] 43%|####3     | 13/30 [00:10<00:13,  1.29it/s] 47%|####6     | 14/30 [00:10<00:12,  1.31it/s] 50%|#####     | 15/30 [00:11<00:11,  1.26it/s] 53%|#####3    | 16/30 [00:12<00:10,  1.29it/s] 57%|#####6    | 17/30 [00:13<00:10,  1.29it/s] 60%|######    | 18/30 [00:14<00:09,  1.29it/s] 63%|######3   | 19/30 [00:14<00:08,  1.31it/s] 67%|######6   | 20/30 [00:15<00:07,  1.30it/s] 70%|#######   | 21/30 [00:16<00:06,  1.30it/s] 73%|#######3  | 22/30 [00:17<00:06,  1.30it/s] 77%|#######6  | 23/30 [00:17<00:05,  1.31it/s] 80%|########  | 24/30 [00:18<00:04,  1.30it/s] 83%|########3 | 25/30 [00:19<00:03,  1.31it/s] 87%|########6 | 26/30 [00:20<00:03,  1.29it/s] 90%|######### | 27/30 [00:21<00:02,  1.31it/s] 93%|#########3| 28/30 [00:21<00:01,  1.26it/s] 97%|#########6| 29/30 [00:22<00:00,  1.36it/s]100%|##########| 30/30 [00:23<00:00,  1.38it/s]100%|##########| 30/30 [00:23<00:00,  1.29it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 25.67 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 0 patches attached. Force pre-loaded 512 weights: 1197 KB.
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:25,  1.12it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:25,  1.12it/s]                                     7%|6         | 2/30 [00:01<00:24,  1.13it/s] 10%|#         | 3/30 [00:02<00:23,  1.13it/s] 13%|#3        | 4/30 [00:03<00:22,  1.16it/s] 17%|#6        | 5/30 [00:04<00:21,  1.16it/s] 20%|##        | 6/30 [00:05<00:20,  1.19it/s] 23%|##3       | 7/30 [00:06<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.18it/s] 30%|###       | 9/30 [00:07<00:17,  1.20it/s] 33%|###3      | 10/30 [00:08<00:17,  1.17it/s] 37%|###6      | 11/30 [00:09<00:15,  1.19it/s] 40%|####      | 12/30 [00:10<00:14,  1.21it/s] 43%|####3     | 13/30 [00:11<00:14,  1.21it/s] 47%|####6     | 14/30 [00:11<00:13,  1.22it/s] 50%|#####     | 15/30 [00:12<00:12,  1.20it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.22it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.22it/s] 60%|######    | 18/30 [00:15<00:09,  1.23it/s] 63%|######3   | 19/30 [00:15<00:08,  1.31it/s] 67%|######6   | 20/30 [00:16<00:07,  1.29it/s] 70%|#######   | 21/30 [00:17<00:07,  1.26it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.28it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.22it/s] 80%|########  | 24/30 [00:19<00:04,  1.22it/s] 83%|########3 | 25/30 [00:20<00:03,  1.26it/s] 87%|########6 | 26/30 [00:21<00:03,  1.23it/s] 90%|######### | 27/30 [00:22<00:02,  1.23it/s] 93%|#########3| 28/30 [00:23<00:01,  1.29it/s] 97%|#########6| 29/30 [00:23<00:00,  1.37it/s]100%|##########| 30/30 [00:24<00:00,  1.39it/s]100%|##########| 30/30 [00:24<00:00,  1.22it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.38 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 0 patches attached. Force pre-loaded 512 weights: 1197 KB.
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:24,  1.16it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:24,  1.16it/s]                                     7%|6         | 2/30 [00:01<00:24,  1.16it/s] 10%|#         | 3/30 [00:02<00:23,  1.17it/s] 13%|#3        | 4/30 [00:03<00:22,  1.16it/s] 17%|#6        | 5/30 [00:04<00:21,  1.15it/s] 20%|##        | 6/30 [00:05<00:20,  1.16it/s] 23%|##3       | 7/30 [00:06<00:19,  1.18it/s] 27%|##6       | 8/30 [00:06<00:19,  1.14it/s] 30%|###       | 9/30 [00:07<00:18,  1.15it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:16,  1.17it/s] 40%|####      | 12/30 [00:10<00:15,  1.16it/s] 43%|####3     | 13/30 [00:11<00:13,  1.24it/s] 47%|####6     | 14/30 [00:11<00:12,  1.24it/s] 50%|#####     | 15/30 [00:12<00:12,  1.23it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.25it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.25it/s] 60%|######    | 18/30 [00:15<00:09,  1.25it/s] 63%|######3   | 19/30 [00:15<00:08,  1.25it/s] 67%|######6   | 20/30 [00:16<00:08,  1.25it/s] 70%|#######   | 21/30 [00:17<00:07,  1.24it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.23it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.25it/s] 80%|########  | 24/30 [00:19<00:04,  1.27it/s] 83%|########3 | 25/30 [00:20<00:03,  1.26it/s] 87%|########6 | 26/30 [00:21<00:03,  1.25it/s] 90%|######### | 27/30 [00:22<00:02,  1.26it/s] 93%|#########3| 28/30 [00:23<00:01,  1.26it/s] 97%|#########6| 29/30 [00:23<00:00,  1.31it/s]100%|##########| 30/30 [00:24<00:00,  1.32it/s]100%|##########| 30/30 [00:24<00:00,  1.22it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.36 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Requested to load SDXL
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] architectural photography, bright sunny day, clear blue sky, crisp shadows, green trees landscape garden, commercial real estate shot, 8k resolution, beautiful detailed, intricate, innocent, inspired, vibrant colors, perfect background, cinematic, rich vivid color, creative, positive emotional, majestic, shiny, glowing, symmetry, light, determined, elegant, epic, complex, highly
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:54,  1.87s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:54,  1.87s/it]                                     7%|6         | 2/30 [00:02<00:39,  1.40s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:35,  1.37s/it] 17%|#6        | 5/30 [00:07<00:36,  1.48s/it] 20%|##        | 6/30 [00:08<00:34,  1.43s/it] 23%|##3       | 7/30 [00:09<00:32,  1.40s/it] 27%|##6       | 8/30 [00:11<00:31,  1.41s/it] 30%|###       | 9/30 [00:12<00:28,  1.38s/it] 33%|###3      | 10/30 [00:14<00:27,  1.38s/it] 37%|###6      | 11/30 [00:15<00:26,  1.41s/it] 40%|####      | 12/30 [00:16<00:25,  1.42s/it] 43%|####3     | 13/30 [00:18<00:24,  1.44s/it] 47%|####6     | 14/30 [00:19<00:21,  1.37s/it] 50%|#####     | 15/30 [00:21<00:21,  1.46s/it] 53%|#####3    | 16/30 [00:22<00:19,  1.39s/it] 57%|#####6    | 17/30 [00:23<00:18,  1.40s/it] 60%|######    | 18/30 [00:25<00:16,  1.41s/it] 63%|######3   | 19/30 [00:26<00:15,  1.42s/it] 67%|######6   | 20/30 [00:28<00:13,  1.36s/it] 70%|#######   | 21/30 [00:29<00:12,  1.36s/it] 73%|#######3  | 22/30 [00:30<00:11,  1.39s/it] 77%|#######6  | 23/30 [00:32<00:09,  1.37s/it] 80%|########  | 24/30 [00:33<00:08,  1.39s/it] 83%|########3 | 25/30 [00:35<00:07,  1.42s/it] 87%|########6 | 26/30 [00:36<00:05,  1.39s/it] 90%|######### | 27/30 [00:37<00:04,  1.40s/it] 93%|#########3| 28/30 [00:39<00:02,  1.42s/it] 97%|#########6| 29/30 [00:40<00:01,  1.33s/it]100%|##########| 30/30 [00:41<00:00,  1.34s/it]100%|##########| 30/30 [00:41<00:00,  1.40s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 46.46 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] architectural photography, bright sunny day, clear blue sky, crisp shadows, green trees landscape garden, commercial real estate shot, 8k resolution, beautiful detailed intricate stunning amazing surreal perfect light, sharp focus, pretty highly complex, symmetry, artistic, atmosphere, full color, cinematic, background, cozy warm colors, vivid coherent very inspirational, extremely cute, innocent, scientific
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:49,  1.70s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:49,  1.70s/it]                                     7%|6         | 2/30 [00:02<00:38,  1.36s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:35,  1.36s/it] 17%|#6        | 5/30 [00:06<00:35,  1.42s/it] 20%|##        | 6/30 [00:08<00:33,  1.40s/it] 23%|##3       | 7/30 [00:09<00:31,  1.37s/it] 27%|##6       | 8/30 [00:11<00:30,  1.39s/it] 30%|###       | 9/30 [00:12<00:30,  1.44s/it] 33%|###3      | 10/30 [00:13<00:27,  1.39s/it] 37%|###6      | 11/30 [00:15<00:25,  1.36s/it] 40%|####      | 12/30 [00:16<00:25,  1.39s/it] 43%|####3     | 13/30 [00:18<00:23,  1.38s/it] 47%|####6     | 14/30 [00:19<00:21,  1.35s/it] 50%|#####     | 15/30 [00:20<00:20,  1.38s/it] 53%|#####3    | 16/30 [00:22<00:19,  1.40s/it] 57%|#####6    | 17/30 [00:23<00:17,  1.35s/it] 60%|######    | 18/30 [00:24<00:16,  1.36s/it] 63%|######3   | 19/30 [00:26<00:14,  1.36s/it] 67%|######6   | 20/30 [00:27<00:13,  1.39s/it] 70%|#######   | 21/30 [00:28<00:12,  1.38s/it] 73%|#######3  | 22/30 [00:30<00:11,  1.38s/it] 77%|#######6  | 23/30 [00:31<00:09,  1.37s/it] 80%|########  | 24/30 [00:33<00:08,  1.38s/it] 83%|########3 | 25/30 [00:34<00:06,  1.37s/it] 87%|########6 | 26/30 [00:35<00:05,  1.40s/it] 90%|######### | 27/30 [00:37<00:04,  1.42s/it] 93%|#########3| 28/30 [00:38<00:02,  1.38s/it] 97%|#########6| 29/30 [00:40<00:01,  1.35s/it]100%|##########| 30/30 [00:41<00:00,  1.33s/it]100%|##########| 30/30 [00:41<00:00,  1.38s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 44.10 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m model weight dtype torch.float16, manual cast: None
+[32m[INFO][0m model_type EPS
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.bfloat16
+[32m[INFO][0m CLIP/text encoder model load device: cuda:0, offload device: cpu, current: cpu, dtype: torch.float16
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Requested to load SDXL
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, dramatic light, gorgeous, perfect detailed, intricate, beautiful, sharp focus, highly detail, cinematic, still, sunny, open, scenic, professional, artistic, appealing, cute, adorable, elegant, best, fair, true colors, clear, innocent, full, whole, rational, hopeful, pretty, attractive, very coherent, creative
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]C:\ComfyUI\venv\Lib\site-packages\torchsde\_brownian\brownian_interval.py:608: UserWarning: Should have tb<=t1 but got tb=14.614643096923828 and t1=14.614643.
+  warnings.warn(f"Should have {tb_name}<=t1 but got {tb_name}={tb} and t1={self._end}.")
+  0%|          | 0/30 [00:03<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:03<01:52,  3.89s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<01:52,  3.89s/it]                                     7%|6         | 2/30 [00:01<00:24,  1.16it/s] 10%|#         | 3/30 [00:02<00:23,  1.15it/s] 13%|#3        | 4/30 [00:03<00:22,  1.16it/s] 17%|#6        | 5/30 [00:04<00:21,  1.16it/s] 20%|##        | 6/30 [00:05<00:20,  1.18it/s] 23%|##3       | 7/30 [00:06<00:19,  1.17it/s] 27%|##6       | 8/30 [00:06<00:19,  1.16it/s] 30%|###       | 9/30 [00:07<00:18,  1.16it/s] 33%|###3      | 10/30 [00:08<00:17,  1.16it/s] 37%|###6      | 11/30 [00:09<00:16,  1.13it/s] 40%|####      | 12/30 [00:10<00:15,  1.17it/s] 43%|####3     | 13/30 [00:11<00:14,  1.17it/s] 47%|####6     | 14/30 [00:12<00:13,  1.18it/s] 50%|#####     | 15/30 [00:12<00:12,  1.17it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.18it/s] 57%|#####6    | 17/30 [00:14<00:11,  1.16it/s] 60%|######    | 18/30 [00:15<00:10,  1.19it/s] 63%|######3   | 19/30 [00:16<00:09,  1.18it/s] 67%|######6   | 20/30 [00:17<00:08,  1.17it/s] 70%|#######   | 21/30 [00:18<00:07,  1.18it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.18it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.18it/s] 80%|########  | 24/30 [00:20<00:05,  1.18it/s] 83%|########3 | 25/30 [00:21<00:04,  1.19it/s] 87%|########6 | 26/30 [00:22<00:03,  1.18it/s] 90%|######### | 27/30 [00:23<00:02,  1.20it/s] 93%|#########3| 28/30 [00:23<00:01,  1.18it/s] 97%|#########6| 29/30 [00:24<00:00,  1.25it/s]100%|##########| 30/30 [00:25<00:00,  1.26it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m Requested to load AutoencoderKL
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.3ms
+Speed: 1.8ms preprocess, 16.3ms inference, 0.7ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 34.07 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, dramatic light, gorgeous, perfect detailed, intricate, beautiful, sharp focus, highly detail, cinematic, still, sunny, open, scenic, professional, artistic, appealing, cute, adorable, elegant, best, fair, true colors, clear, innocent, full, whole, rational, hopeful, pretty, attractive, very coherent, creative
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:28,  1.01it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:28,  1.01it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.17it/s] 10%|#         | 3/30 [00:02<00:22,  1.18it/s] 13%|#3        | 4/30 [00:03<00:22,  1.18it/s] 17%|#6        | 5/30 [00:04<00:21,  1.18it/s] 20%|##        | 6/30 [00:05<00:20,  1.19it/s] 23%|##3       | 7/30 [00:05<00:19,  1.17it/s] 27%|##6       | 8/30 [00:06<00:18,  1.17it/s] 30%|###       | 9/30 [00:07<00:17,  1.19it/s] 33%|###3      | 10/30 [00:08<00:17,  1.17it/s] 37%|###6      | 11/30 [00:09<00:16,  1.17it/s] 40%|####      | 12/30 [00:10<00:15,  1.17it/s] 43%|####3     | 13/30 [00:11<00:14,  1.17it/s] 47%|####6     | 14/30 [00:11<00:13,  1.18it/s] 50%|#####     | 15/30 [00:12<00:12,  1.18it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.18it/s] 57%|#####6    | 17/30 [00:14<00:11,  1.18it/s] 60%|######    | 18/30 [00:15<00:10,  1.18it/s] 63%|######3   | 19/30 [00:16<00:09,  1.20it/s] 67%|######6   | 20/30 [00:16<00:08,  1.17it/s] 70%|#######   | 21/30 [00:17<00:07,  1.16it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.17it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.18it/s] 80%|########  | 24/30 [00:20<00:05,  1.17it/s] 83%|########3 | 25/30 [00:21<00:04,  1.19it/s] 87%|########6 | 26/30 [00:22<00:03,  1.17it/s] 90%|######### | 27/30 [00:22<00:02,  1.16it/s] 93%|#########3| 28/30 [00:23<00:01,  1.17it/s] 97%|#########6| 29/30 [00:24<00:00,  1.24it/s]100%|##########| 30/30 [00:25<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.95 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, sharp focus, beautiful, intricate, cinematic, light, clear, crisp, extremely aesthetic, shiny, rich, great composition, highly detail, perfect full color, classic, dynamic, appealing, epic, stunning, fantastic, thought worthy, artistic, imposing, symmetry, fine balanced, brilliant, unique, iconic, best, awesome
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:28,  1.02it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:28,  1.02it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.19it/s] 10%|#         | 3/30 [00:02<00:23,  1.15it/s] 13%|#3        | 4/30 [00:03<00:22,  1.17it/s] 17%|#6        | 5/30 [00:04<00:21,  1.19it/s] 20%|##        | 6/30 [00:05<00:20,  1.15it/s] 23%|##3       | 7/30 [00:05<00:19,  1.17it/s] 27%|##6       | 8/30 [00:06<00:18,  1.17it/s] 30%|###       | 9/30 [00:07<00:17,  1.17it/s] 33%|###3      | 10/30 [00:08<00:17,  1.16it/s] 37%|###6      | 11/30 [00:09<00:16,  1.15it/s] 40%|####      | 12/30 [00:10<00:15,  1.13it/s] 43%|####3     | 13/30 [00:11<00:14,  1.14it/s] 47%|####6     | 14/30 [00:12<00:13,  1.17it/s] 50%|#####     | 15/30 [00:12<00:13,  1.07it/s] 53%|#####3    | 16/30 [00:13<00:12,  1.15it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.18it/s] 60%|######    | 18/30 [00:15<00:10,  1.18it/s] 63%|######3   | 19/30 [00:16<00:09,  1.19it/s] 67%|######6   | 20/30 [00:17<00:08,  1.18it/s] 70%|#######   | 21/30 [00:18<00:07,  1.18it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.18it/s] 77%|#######6  | 23/30 [00:19<00:06,  1.09it/s] 80%|########  | 24/30 [00:20<00:05,  1.16it/s] 83%|########3 | 25/30 [00:21<00:04,  1.18it/s] 87%|########6 | 26/30 [00:22<00:03,  1.20it/s] 90%|######### | 27/30 [00:23<00:02,  1.17it/s] 93%|#########3| 28/30 [00:24<00:01,  1.19it/s] 97%|#########6| 29/30 [00:24<00:00,  1.23it/s]100%|##########| 30/30 [00:25<00:00,  1.25it/s]100%|##########| 30/30 [00:25<00:00,  1.17it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.3ms
+Speed: 1.5ms preprocess, 16.3ms inference, 1.1ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 28.18 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, sharp focus, beautiful, intricate, cinematic, light, clear, crisp, extremely aesthetic, shiny, rich, great composition, highly detail, perfect full color, classic, dynamic, appealing, epic, stunning, fantastic, thought worthy, artistic, imposing, symmetry, fine balanced, brilliant, unique, iconic, best, awesome
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:27,  1.05it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:27,  1.05it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.20it/s] 10%|#         | 3/30 [00:02<00:22,  1.19it/s] 13%|#3        | 4/30 [00:03<00:22,  1.18it/s] 17%|#6        | 5/30 [00:04<00:21,  1.19it/s] 20%|##        | 6/30 [00:05<00:19,  1.20it/s] 23%|##3       | 7/30 [00:05<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.17it/s] 30%|###       | 9/30 [00:07<00:17,  1.20it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:15,  1.20it/s] 40%|####      | 12/30 [00:10<00:15,  1.19it/s] 43%|####3     | 13/30 [00:10<00:14,  1.19it/s] 47%|####6     | 14/30 [00:11<00:13,  1.19it/s] 50%|#####     | 15/30 [00:12<00:12,  1.19it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.20it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.20it/s] 60%|######    | 18/30 [00:15<00:09,  1.20it/s] 63%|######3   | 19/30 [00:15<00:09,  1.20it/s] 67%|######6   | 20/30 [00:16<00:08,  1.18it/s] 70%|#######   | 21/30 [00:17<00:07,  1.22it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.20it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.19it/s] 80%|########  | 24/30 [00:20<00:05,  1.20it/s] 83%|########3 | 25/30 [00:20<00:04,  1.22it/s] 87%|########6 | 26/30 [00:21<00:03,  1.19it/s] 90%|######### | 27/30 [00:22<00:02,  1.21it/s] 93%|#########3| 28/30 [00:23<00:01,  1.20it/s] 97%|#########6| 29/30 [00:24<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.20it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.61 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, dramatic light, cinematic, highly detail, refined, sharp focus, beautiful, divine, enhanced, intricate, elegant, complex, artistic color, ambient background, scenic romantic, innocent, unique, inspiring, peaceful, vibrant, inspired, loving, generous, warm, wonderful, cute, symmetry, perfect, coherent, pretty, clear
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:28,  1.02it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:28,  1.02it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.18it/s] 10%|#         | 3/30 [00:02<00:23,  1.17it/s] 13%|#3        | 4/30 [00:03<00:22,  1.17it/s] 17%|#6        | 5/30 [00:04<00:21,  1.17it/s] 20%|##        | 6/30 [00:05<00:20,  1.18it/s] 23%|##3       | 7/30 [00:05<00:19,  1.18it/s] 27%|##6       | 8/30 [00:06<00:18,  1.17it/s] 30%|###       | 9/30 [00:07<00:17,  1.17it/s] 33%|###3      | 10/30 [00:08<00:17,  1.16it/s] 37%|###6      | 11/30 [00:09<00:16,  1.18it/s] 40%|####      | 12/30 [00:10<00:15,  1.18it/s] 43%|####3     | 13/30 [00:11<00:14,  1.16it/s] 47%|####6     | 14/30 [00:11<00:13,  1.19it/s] 50%|#####     | 15/30 [00:12<00:12,  1.17it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.18it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.19it/s] 60%|######    | 18/30 [00:15<00:10,  1.19it/s] 63%|######3   | 19/30 [00:16<00:09,  1.18it/s] 67%|######6   | 20/30 [00:17<00:08,  1.17it/s] 70%|#######   | 21/30 [00:17<00:07,  1.17it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.17it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.19it/s] 80%|########  | 24/30 [00:20<00:05,  1.20it/s] 83%|########3 | 25/30 [00:21<00:04,  1.18it/s] 87%|########6 | 26/30 [00:22<00:03,  1.18it/s] 90%|######### | 27/30 [00:22<00:02,  1.19it/s] 93%|#########3| 28/30 [00:23<00:01,  1.19it/s] 97%|#########6| 29/30 [00:24<00:00,  1.24it/s]100%|##########| 30/30 [00:25<00:00,  1.25it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.0ms
+Speed: 1.8ms preprocess, 16.0ms inference, 1.0ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 28.00 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very detailed, dramatic light, cinematic, highly detail, refined, sharp focus, beautiful, divine, enhanced, intricate, elegant, complex, artistic color, ambient background, scenic romantic, innocent, unique, inspiring, peaceful, vibrant, inspired, loving, generous, warm, wonderful, cute, symmetry, perfect, coherent, pretty, clear
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:27,  1.05it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:27,  1.05it/s]                                     7%|6         | 2/30 [00:01<00:25,  1.11it/s] 10%|#         | 3/30 [00:02<00:23,  1.16it/s] 13%|#3        | 4/30 [00:03<00:21,  1.19it/s] 17%|#6        | 5/30 [00:04<00:21,  1.19it/s] 20%|##        | 6/30 [00:05<00:21,  1.13it/s] 23%|##3       | 7/30 [00:06<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.18it/s] 30%|###       | 9/30 [00:07<00:17,  1.19it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:15,  1.20it/s] 40%|####      | 12/30 [00:10<00:15,  1.19it/s] 43%|####3     | 13/30 [00:11<00:14,  1.18it/s] 47%|####6     | 14/30 [00:11<00:13,  1.21it/s] 50%|#####     | 15/30 [00:12<00:12,  1.20it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.18it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.20it/s] 60%|######    | 18/30 [00:15<00:09,  1.20it/s] 63%|######3   | 19/30 [00:16<00:09,  1.20it/s] 67%|######6   | 20/30 [00:16<00:08,  1.20it/s] 70%|#######   | 21/30 [00:17<00:07,  1.20it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.20it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.21it/s] 80%|########  | 24/30 [00:20<00:04,  1.20it/s] 83%|########3 | 25/30 [00:21<00:04,  1.20it/s] 87%|########6 | 26/30 [00:21<00:03,  1.21it/s] 90%|######### | 27/30 [00:22<00:02,  1.21it/s] 93%|#########3| 28/30 [00:23<00:01,  1.21it/s] 97%|#########6| 29/30 [00:24<00:00,  1.26it/s]100%|##########| 30/30 [00:25<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.19it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.70 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very colorful, beautiful, atmosphere, cinematic, dynamic, sunny, vivid, detailed, color, intricate, dramatic, thought, majestic, epic, extremely inspirational, stunning, creative, amazing, illuminated, sharp focus, professional, winning, bright, artistic, hopeful, pretty, confident, passionate, smart, best, glowing, peaceful, unique
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:28,  1.02it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:28,  1.02it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.18it/s] 10%|#         | 3/30 [00:02<00:22,  1.18it/s] 13%|#3        | 4/30 [00:03<00:22,  1.16it/s] 17%|#6        | 5/30 [00:04<00:21,  1.17it/s] 20%|##        | 6/30 [00:05<00:20,  1.17it/s] 23%|##3       | 7/30 [00:05<00:19,  1.17it/s] 27%|##6       | 8/30 [00:06<00:18,  1.17it/s] 30%|###       | 9/30 [00:07<00:17,  1.17it/s] 33%|###3      | 10/30 [00:08<00:17,  1.17it/s] 37%|###6      | 11/30 [00:09<00:16,  1.18it/s] 40%|####      | 12/30 [00:10<00:15,  1.18it/s] 43%|####3     | 13/30 [00:11<00:14,  1.16it/s] 47%|####6     | 14/30 [00:11<00:13,  1.19it/s] 50%|#####     | 15/30 [00:12<00:12,  1.18it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.18it/s] 57%|#####6    | 17/30 [00:14<00:10,  1.18it/s] 60%|######    | 18/30 [00:15<00:10,  1.18it/s] 63%|######3   | 19/30 [00:16<00:09,  1.19it/s] 67%|######6   | 20/30 [00:17<00:08,  1.17it/s] 70%|#######   | 21/30 [00:17<00:07,  1.18it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.18it/s] 77%|#######6  | 23/30 [00:19<00:05,  1.18it/s] 80%|########  | 24/30 [00:20<00:05,  1.20it/s] 83%|########3 | 25/30 [00:21<00:04,  1.18it/s] 87%|########6 | 26/30 [00:22<00:03,  1.18it/s] 90%|######### | 27/30 [00:22<00:02,  1.19it/s] 93%|#########3| 28/30 [00:23<00:01,  1.19it/s] 97%|#########6| 29/30 [00:24<00:00,  1.24it/s]100%|##########| 30/30 [00:25<00:00,  1.26it/s]100%|##########| 30/30 [00:25<00:00,  1.18it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+
+0: 512x640 (no detections), 16.3ms
+Speed: 1.7ms preprocess, 16.3ms inference, 0.6ms postprocess per image at shape (1, 3, 512, 640)
+[32m[INFO][0m [32mPrompt executed in 27.95 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] a small house in the woods, very colorful, beautiful, atmosphere, cinematic, dynamic, sunny, vivid, detailed, color, intricate, dramatic, thought, majestic, epic, extremely inspirational, stunning, creative, amazing, illuminated, sharp focus, professional, winning, bright, artistic, hopeful, pretty, confident, passionate, smart, best, glowing, peaceful, unique
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:00<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:00<00:27,  1.04it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:27,  1.04it/s]                                     7%|6         | 2/30 [00:01<00:23,  1.18it/s] 10%|#         | 3/30 [00:02<00:22,  1.19it/s] 13%|#3        | 4/30 [00:03<00:22,  1.18it/s] 17%|#6        | 5/30 [00:04<00:21,  1.19it/s] 20%|##        | 6/30 [00:05<00:20,  1.18it/s] 23%|##3       | 7/30 [00:05<00:19,  1.19it/s] 27%|##6       | 8/30 [00:06<00:18,  1.19it/s] 30%|###       | 9/30 [00:07<00:17,  1.20it/s] 33%|###3      | 10/30 [00:08<00:16,  1.18it/s] 37%|###6      | 11/30 [00:09<00:15,  1.19it/s] 40%|####      | 12/30 [00:10<00:15,  1.14it/s] 43%|####3     | 13/30 [00:11<00:14,  1.16it/s] 47%|####6     | 14/30 [00:11<00:13,  1.19it/s] 50%|#####     | 15/30 [00:12<00:12,  1.20it/s] 53%|#####3    | 16/30 [00:13<00:11,  1.21it/s] 57%|#####6    | 17/30 [00:14<00:11,  1.18it/s] 60%|######    | 18/30 [00:15<00:10,  1.20it/s] 63%|######3   | 19/30 [00:16<00:08,  1.23it/s] 67%|######6   | 20/30 [00:16<00:08,  1.14it/s] 70%|#######   | 21/30 [00:17<00:07,  1.19it/s] 73%|#######3  | 22/30 [00:18<00:06,  1.20it/s] 77%|#######6  | 23/30 [00:19<00:06,  1.05it/s] 80%|########  | 24/30 [00:20<00:05,  1.16it/s] 83%|########3 | 25/30 [00:21<00:04,  1.22it/s] 87%|########6 | 26/30 [00:22<00:03,  1.19it/s] 90%|######### | 27/30 [00:22<00:02,  1.16it/s] 93%|#########3| 28/30 [00:23<00:01,  1.19it/s] 97%|#########6| 29/30 [00:24<00:00,  1.26it/s]100%|##########| 30/30 [00:25<00:00,  1.27it/s]100%|##########| 30/30 [00:25<00:00,  1.19it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 27.83 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m model weight dtype torch.float16, manual cast: None
+[32m[INFO][0m model_type EPS
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m Using pytorch attention in VAE
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.bfloat16
+[32m[INFO][0m CLIP/text encoder model load device: cuda:0, offload device: cpu, current: cpu, dtype: torch.float16
+[32m[INFO][0m Requested to load AutoencoderKL
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Requested to load SDXL
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern interior design rendering, living room view, large floor-to-ceiling windows, natural sunlight casting soft shadows, minimal oak furniture, realistic indoor plants, 8k, extremely detailed, inspired, lush color, complex, elegant, sharp focus, cinematic light, highly detail, rich colors, open background, discovered, romantic, scenic, artistic, perfect composition, symmetry
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:08<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:08<03:59,  8.28s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<03:59,  8.28s/it]                                     7%|6         | 2/30 [00:02<00:28,  1.02s/it] 10%|#         | 3/30 [00:02<00:25,  1.07it/s] 13%|#3        | 4/30 [00:03<00:25,  1.02it/s] 17%|#6        | 5/30 [00:04<00:23,  1.08it/s] 20%|##        | 6/30 [00:05<00:24,  1.01s/it] 23%|##3       | 7/30 [00:06<00:22,  1.04it/s] 27%|##6       | 8/30 [00:07<00:21,  1.02it/s] 30%|###       | 9/30 [00:08<00:19,  1.08it/s] 33%|###3      | 10/30 [00:09<00:19,  1.04it/s] 37%|###6      | 11/30 [00:10<00:18,  1.04it/s] 40%|####      | 12/30 [00:11<00:17,  1.06it/s] 43%|####3     | 13/30 [00:12<00:16,  1.00it/s] 47%|####6     | 14/30 [00:13<00:15,  1.02it/s] 50%|#####     | 15/30 [00:14<00:14,  1.00it/s] 53%|#####3    | 16/30 [00:15<00:13,  1.06it/s] 57%|#####6    | 17/30 [00:16<00:13,  1.05s/it] 60%|######    | 18/30 [00:17<00:11,  1.06it/s] 63%|######3   | 19/30 [00:18<00:10,  1.07it/s] 67%|######6   | 20/30 [00:19<00:09,  1.10it/s] 70%|#######   | 21/30 [00:20<00:08,  1.05it/s] 73%|#######3  | 22/30 [00:21<00:07,  1.03it/s] 77%|#######6  | 23/30 [00:22<00:07,  1.04s/it] 80%|########  | 24/30 [00:23<00:05,  1.04it/s] 83%|########3 | 25/30 [00:24<00:04,  1.02it/s] 87%|########6 | 26/30 [00:25<00:03,  1.06it/s] 90%|######### | 27/30 [00:26<00:02,  1.06it/s] 93%|#########3| 28/30 [00:27<00:01,  1.03it/s] 97%|#########6| 29/30 [00:28<00:01,  1.01s/it]100%|##########| 30/30 [00:29<00:00,  1.06it/s]100%|##########| 30/30 [00:29<00:00,  1.03it/s]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 42.14 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern interior design rendering, living room view, large floor-to-ceiling windows, natural sunlight casting soft shadows, minimal oak furniture, realistic indoor plants, 8k, extremely detailed, color, inspired, lush aesthetic, full composition, intricate, epic, cinematic light, highly saturated colors, focus,, designed, innocent, enhanced, rich deep vivid novel, magical scenic
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:43,  1.50s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:43,  1.50s/it]                                     7%|6         | 2/30 [00:01<00:27,  1.02it/s] 10%|#         | 3/30 [00:03<00:28,  1.06s/it] 13%|#3        | 4/30 [00:04<00:27,  1.04s/it] 17%|#6        | 5/30 [00:05<00:24,  1.00it/s] 20%|##        | 6/30 [00:06<00:25,  1.08s/it] 23%|##3       | 7/30 [00:07<00:23,  1.01s/it] 27%|##6       | 8/30 [00:08<00:22,  1.00s/it] 30%|###       | 9/30 [00:09<00:24,  1.16s/it] 33%|###3      | 10/30 [00:10<00:22,  1.10s/it] 37%|###6      | 11/30 [00:11<00:19,  1.03s/it] 40%|####      | 12/30 [00:12<00:17,  1.02it/s] 43%|####3     | 13/30 [00:13<00:18,  1.06s/it] 47%|####6     | 14/30 [00:14<00:15,  1.03it/s] 50%|#####     | 15/30 [00:15<00:15,  1.01s/it] 53%|#####3    | 16/30 [00:16<00:14,  1.04s/it] 57%|#####6    | 17/30 [00:17<00:13,  1.03s/it] 60%|######    | 18/30 [00:18<00:12,  1.02s/it] 63%|######3   | 19/30 [00:19<00:10,  1.05it/s] 67%|######6   | 20/30 [00:20<00:09,  1.02it/s] 70%|#######   | 21/30 [00:21<00:08,  1.02it/s] 73%|#######3  | 22/30 [00:22<00:07,  1.06it/s] 77%|#######6  | 23/30 [00:23<00:06,  1.03it/s] 80%|########  | 24/30 [00:24<00:05,  1.08it/s] 83%|########3 | 25/30 [00:25<00:05,  1.08s/it] 87%|########6 | 26/30 [00:26<00:03,  1.02it/s] 90%|######### | 27/30 [00:27<00:03,  1.03s/it] 93%|#########3| 28/30 [00:28<00:02,  1.01s/it] 97%|#########6| 29/30 [00:29<00:00,  1.00it/s]100%|##########| 30/30 [00:30<00:00,  1.10it/s]100%|##########| 30/30 [00:30<00:00,  1.01s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 32.73 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, innocent, elegant, luxurious, dramatic ambient light, dynamic background, focus, thought formed, imposing, epic complex, highly structured, cinematic, professional, sharp, artistic, rich deep colors, new, vibrant, rational
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:45,  1.56s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:45,  1.56s/it]                                     7%|6         | 2/30 [00:02<00:41,  1.48s/it] 10%|#         | 3/30 [00:04<00:38,  1.42s/it] 13%|#3        | 4/30 [00:05<00:35,  1.36s/it] 17%|#6        | 5/30 [00:07<00:35,  1.41s/it] 20%|##        | 6/30 [00:08<00:33,  1.41s/it] 23%|##3       | 7/30 [00:09<00:32,  1.42s/it] 27%|##6       | 8/30 [00:11<00:30,  1.38s/it] 30%|###       | 9/30 [00:12<00:29,  1.40s/it] 33%|###3      | 10/30 [00:14<00:27,  1.40s/it] 37%|###6      | 11/30 [00:15<00:26,  1.41s/it] 40%|####      | 12/30 [00:16<00:25,  1.41s/it] 43%|####3     | 13/30 [00:18<00:26,  1.54s/it] 47%|####6     | 14/30 [00:20<00:24,  1.50s/it] 50%|#####     | 15/30 [00:21<00:22,  1.48s/it] 53%|#####3    | 16/30 [00:22<00:19,  1.41s/it] 57%|#####6    | 17/30 [00:24<00:18,  1.41s/it] 60%|######    | 18/30 [00:25<00:17,  1.42s/it] 63%|######3   | 19/30 [00:27<00:14,  1.34s/it] 67%|######6   | 20/30 [00:28<00:13,  1.40s/it] 70%|#######   | 21/30 [00:29<00:12,  1.35s/it] 73%|#######3  | 22/30 [00:31<00:10,  1.37s/it] 77%|#######6  | 23/30 [00:32<00:09,  1.41s/it] 80%|########  | 24/30 [00:34<00:08,  1.39s/it] 83%|########3 | 25/30 [00:35<00:06,  1.35s/it] 87%|########6 | 26/30 [00:36<00:05,  1.37s/it] 90%|######### | 27/30 [00:38<00:04,  1.38s/it] 93%|#########3| 28/30 [00:39<00:02,  1.36s/it] 97%|#########6| 29/30 [00:40<00:01,  1.34s/it]100%|##########| 30/30 [00:42<00:00,  1.32s/it]100%|##########| 30/30 [00:42<00:00,  1.40s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 45.79 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, dynamic detailed, lively, intricate, elegant, symmetry, sharp focus, beautiful, highly color enhanced, inspired, brave, glowing, colorful, rich deep colors, open atmosphere, hopeful, very inspirational, noble, cinematic, epic ambient light, exciting
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:46,  1.59s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:46,  1.59s/it]                                     7%|6         | 2/30 [00:02<00:38,  1.36s/it] 10%|#         | 3/30 [00:04<00:37,  1.38s/it] 13%|#3        | 4/30 [00:05<00:35,  1.37s/it] 17%|#6        | 5/30 [00:06<00:34,  1.36s/it] 20%|##        | 6/30 [00:08<00:32,  1.37s/it] 23%|##3       | 7/30 [00:09<00:31,  1.38s/it] 27%|##6       | 8/30 [00:10<00:30,  1.37s/it] 30%|###       | 9/30 [00:12<00:28,  1.36s/it] 33%|###3      | 10/30 [00:13<00:27,  1.38s/it] 37%|###6      | 11/30 [00:15<00:25,  1.35s/it] 40%|####      | 12/30 [00:16<00:24,  1.39s/it] 43%|####3     | 13/30 [00:17<00:23,  1.37s/it] 47%|####6     | 14/30 [00:19<00:21,  1.37s/it] 50%|#####     | 15/30 [00:20<00:20,  1.38s/it] 53%|#####3    | 16/30 [00:21<00:19,  1.37s/it] 57%|#####6    | 17/30 [00:23<00:17,  1.38s/it] 60%|######    | 18/30 [00:24<00:16,  1.37s/it] 63%|######3   | 19/30 [00:26<00:15,  1.38s/it] 67%|######6   | 20/30 [00:27<00:13,  1.40s/it] 70%|#######   | 21/30 [00:28<00:12,  1.38s/it] 73%|#######3  | 22/30 [00:30<00:10,  1.37s/it] 77%|#######6  | 23/30 [00:31<00:09,  1.40s/it] 80%|########  | 24/30 [00:33<00:08,  1.40s/it] 83%|########3 | 25/30 [00:34<00:06,  1.38s/it] 87%|########6 | 26/30 [00:35<00:05,  1.37s/it] 90%|######### | 27/30 [00:37<00:04,  1.38s/it] 93%|#########3| 28/30 [00:38<00:02,  1.38s/it] 97%|#########6| 29/30 [00:39<00:01,  1.34s/it]100%|##########| 30/30 [00:41<00:00,  1.34s/it]100%|##########| 30/30 [00:41<00:00,  1.37s/it]
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 43.69 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] office, modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, innocent, elegant, sharp focus, sweet colors, dramatic cinematic, highly saturated, complex, epic light, artistic, symmetry, clear, coherent, romantic, pretty, rich deep aesthetic, very inspirational, lovely
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:53,  1.86s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:03<00:53,  1.86s/it]                                     7%|6         | 2/30 [00:03<00:43,  1.54s/it] 10%|#         | 3/30 [00:04<00:39,  1.48s/it] 13%|#3        | 4/30 [00:06<00:38,  1.49s/it] 17%|#6        | 5/30 [00:07<00:36,  1.47s/it] 20%|##        | 6/30 [00:09<00:35,  1.49s/it] 23%|##3       | 7/30 [00:10<00:34,  1.50s/it] 27%|##6       | 8/30 [00:12<00:33,  1.50s/it] 30%|###       | 9/30 [00:13<00:31,  1.51s/it] 33%|###3      | 10/30 [00:15<00:29,  1.49s/it] 37%|###6      | 11/30 [00:16<00:28,  1.49s/it] 40%|####      | 12/30 [00:17<00:26,  1.49s/it] 43%|####3     | 13/30 [00:19<00:25,  1.51s/it] 47%|####6     | 14/30 [00:20<00:23,  1.49s/it] 50%|#####     | 15/30 [00:22<00:22,  1.48s/it] 53%|#####3    | 16/30 [00:23<00:20,  1.48s/it] 57%|#####6    | 17/30 [00:25<00:19,  1.48s/it] 60%|######    | 18/30 [00:26<00:17,  1.49s/it] 63%|######3   | 19/30 [00:28<00:16,  1.50s/it] 67%|######6   | 20/30 [00:29<00:14,  1.47s/it] 70%|#######   | 21/30 [00:31<00:13,  1.49s/it] 73%|#######3  | 22/30 [00:32<00:12,  1.51s/it] 77%|#######6  | 23/30 [00:34<00:10,  1.49s/it] 80%|########  | 24/30 [00:35<00:08,  1.49s/it] 83%|########3 | 25/30 [00:37<00:07,  1.48s/it] 87%|########6 | 26/30 [00:38<00:05,  1.49s/it] 90%|######### | 27/30 [00:40<00:04,  1.48s/it] 93%|#########3| 28/30 [00:41<00:02,  1.48s/it] 97%|#########6| 29/30 [00:43<00:01,  1.45s/it]100%|##########| 30/30 [00:44<00:00,  1.43s/it]100%|##########| 30/30 [00:44<00:00,  1.49s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 47.44 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] office, modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, epic composition, intricate, complex, elegant, highly saturated, sharp focus, open background, dynamic, cinematic, full colors, inspired, designed, rich deep vivid, very inspirational, thoughtful, creative, glorious, bright
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:02<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:59,  2.04s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:03<00:59,  2.04s/it]                                     7%|6         | 2/30 [00:03<00:44,  1.57s/it] 10%|#         | 3/30 [00:04<00:42,  1.56s/it] 13%|#3        | 4/30 [00:06<00:40,  1.58s/it] 17%|#6        | 5/30 [00:07<00:37,  1.51s/it] 20%|##        | 6/30 [00:09<00:36,  1.54s/it] 23%|##3       | 7/30 [00:10<00:34,  1.52s/it] 27%|##6       | 8/30 [00:12<00:33,  1.53s/it] 30%|###       | 9/30 [00:14<00:34,  1.63s/it] 33%|###3      | 10/30 [00:15<00:31,  1.60s/it] 37%|###6      | 11/30 [00:17<00:29,  1.54s/it] 40%|####      | 12/30 [00:18<00:27,  1.55s/it] 43%|####3     | 13/30 [00:20<00:25,  1.51s/it] 47%|####6     | 14/30 [00:21<00:24,  1.52s/it] 50%|#####     | 15/30 [00:23<00:22,  1.51s/it] 53%|#####3    | 16/30 [00:24<00:21,  1.51s/it] 57%|#####6    | 17/30 [00:26<00:19,  1.53s/it] 60%|######    | 18/30 [00:27<00:18,  1.52s/it] 63%|######3   | 19/30 [00:29<00:17,  1.57s/it] 67%|######6   | 20/30 [00:30<00:15,  1.56s/it] 70%|#######   | 21/30 [00:32<00:13,  1.53s/it] 73%|#######3  | 22/30 [00:33<00:12,  1.54s/it] 77%|#######6  | 23/30 [00:35<00:10,  1.53s/it] 80%|########  | 24/30 [00:37<00:09,  1.53s/it] 83%|########3 | 25/30 [00:38<00:07,  1.51s/it] 87%|########6 | 26/30 [00:40<00:06,  1.52s/it] 90%|######### | 27/30 [00:41<00:04,  1.59s/it] 93%|#########3| 28/30 [00:43<00:03,  1.51s/it] 97%|#########6| 29/30 [00:44<00:01,  1.48s/it]100%|##########| 30/30 [00:46<00:00,  1.49s/it]100%|##########| 30/30 [00:46<00:00,  1.54s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 48.99 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, dynamic composition, beautiful detailed, sharp focus, intricate, epic light, cinematic aesthetic,, enhanced bright colors, inspired highly vivid color, fine detail, perfect colorful background, open flowing, glorious, vibrant, surreal, symmetry, full built atmosphere, professional
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:02<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<01:03,  2.20s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<01:03,  2.20s/it]                                     7%|6         | 2/30 [00:02<00:41,  1.50s/it] 10%|#         | 3/30 [00:04<00:39,  1.46s/it] 13%|#3        | 4/30 [00:05<00:37,  1.46s/it] 17%|#6        | 5/30 [00:07<00:36,  1.46s/it] 20%|##        | 6/30 [00:08<00:35,  1.47s/it] 23%|##3       | 7/30 [00:10<00:33,  1.44s/it] 27%|##6       | 8/30 [00:11<00:32,  1.48s/it] 30%|###       | 9/30 [00:13<00:30,  1.45s/it] 33%|###3      | 10/30 [00:14<00:29,  1.45s/it] 37%|###6      | 11/30 [00:16<00:27,  1.47s/it] 40%|####      | 12/30 [00:17<00:26,  1.46s/it] 43%|####3     | 13/30 [00:19<00:24,  1.47s/it] 47%|####6     | 14/30 [00:20<00:23,  1.46s/it] 50%|#####     | 15/30 [00:22<00:22,  1.47s/it] 53%|#####3    | 16/30 [00:23<00:20,  1.45s/it] 57%|#####6    | 17/30 [00:24<00:19,  1.47s/it] 60%|######    | 18/30 [00:26<00:17,  1.48s/it] 63%|######3   | 19/30 [00:27<00:15,  1.45s/it] 67%|######6   | 20/30 [00:29<00:14,  1.44s/it] 70%|#######   | 21/30 [00:30<00:13,  1.45s/it] 73%|#######3  | 22/30 [00:32<00:11,  1.49s/it] 77%|#######6  | 23/30 [00:33<00:10,  1.45s/it] 80%|########  | 24/30 [00:35<00:08,  1.48s/it] 83%|########3 | 25/30 [00:36<00:07,  1.45s/it] 87%|########6 | 26/30 [00:38<00:05,  1.46s/it] 90%|######### | 27/30 [00:39<00:04,  1.43s/it] 93%|#########3| 28/30 [00:40<00:02,  1.45s/it] 97%|#########6| 29/30 [00:42<00:01,  1.43s/it]100%|##########| 30/30 [00:43<00:00,  1.41s/it]100%|##########| 30/30 [00:43<00:00,  1.46s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 46.76 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, cinematic, sharp focus, highly detail, rich deep colors, open peaceful, glowing, futuristic, bright, contemporary, elegant, best, fair, hopeful, benevolent, atmosphere, crisp, precious, attractive, loving
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:53,  1.85s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:53,  1.85s/it]                                     7%|6         | 2/30 [00:02<00:41,  1.49s/it] 10%|#         | 3/30 [00:04<00:41,  1.52s/it] 13%|#3        | 4/30 [00:06<00:39,  1.52s/it] 17%|#6        | 5/30 [00:07<00:45,  1.81s/it] 20%|##        | 6/30 [00:09<00:40,  1.67s/it] 23%|##3       | 7/30 [00:11<00:36,  1.58s/it] 27%|##6       | 8/30 [00:12<00:33,  1.51s/it] 30%|###       | 9/30 [00:14<00:32,  1.52s/it] 33%|###3      | 10/30 [00:15<00:31,  1.57s/it] 37%|###6      | 11/30 [00:17<00:33,  1.79s/it] 40%|####      | 12/30 [00:18<00:27,  1.53s/it] 43%|####3     | 13/30 [00:20<00:25,  1.50s/it] 47%|####6     | 14/30 [00:22<00:24,  1.52s/it] 50%|#####     | 15/30 [00:23<00:22,  1.51s/it] 53%|#####3    | 16/30 [00:25<00:21,  1.52s/it] 57%|#####6    | 17/30 [00:26<00:19,  1.54s/it] 60%|######    | 18/30 [00:28<00:18,  1.53s/it] 63%|######3   | 19/30 [00:29<00:16,  1.52s/it] 67%|######6   | 20/30 [00:31<00:15,  1.51s/it] 70%|#######   | 21/30 [00:32<00:13,  1.51s/it] 73%|#######3  | 22/30 [00:34<00:12,  1.54s/it] 77%|#######6  | 23/30 [00:35<00:10,  1.50s/it] 80%|########  | 24/30 [00:37<00:09,  1.54s/it] 83%|########3 | 25/30 [00:38<00:07,  1.50s/it] 87%|########6 | 26/30 [00:40<00:06,  1.51s/it] 90%|######### | 27/30 [00:41<00:04,  1.50s/it] 93%|#########3| 28/30 [00:43<00:03,  1.51s/it] 97%|#########6| 29/30 [00:44<00:01,  1.49s/it]100%|##########| 30/30 [00:46<00:00,  1.49s/it]100%|##########| 30/30 [00:46<00:00,  1.54s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 48.90 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, innocent, elegant, luxurious, dramatic light, illuminated, sharp focus, thought, epic composition, exciting, cinematic, new, dynamic, ambient, vivid, imposing, rich detail, creative, clear, crisp, full
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:55,  1.93s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:55,  1.93s/it]                                     7%|6         | 2/30 [00:02<00:41,  1.49s/it] 10%|#         | 3/30 [00:04<00:40,  1.51s/it] 13%|#3        | 4/30 [00:05<00:39,  1.51s/it] 17%|#6        | 5/30 [00:07<00:37,  1.50s/it] 20%|##        | 6/30 [00:08<00:35,  1.50s/it] 23%|##3       | 7/30 [00:10<00:35,  1.54s/it] 27%|##6       | 8/30 [00:11<00:32,  1.46s/it] 30%|###       | 9/30 [00:13<00:30,  1.46s/it] 33%|###3      | 10/30 [00:14<00:29,  1.47s/it] 37%|###6      | 11/30 [00:16<00:28,  1.47s/it] 40%|####      | 12/30 [00:17<00:26,  1.49s/it] 43%|####3     | 13/30 [00:19<00:24,  1.45s/it] 47%|####6     | 14/30 [00:20<00:24,  1.50s/it] 50%|#####     | 15/30 [00:22<00:22,  1.47s/it] 53%|#####3    | 16/30 [00:23<00:21,  1.55s/it] 57%|#####6    | 17/30 [00:25<00:19,  1.51s/it] 60%|######    | 18/30 [00:26<00:18,  1.53s/it] 63%|######3   | 19/30 [00:28<00:17,  1.55s/it] 67%|######6   | 20/30 [00:29<00:14,  1.45s/it] 70%|#######   | 21/30 [00:31<00:13,  1.51s/it] 73%|#######3  | 22/30 [00:32<00:11,  1.48s/it] 77%|#######6  | 23/30 [00:34<00:10,  1.47s/it] 80%|########  | 24/30 [00:35<00:08,  1.47s/it] 83%|########3 | 25/30 [00:37<00:07,  1.47s/it] 87%|########6 | 26/30 [00:38<00:06,  1.65s/it] 90%|######### | 27/30 [00:40<00:04,  1.47s/it] 93%|#########3| 28/30 [00:42<00:03,  1.62s/it] 97%|#########6| 29/30 [00:43<00:01,  1.47s/it]100%|##########| 30/30 [00:44<00:00,  1.42s/it]100%|##########| 30/30 [00:44<00:00,  1.50s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 47.63 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, beautiful detailed, color, intricate, cinematic, sharp focus, highly coherent, perfect light, open aesthetic, joyful, innocent, complex, symmetry, romantic, dynamic, rich deep colors, translucent, magical, peaceful, symbolic, artistic, pure, rational
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [00:01<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [00:01<00:54,  1.87s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [00:02<00:54,  1.87s/it]                                     7%|6         | 2/30 [00:02<00:41,  1.49s/it] 10%|#         | 3/30 [00:04<00:42,  1.57s/it] 13%|#3        | 4/30 [00:06<00:39,  1.52s/it] 17%|#6        | 5/30 [00:07<00:37,  1.50s/it] 20%|##        | 6/30 [00:09<00:36,  1.51s/it] 23%|##3       | 7/30 [00:10<00:35,  1.52s/it] 27%|##6       | 8/30 [00:12<00:32,  1.49s/it] 30%|###       | 9/30 [00:13<00:32,  1.54s/it] 33%|###3      | 10/30 [00:15<00:29,  1.49s/it] 37%|###6      | 11/30 [00:16<00:28,  1.52s/it] 40%|####      | 12/30 [00:18<00:26,  1.49s/it] 43%|####3     | 13/30 [00:19<00:25,  1.50s/it] 47%|####6     | 14/30 [00:21<00:25,  1.58s/it] 50%|#####     | 15/30 [00:22<00:23,  1.60s/it] 53%|#####3    | 16/30 [00:24<00:22,  1.59s/it] 57%|#####6    | 17/30 [00:25<00:20,  1.58s/it] 60%|######    | 18/30 [00:27<00:18,  1.51s/it] 63%|######3   | 19/30 [00:29<00:16,  1.53s/it] 67%|######6   | 20/30 [00:30<00:15,  1.54s/it] 70%|#######   | 21/30 [00:32<00:13,  1.49s/it] 73%|#######3  | 22/30 [00:33<00:12,  1.54s/it] 77%|#######6  | 23/30 [00:35<00:10,  1.55s/it] 80%|########  | 24/30 [00:36<00:09,  1.52s/it] 83%|########3 | 25/30 [00:38<00:07,  1.52s/it] 87%|########6 | 26/30 [00:39<00:06,  1.53s/it] 90%|######### | 27/30 [00:41<00:04,  1.49s/it] 93%|#########3| 28/30 [00:42<00:03,  1.53s/it] 97%|#########6| 29/30 [00:44<00:01,  1.50s/it]100%|##########| 30/30 [00:45<00:00,  1.47s/it]100%|##########| 30/30 [00:45<00:00,  1.52s/it]
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[32m[INFO][0m [32mPrompt executed in 48.44 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m pyav decode error
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model AutoencoderKL prepared for dynamic VRAM loading. 159MB Staged. 0 patches attached. Force pre-loaded 112 weights: 182 KB.
+[1m[33m[WARNING][0m Warning: Ran out of memory when regular VAE encoding, retrying with tiled VAE encoding.
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] uxurious exclusive cafe exterior realistic rendering. Clear sky and summer high-noon lights with short shadows that does not darken main building facade. 2 point perspective human view camera angle. grass and wild flower on the green area. Building's exterior finish will be matte porcelain tiles with transparent glass wall. left side used by cafe and right side used by residence. second floor open space used by parking lot so we can see parked cars. people are on the ground floor and balcony, roof top. Iconic pine tree located center of the site. 위와 같은 프롬프트로 기존의 스케치업 스크린샷 이미지를 현실적인 렌더링으로 렌더하고 싶다., modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, vibrant colors, beautiful detailed, color rich intense dramatic cinematic light, gorgeous atmosphere, tender, complex artistic aesthetic, inspirational, lively, luxurious, intricate, very impressive, lovely, epic composition, professional, winning surreal, enhanced, joyful, iconic
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/30 [16:13<?, ?it/s,  Model Initialization complete!  ]  3%|3         | 1/30 [16:13<7:50:26, 973.32s/it,  Model Initialization complete!  ]  3%|3         | 1/30 [43:25<7:50:26, 973.32s/it]                                     7%|6         | 2/30 [43:25<10:07:56, 1302.72s/it][32m[INFO][0m got prompt
+  7%|6         | 2/30 [51:09<11:56:08, 1534.58s/it]
+[1m[31m[ERROR][0m !!! Exception during processing !!! Allocation on device 0 would exceed allowed memory. (out of memory)
+Currently allocated     : 10.96 GiB
+Requested               : 1.08 GiB
+Device limit            : 8.00 GiB
+Free (according to CUDA): 0 bytes
+PyTorch limit (set by user-supplied memory fraction)
+                        : 17179869184.00 GiB
+[1m[31m[ERROR][0m Traceback (most recent call last):
+  File "C:\ComfyUI\execution.py", line 545, in execute
+    output_data, output_ui, has_subgraph, has_pending_tasks = await get_output_data(prompt_id, unique_id, obj, input_data_all, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, v3_data=v3_data)
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\execution.py", line 344, in get_output_data
+    return_values = await _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, obj.FUNCTION, allow_interrupt=True, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, v3_data=v3_data)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\execution.py", line 318, in _async_map_node_over_list
+    await process_inputs(input_dict, i)
+  File "C:\ComfyUI\execution.py", line 306, in process_inputs
+    result = f(**inputs)
+             ^^^^^^^^^^^
+  File "C:\ComfyUI\nodes.py", line 1623, in sample
+    return common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=denoise)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\nodes.py", line 1587, in common_ksampler
+    samples = comfy.sample.sample(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, latent_image,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\sample.py", line 82, in sample
+    samples = sampler.sample(noise, positive, negative, cfg=cfg, latent_image=latent_image, start_step=start_step, last_step=last_step, force_full_denoise=force_full_denoise, denoise_mask=noise_mask, sigmas=sigmas, callback=callback, disable_pbar=disable_pbar, seed=seed)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1463, in sample
+    return sample(self.model, noise, positive, negative, cfg, self.device, sampler, sigmas, self.model_options, latent_image=latent_image, denoise_mask=denoise_mask, callback=callback, disable_pbar=disable_pbar, seed=seed)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1353, in sample
+    return cfg_guider.sample(noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1335, in sample
+    output = executor.execute(noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, latent_shapes=latent_shapes)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1262, in outer_sample
+    output = self.inner_sample(noise, latent_image, device, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, latent_shapes=latent_shapes)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1237, in inner_sample
+    samples = executor.execute(self, sigmas, extra_args, callback, noise, latent_image, denoise_mask, disable_pbar)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1005, in sample
+    samples = self.sampler_function(model_k, noise, sigmas, extra_args=extra_args, callback=k_callback, disable=disable_pbar, **self.extra_options)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\k_diffusion\sampling.py", line 845, in sample_dpmpp_2m_sde
+    denoised = model(x, sigmas[i] * s_in, **extra_args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 640, in __call__
+    out = self.inner_model(x, sigma, model_options=model_options, seed=seed)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1208, in __call__
+    return self.outer_predict_noise(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1215, in outer_predict_noise
+    ).execute(x, timestep, model_options, seed)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 1218, in predict_noise
+    return sampling_function(self.inner_model, x, timestep, self.conds.get("negative", None), self.conds.get("positive", None), self.cfg, model_options=model_options, seed=seed)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 620, in sampling_function
+    out = calc_cond_batch(model, conds, x, timestep, model_options)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 211, in calc_cond_batch
+    return _calc_cond_batch_outer(model, conds, x_in, timestep, model_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 219, in _calc_cond_batch_outer
+    return executor.execute(model, conds, x_in, timestep, model_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\samplers.py", line 335, in _calc_cond_batch
+    output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\model_base.py", line 205, in apply_model
+    return comfy.patcher_extension.WrapperExecutor.new_class_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\model_base.py", line 249, in _apply_model
+    model_output = self.diffusion_model(xc, t, context=context, control=control, transformer_options=transformer_options, **extra_conds)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\diffusionmodules\openaimodel.py", line 838, in forward
+    return comfy.patcher_extension.WrapperExecutor.new_class_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\patcher_extension.py", line 113, in execute
+    return self.original(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\diffusionmodules\openaimodel.py", line 922, in _forward
+    h = forward_timestep_embed(module, h, emb, context, transformer_options, output_shape, time_context=time_context, num_video_frames=num_video_frames, image_only_indicator=image_only_indicator)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\diffusionmodules\openaimodel.py", line 56, in forward_timestep_embed
+    x = layer(x, context, transformer_options)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\attention.py", line 1165, in forward
+    x = block(x, context=context[i], transformer_options=transformer_options)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\attention.py", line 1101, in forward
+    x = self.ff(self.norm3(x))
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\attention.py", line 146, in forward
+    return self.net(x)
+           ^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+            ^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ComfyUI\comfy\ldm\modules\attention.py", line 126, in forward
+    return x * F.gelu(gate)
+           ~~^~~~~~~~~~~~~~
+torch.OutOfMemoryError: Allocation on device 0 would exceed allowed memory. (out of memory)
+Currently allocated     : 10.96 GiB
+Requested               : 1.08 GiB
+Device limit            : 8.00 GiB
+Free (according to CUDA): 0 bytes
+PyTorch limit (set by user-supplied memory fraction)
+                        : 17179869184.00 GiB
+
+[32m[INFO][0m Memory summary:
+|===========================================================================|
+|                  PyTorch CUDA memory summary, device ID 0                 |
+|---------------------------------------------------------------------------|
+|            CUDA OOMs: 0            |        cudaMalloc retries: 0         |
+|===========================================================================|
+|        Metric         | Cur Usage  | Peak Usage | Tot Alloc  | Tot Freed  |
+|---------------------------------------------------------------------------|
+| Allocated memory      |  10113 MiB |  12335 MiB |      0 B   |      0 B   |
+|       from large pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|       from small pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|---------------------------------------------------------------------------|
+| Active memory         |  10113 MiB |  12335 MiB |      0 B   |      0 B   |
+|       from large pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|       from small pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|---------------------------------------------------------------------------|
+| Requested memory      |      0 B   |      0 B   |      0 B   |      0 B   |
+|       from large pool |      0 B   |      0 B   |      0 B   |      0 B   |
+|       from small pool |      0 B   |      0 B   |      0 B   |      0 B   |
+|---------------------------------------------------------------------------|
+| GPU reserved memory   |  10368 MiB |  14848 MiB |      0 B   |      0 B   |
+|       from large pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|       from small pool |      0 MiB |      0 MiB |      0 B   |      0 B   |
+|---------------------------------------------------------------------------|
+| Non-releasable memory |      0 B   |      0 B   |      0 B   |      0 B   |
+|       from large pool |      0 B   |      0 B   |      0 B   |      0 B   |
+|       from small pool |      0 B   |      0 B   |      0 B   |      0 B   |
+|---------------------------------------------------------------------------|
+| Allocations           |       0    |       0    |       0    |       0    |
+|       from large pool |       0    |       0    |       0    |       0    |
+|       from small pool |       0    |       0    |       0    |       0    |
+|---------------------------------------------------------------------------|
+| Active allocs         |       0    |       0    |       0    |       0    |
+|       from large pool |       0    |       0    |       0    |       0    |
+|       from small pool |       0    |       0    |       0    |       0    |
+|---------------------------------------------------------------------------|
+| GPU reserved segments |       0    |       0    |       0    |       0    |
+|       from large pool |       0    |       0    |       0    |       0    |
+|       from small pool |       0    |       0    |       0    |       0    |
+|---------------------------------------------------------------------------|
+| Non-releasable allocs |       0    |       0    |       0    |       0    |
+|       from large pool |       0    |       0    |       0    |       0    |
+|       from small pool |       0    |       0    |       0    |       0    |
+|---------------------------------------------------------------------------|
+| Oversize allocations  |       0    |       0    |       0    |       0    |
+|---------------------------------------------------------------------------|
+| Oversize GPU segments |       0    |       0    |       0    |       0    |
+|===========================================================================|
+
+[1m[31m[ERROR][0m Got an OOM, unloading all loaded models.
+[32m[INFO][0m [32mPrompt executed in 00:53:13[0m
+[32m[INFO][0m Requested to load SDXLClipModel
+[32m[INFO][0m Model SDXLClipModel prepared for dynamic VRAM loading. 1560MB Staged. 0 patches attached. Force pre-loaded 180 weights: 400 KB.
+[32m[INFO][0m Requested to load SDXL
+[32m[INFO][0m 0 models unloaded.
+[32m[INFO][0m Model SDXL prepared for dynamic VRAM loading. 4896MB Staged. 788 patches attached. Force pre-loaded 512 weights: 1197 KB.
+[Fooocus Expansion] modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution, dynamic composition, beautiful detailed, cinematic, deep color, inspired, open flowing, light shining, symmetry, perfect intricate, innocent, peaceful, elegant, crisp, extremely aesthetic, rich colorful full detail, creative, inspiring, shiny, magical, vibrant
+  0%|          | 0/30 [00:00<?, ?it/s]  0%|          | 0/30 [00:00<?, ?it/s,   Model Initializing ...  ]

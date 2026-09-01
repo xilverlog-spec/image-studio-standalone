@@ -1,0 +1,52 @@
+{
+  "quality_presets": {
+    "speed": {
+      "label": "Speed (빠름)",
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler": "dpmpp_2m_sde",
+      "scheduler": "karras"
+    },
+    "quality": {
+      "label": "Quality (권장, Fooocus Speed와 동일)",
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler": "dpmpp_2m_sde",
+      "scheduler": "karras"
+    },
+    "extreme_quality": {
+      "label": "Extreme Quality (느림, Fooocus Quality와 동일)",
+      "steps": 60,
+      "cfg": 4.0,
+      "sampler": "dpmpp_2m_sde",
+      "scheduler": "karras"
+    }
+  },
+  "sampling_sharpness": {
+    "default": 2.0,
+    "options": [0.0, 1.0, 2.0],
+    "description": "Fooocus 샘플링 샤프니스 (노이즈 스케줄 보정). 0.0=OFF, 1.0=약함, 2.0=기본(권장)"
+  },
+  "adm_guidance": {
+    "default": true,
+    "positive_adm_scale": 1.5,
+    "negative_adm_scale": 0.8,
+    "adm_scaler_end": 0.3,
+    "description": "Fooocus ADM(Attention Distribution Modifier) 가이던스. 조건부 신호 강화를 통해 프롬프트 충실도 향상."
+  },
+  "checkpoint": "juggernautXL_v8Rundiffusion.safetensors",
+  "resolution": {
+    "width": 1152,
+    "height": 896
+  },
+  "clip_skip": 2,
+  "offset_lora": {
+    "name": "sd_xl_offset_example-lora_1.0.safetensors",
+    "strength": 0.1
+  },
+  "styles": [
+    "fooocus_enhance",
+    "photograph",
+    "cinematic"
+  ]
+}

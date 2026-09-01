@@ -1,0 +1,26 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\unjin\\OneDrive - SANGJI\\바탕 화면\\DX AI LAB\\image-studio-standalone\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:5000 (Press CTRL+C to quit)
+INFO:     Started reloader process [38880] using StatReload
+INFO:     Started server process [24728]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+[KONTEXT] Editing image with instruction 'test...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\kontext_edit_20260828_180431_44b6bc.png (seed=2111580895)
+Queued FLUX Kontext edit prompt 73d3d2b9-97b5-409d-8420-4d6ea332273a (instruction='test...')...
+INFO:     127.0.0.1:65128 - "POST /v1/image/edit HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:55261 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51273 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54849 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54851 - "GET /v1/image/history HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['AnimagineXL_v31.safetensors', 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+INFO:     127.0.0.1:54850 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53996 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53994 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56368 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60484 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49503 - "DELETE /v1/image/history/69 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49518 - "GET /v1/image/history?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52078 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65504 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61550 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58331 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58331 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found

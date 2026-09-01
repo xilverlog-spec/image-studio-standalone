@@ -1,0 +1,1164 @@
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'portrait of a smiling woman, p...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_140427_d55f94.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=1265465642)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 338fadde-bc4e-4fd4-9ca0-6c859af1bdd5 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_140427_d55f94.png
+INFO:     127.0.0.1:54211 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50755 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62618 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57008 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57140 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57140 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59946 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59947 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59948 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61067 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55582 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50926 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61197 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61196 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54210 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61198 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54213 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53019 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52134 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58414 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52946 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56834 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56836 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59350 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59350 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57892 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56370 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56055 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62287 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62287 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50060 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65430 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56731 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50346 - "POST /v1/image/auto-tune HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: RealVisXL_V5.0_fp16.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'photorealistic family portrait...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_140823_738a77.png (ckpt=RealVisXL_V5.0_fp16.safetensors, 1024x1024, style=photograph, seed=187269068)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: RealVisXL_V5.0_fp16.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt bdc3af55-6583-49da-a16e-5db359b25c82 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_140823_738a77.png
+INFO:     127.0.0.1:56152 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54962 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53541 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53668 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61920 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64285 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64602 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59354 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63804 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53907 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58080 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63725 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53004 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63652 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52287 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65176 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53907 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58080 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53004 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53668 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61893 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60300 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53397 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51356 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50127 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[COMFYUI] Generating image for prompt 'Add three people drinking tea....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_141144_424b66.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=3026381525, img2img denoise=0.6)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt c75aa257-a1a1-46df-b78f-429a4cfdafad for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_141144_424b66.png
+INFO:     127.0.0.1:50695 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55220 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65497 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62724 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61180 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59791 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53862 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55220 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65497 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62724 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61180 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59791 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65497 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54795 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55590 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53525 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63323 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58446 - "GET /v1/system/effective_agent_config HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60852 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54249 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56157 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63323 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58446 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53525 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61346 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51041 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65382 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55154 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59642 - "GET /v1/system/effective_agent_config HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61346 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51041 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55864 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54986 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56897 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61023 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61256 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54303 - "GET /v1/system/effective_agent_config HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54986 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56897 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59198 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64558 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64557 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64559 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62031 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52349 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62030 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62028 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53245 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53246 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53244 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53243 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52497 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52499 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61523 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54190 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54194 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54193 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54196 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53448 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59835 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60738 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60740 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59837 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59651 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59840 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54489 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56308 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56309 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56311 - "GET /generated/gen_20260828_101738_c870ff.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56313 - "GET /generated/gen_20260828_101623_9cb630.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55084 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53198 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64135 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60688 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[COMFYUI] Generating image for prompt 'Add three people to the scene....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_141842_fe426f.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=2924306377, img2img denoise=0.15)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 549723c5-ce70-43c9-97a5-f8a6cec2f83e for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_141842_fe426f.png
+INFO:     127.0.0.1:64573 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63643 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49421 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62534 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64204 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57776 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60620 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57776 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53325 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56764 - "GET /v1/system/effective_agent_config HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59342 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60863 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53325 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60620 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51849 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51850 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51852 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58546 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49792 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55054 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62804 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61928 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54864 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61926 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56611 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53649 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61429 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61428 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64771 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64775 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53083 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64773 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+[COMFYUI] Generating image for prompt 'Add three people to the scene....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_142116_c27c33.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=452559983, img2img denoise=0.7)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 21b50e86-f157-4bfb-9ec2-a7433b627bf1 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_142116_c27c33.png
+INFO:     127.0.0.1:61686 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51347 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54960 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57439 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60016 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58679 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54960 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57439 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51347 - "GET /v1/system/effective_agent_config HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57439 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64438 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53237 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54617 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54617 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52748 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63210 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:50820 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55689 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59936 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59940 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59939 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64856 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64857 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64854 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57979 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63712 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61798 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57415 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57414 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57417 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52044 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52045 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62258 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61300 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54499 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54497 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56196 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56198 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49960 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53172 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53173 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53176 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53178 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53179 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57473 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64186 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64188 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62030 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62407 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52033 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+INFO:     127.0.0.1:61985 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60164 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63824 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49165 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52033 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60164 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62407 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62407 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62407 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60164 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60164 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60164 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+[COMFYUI] Generating image for prompt 'add bright red lipstick and a ...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_143110_b4de3d.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=2015024176, img2img denoise=0.6)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 0ec83dcb-9d2c-47bd-be91-d981b4ea0902 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_143110_b4de3d.png
+INFO:     127.0.0.1:55579 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57747 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55053 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55641 - "GET /generated/gen_20260828_143110_b4de3d.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55512 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49189 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64483 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55887 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64615 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57425 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57425 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63147 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63146 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63148 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57425 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62489 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57425 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62490 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59951 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52781 - "GET /generated/gen_20260828_143110_b4de3d.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52783 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52782 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50556 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50558 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51347 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61178 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52971 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52974 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52973 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65174 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65176 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53553 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60259 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62908 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59070 - "GET /generated/gen_20260828_101738_c870ff.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62590 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59072 - "GET /generated/gen_20260828_101623_9cb630.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57425 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52706 - "DELETE /v1/image/history/63 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57425 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57425 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57425 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55635 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63646 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50134 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64412 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+[COMFYUI] Generating image for prompt 'Add a person to the scene....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_143647_ff5e80.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=4224092203, img2img denoise=0.6)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 9f2d8925-0d2a-4c02-8a5a-3d78441578e0 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_143647_ff5e80.png
+INFO:     127.0.0.1:63435 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64412 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52670 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63898 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56101 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62224 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56133 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57443 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57505 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57507 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57508 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57937 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57939 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57938 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53922 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53923 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58122 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57864 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:58262 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57114 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57114 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57114 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57114 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57360 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57178 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63591 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49517 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57360 - "GET /v1/ppt/themes HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57178 - "GET /v1/efficiency HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63591 - "GET /v1/skills HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57114 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49517 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57360 - "GET /v1/image/loras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49517 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54071 - "PUT /v1/image/history/57/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50034 - "PUT /v1/image/history/56/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50855 - "PUT /v1/image/history/52/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61878 - "PUT /v1/image/history/52/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52979 - "PUT /v1/image/history/59/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62343 - "PUT /v1/image/history/49/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56461 - "PUT /v1/image/history/48/favorite HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57396 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52337 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57266 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57267 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57268 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49855 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58712 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65403 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61484 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49858 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61861 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61732 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61860 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61863 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61730 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56885 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65068 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65070 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58296 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58297 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59437 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59439 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55049 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55051 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57402 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57403 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57405 - "GET /generated/gen_20260828_101738_c870ff.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57407 - "GET /generated/gen_20260828_101623_9cb630.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61484 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60776 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58078 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53868 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55362 - "GET /generated/gen_20260828_143110_b4de3d.png HTTP/1.1" 404 Not Found
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+INFO:     127.0.0.1:52227 - "POST /v1/image/auto-tune HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60208 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'detailed comma-separated Engli...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_144255_9e92ad.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=photograph, seed=3731801017)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 22e9a951-b8dd-449c-82b9-4823a199619d for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_144255_9e92ad.png
+INFO:     127.0.0.1:61208 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60433 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50833 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61248 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53296 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51536 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58979 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63545 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63546 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50199 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63548 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57524 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61071 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65198 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50561 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50559 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65196 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56172 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57777 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57781 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57780 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57782 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56773 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59309 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59309 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60245 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61139 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54922 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64757 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64758 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64760 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56645 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53920 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56647 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55228 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55225 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55229 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55149 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60179 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60181 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49444 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62280 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59274 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59273 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59275 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59277 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52321 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52586 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60116 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60120 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60119 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58488 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52497 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55003 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55380 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52882 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55712 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62874 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[COMFYUI] Generating image for prompt 'modern minimalist luxury cafe ...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_145112_cdb46c.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1024x1024, style=none, seed=3023835256)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 0a6718e3-af2f-43bf-91db-f74f1fc73a65 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_145112_cdb46c.png
+INFO:     127.0.0.1:56353 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54788 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61664 - "GET /generated/gen_20260828_145112_cdb46c.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62775 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61446 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53032 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53032 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63484 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60108 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60752 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62264 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58213 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58213 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62443 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63862 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55312 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65315 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61818 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54632 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54632 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54388 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54069 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54069 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49591 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59081 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63729 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65070 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63060 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63060 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49494 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58803 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56586 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56587 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56588 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59832 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59835 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59833 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61115 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61116 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61112 - "GET /generated/gen_20260828_145112_cdb46c.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61117 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61118 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52052 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51410 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53193 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61109 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54781 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:55752 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50250 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50250 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61357 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56151 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56151 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56151 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56151 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56151 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53647 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55739 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55741 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53647 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55742 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50185 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50189 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50188 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59394 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62755 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62755 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62755 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62755 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54823 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61065 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52270 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57907 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50092 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63588 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56652 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54963 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61664 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61664 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58980 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57421 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59334 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62370 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51200 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51200 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63837 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55915 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49612 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60201 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64910 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+INFO:     127.0.0.1:51655 - "POST /v1/image/auto-tune HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'photorealistic, cozy cabin, lu...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_153205_24c7bc.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1344x768, style=photograph, seed=2424098475)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 1fdf899a-f339-4cc6-8416-13f0212af94c for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_153205_24c7bc.png
+INFO:     127.0.0.1:64289 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56805 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54086 - "GET /generated/gen_20260828_153205_24c7bc.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57077 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51270 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59455 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60799 - "POST /v1/image/auto-tune HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'photorealistic, cozy cabin, lu...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_153422_6d3ec8.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1344x768, style=photograph, seed=1708980067)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 00587a0d-4b26-4b42-9462-125ac5ae48fd for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_153422_6d3ec8.png
+INFO:     127.0.0.1:52002 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59171 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64315 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59620 - "GET /generated/gen_20260828_153422_6d3ec8.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65424 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59704 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50714 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50714 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61780 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53981 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61593 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50003 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:64093 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64093 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60155 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49401 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55236 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50653 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60237 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+[COMFYUI] Generating image for prompt 'photorealistic architectural r...' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_154525_bb82a1.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1344x768, style=photograph, seed=1334529116)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt acb2bcf2-70c2-4bd0-8824-4eee7a3e2687 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_154525_bb82a1.png
+INFO:     127.0.0.1:55976 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65145 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53095 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50102 - "GET /generated/gen_20260828_154525_bb82a1.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51831 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[COMFYUI] Generating image for prompt 'Make the image photorealistic....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_154639_c09b4a.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1344x768, style=photograph, seed=1000272248, img2img denoise=0.5)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt d34b4e14-495a-4e4f-9e3f-430d4f2efa1d for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_154639_c09b4a.png
+INFO:     127.0.0.1:62807 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64886 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59345 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61094 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49442 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55456 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56777 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59345 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51113 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61851 - "GET /generated/gen_20260828_154639_c09b4a.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56771 - "DELETE /v1/image/history/70 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55712 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51277 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59848 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57059 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52158 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54334 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63158 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63158 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63158 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63158 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61908 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50387 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+[COMFYUI] Generating image for prompt 'Make the image photorealistic....' -> C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_155832_32c0a1.png (ckpt=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors, 1344x768, style=architecture, seed=563745990, img2img denoise=0.5)
+  [FaceDetailer] Impact Pack 감지됨 — 얼굴 보정을 적용합니다.
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+  [SDXL] SDXL detected: CFG auto-adjusted to 4.5
+Queued prompt 11ebde1a-d7f0-4401-831f-9b516efaa8c6 for generation...
+Image saved to C:\Users\unjin\OneDrive - SANGJI\바탕 화면\DX AI LAB\image-studio-standalone\output\images\gen_20260828_155832_32c0a1.png
+INFO:     127.0.0.1:51681 - "POST /v1/image/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49470 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56773 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54337 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50807 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56200 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56773 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53948 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57154 - "GET /generated/gen_20260828_155832_32c0a1.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50686 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55472 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57316 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55582 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55582 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51280 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64683 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50407 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62197 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50165 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50165 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51258 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57072 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58944 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64055 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50651 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50651 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61971 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54398 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65495 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62457 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49176 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49176 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64323 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54212 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51372 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64666 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58868 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58868 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59618 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54083 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52526 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54212 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54857 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62574 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55296 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55298 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55299 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57222 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52105 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52106 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62716 - "GET /generated/gen_20260828_155832_32c0a1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62859 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62717 - "GET /generated/gen_20260828_154525_bb82a1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50775 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50466 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51453 - "GET /generated/gen_20260828_153422_6d3ec8.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51457 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51461 - "GET /generated/gen_20260828_153205_24c7bc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51459 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51458 - "GET /generated/gen_20260828_145112_cdb46c.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57780 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59238 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63849 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55952 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55955 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55956 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54658 - "GET /generated/gen_20260828_134758_8188d2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54661 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54659 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51312 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51419 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51417 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65052 - "GET /generated/gen_20260828_101738_c870ff.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65051 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62261 - "GET /generated/gen_20260827_180041_39d2f3.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51931 - "GET /generated/gen_20260828_101623_9cb630.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62263 - "GET /generated/gen_20260827_175952_99b130.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58479 - "GET /generated/gen_20260827_175851_b68e4e.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58739 - "GET /generated/gen_20260827_175812_413c98.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58659 - "GET /generated/gen_20260827_175616_79531a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50509 - "GET /generated/gen_20260827_175253_1b7dde.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57277 - "GET /generated/gen_20260827_175152_821b6a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57278 - "GET /generated/gen_20260827_174057_75597c.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57279 - "GET /generated/gen_20260827_174022_fc3c7e.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57283 - "GET /generated/gen_20260827_173907_b5d49e.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57281 - "GET /generated/gen_20260827_173936_141790.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58094 - "GET /generated/gen_20260827_165941_196997.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61316 - "GET /generated/gen_20260827_165857_f4f1e3.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61319 - "GET /generated/gen_20260827_165329_8f1841.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61320 - "GET /generated/gen_20260827_165307_68a604.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53443 - "GET /generated/gen_20260827_164447_7f3122.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65134 - "GET /generated/gen_20260827_164321_1da50a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60800 - "GET /generated/gen_20260827_164132_226fd7.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55569 - "GET /generated/gen_20260827_163751_0fb7cf.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55568 - "GET /generated/gen_20260827_164001_dd6f69.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62147 - "GET /generated/gen_20260827_163138_d14acb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64693 - "GET /generated/gen_20260827_162819_9fd437.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64696 - "GET /generated/gen_20260827_162731_55a4a2.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57872 - "GET /generated/gen_20260827_161439_c6a602.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56552 - "GET /generated/gen_20260827_160414_64869e.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51416 - "GET /generated/gen_20260827_155747_a6a6bf.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51417 - "GET /generated/gen_20260827_155108_1db734.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62412 - "GET /generated/gen_20260827_154155_0a3866.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62414 - "GET /generated/gen_20260827_144915_9b3c12.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62413 - "GET /generated/gen_20260827_145507_bdd949.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54696 - "GET /generated/gen_20260827_144708_72707e.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54698 - "GET /generated/gen_20260827_144534_92c37b.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50826 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60542 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64590 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64591 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64592 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51498 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54266 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53704 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51412 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61765 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51414 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51413 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59616 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57034 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57033 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59615 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57036 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61766 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61764 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59617 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53703 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53705 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55997 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58651 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62055 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58251 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50816 - "GET /generated/gen_20260828_155832_32c0a1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63373 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63373 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63416 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63418 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63419 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62057 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54108 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58239 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62486 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51199 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65286 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54994 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51006 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51006 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61861 - "DELETE /v1/image/history/71 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64850 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51775 - "DELETE /v1/image/history/54 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52299 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50485 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60984 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64979 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60756 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55612 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52797 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52797 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52805 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49754 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64681 - "DELETE /v1/image/history/16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61218 - "DELETE /v1/image/history/17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62651 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54051 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61138 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61138 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52118 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60489 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:64789 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51997 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51999 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62470 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59543 - "GET /v1/image/options HTTP/1.1" 200 OK
+ComfyUI checkpoint selected: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (available: ['AnimagineXL_v31.safetensors', 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', 'RealVisXL_V5.0_fp16.safetensors'])
+INFO:     127.0.0.1:59545 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59546 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53196 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57444 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53193 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53195 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52810 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52811 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64224 - "GET /generated/gen_20260828_154525_bb82a1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:65387 - "GET /generated/gen_20260828_142116_c27c33.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64226 - "GET /generated/gen_20260828_153422_6d3ec8.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58440 - "GET /generated/gen_20260828_143647_ff5e80.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59695 - "GET /generated/gen_20260828_141842_fe426f.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60988 - "GET /generated/gen_20260828_140427_d55f94.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60986 - "GET /generated/gen_20260828_153205_24c7bc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51597 - "GET /generated/gen_20260828_145112_cdb46c.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51600 - "GET /generated/gen_20260828_140127_f7808d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51601 - "GET /generated/gen_20260828_144255_9e92ad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52433 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52429 - "GET /generated/gen_20260828_140823_738a77.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52432 - "GET /generated/gen_20260828_141144_424b66.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61528 - "GET /generated/gen_20260828_134156_16c85a.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63406 - "GET /generated/gen_20260828_135942_5c00dc.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61527 - "GET /generated/gen_20260828_135810_17f3bb.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59525 - "GET /generated/gen_20260828_133907_a6d6d1.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49448 - "GET /generated/gen_20260828_133755_b69154.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49450 - "GET /generated/gen_20260828_131829_ad4def.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61766 - "GET /generated/gen_20260828_131403_02649d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61767 - "GET /generated/gen_20260828_130624_56c43d.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58117 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:62980 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62981 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65161 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62983 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64014 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63535 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56676 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:54571 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54572 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54573 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58546 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55393 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65222 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:49645 - "GET /v1/wiki/tree HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49645 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+ INFO:     127.0.0.1:61608 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49750 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49749 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49751 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49328 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49329 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50260 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:60189 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60186 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60187 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62522 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62523 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59076 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64197 - "GET /v1/image/progress HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57942 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:57622 - "GET /v1/image/progress HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64177 - "GET /v1/image/progress HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /v1/image/progress HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51070 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59454 - "GET /v1/image/generations HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55783 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55784 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55785 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60383 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54404 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52569 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55329 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:60010 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60012 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59444 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60013 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52523 - "GET /v1/image/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65011 - "GET /v1/image/checkpoints HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50379 - "GET /v1/image/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54289 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:54328 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+ INFO:     127.0.0.1:54339 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:62056 - "GET /v1/workspace/workflow_queue HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65298 - "POST /v1/image/upscale HTTP/1.1" 422 Unprocessable Content

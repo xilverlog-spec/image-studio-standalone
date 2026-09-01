@@ -1,0 +1,854 @@
+
+> image-studio-standalone@1.0.0 dev
+> vite
+
+
+  [32m[1mVITE[22m v8.2.2[39m  [2mready in [0m[1m168[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5174[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m오후 1:32:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:32:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:38:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:44:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:56:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 컴파일 실패: Error: 빈 결과를 받았습니다
+    at compileConversationToPrompt (http://localhost:5174/src/App.jsx?t=1787805884258:160:25)
+[2m오후 1:58:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"체크포인트 조회 실패: <urlopen error [WinError 10061] 대상 컴퓨터에서 연결을 거부했으므로 연결하지 못했습니다>"}
+[2m오후 1:58:22[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"체크포인트 조회 실패: <urlopen error [WinError 10061] 대상 컴퓨터에서 연결을 거부했으므로 연결하지 못했습니다>"}
+[2m오후 1:58:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"체크포인트 조회 실패: <urlopen error [WinError 10061] 대상 컴퓨터에서 연결을 거부했으므로 연결하지 못했습니다>"}
+[2m오후 2:24:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"이미지 생성 실패: ComfyUI 실행 결과에 이미지가 없습니다. 워크플로 노드 오류일 수 있습니다: {\"status_str\": \"error\", \"completed\": false, \"messages\": [[\"execution_start\", {\"prompt_id\": \"0fb811b7-a0c8-41e5-824b-0e848ba14bc5\", \"timestamp\": 1787808243020}], [\"execution_cached\", {\"nodes\": [], \"prompt_id\": \"0fb811b7-a0c8-41e5-824b-0e848ba14bc5\", \"timestamp\": 1787808243021}], [\"execution_error\", {"}
+[2m오후 2:27:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {"detail":"이미지 생성 실패: ComfyUI 실행 결과에 이미지가 없습니다. 워크플로 노드 오류일 수 있습니다: {\"status_str\": \"error\", \"completed\": false, \"messages\": [[\"execution_start\", {\"prompt_id\": \"4d28423f-45d8-4659-90e9-e398f770853c\", \"timestamp\": 1787808449029}], [\"execution_cached\", {\"nodes\": [], \"prompt_id\": \"4d28423f-45d8-4659-90e9-e398f770853c\", \"timestamp\": 1787808449030}], [\"execution_error\", {"}
+[2m오후 2:54:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 컴파일 실패: Error: 빈 결과를 받았습니다
+    at compileConversationToPrompt (http://localhost:5174/src/App.jsx?t=1787805884258:160:25)
+[2m오후 2:59:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:07:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:47:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:54:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:54:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:55:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:59:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:59:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:00:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:00:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:00:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:01:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:01:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:01:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:01:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:06[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:09[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:09[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:09[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:14[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:17[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:18[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:18[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:20[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:20[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:27[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:27[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:27[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814126468:94:23)
+[2m오후 4:02:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814164132:95:23)
+[2m오후 4:02:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814164132:95:23)
+[2m오후 4:02:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814164132:95:23)
+[2m오후 4:02:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814164132:95:23)
+[2m오후 4:02:53[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814164132:95:23)
+[2m오후 4:02:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:02:53[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:54[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:54[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:57[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:57[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:02:58[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:01[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:06[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:06[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:09[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:21[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:22[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:29[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:29[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:30[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:32[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:33[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:03:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m즐겨찾기 변경 실패: Error: 즐겨찾기 변경 실패
+    at toggleFavorite (http://localhost:5174/src/App.jsx?t=1787814173426:95:23)
+[2m오후 4:10:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m오후 4:10:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:10:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:11:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:11:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:11:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:11:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:12:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:12:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:12:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:13:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:13:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:13:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m오후 4:14:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:16:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:16:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:18:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:23:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:23:18[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:762:12 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m762 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m    │[0m            │ 
+ [38;5;240m    │[0m            ╰─ 
+[38;5;246m─────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 4:23:18[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:762:12 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m762 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m    │[0m            │ 
+ [38;5;240m    │[0m            ╰─ 
+[38;5;246m─────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 4:23:18[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/App.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m오후 4:23:18[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/App.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m오후 4:23:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:26:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:26:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:26:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:26:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:29:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m갤러리 로드 실패: TypeError: Failed to fetch
+    at loadStudioGallery (http://localhost:5174/src/App.jsx?t=1787815608275:73:22)
+    at http://localhost:5174/src/App.jsx?t=1787815608275:54:3
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:12902:13)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:851:66)
+    at commitHookEffectListMount (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:6617:153)
+    at commitHookPassiveMountEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:6652:55)
+    at reconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7701:6)
+    at recursivelyTraverseReconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7688:5)
+    at reconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7713:14)
+    at doubleInvokeEffectsOnFiber (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:8924:125)
+[2m오후 4:29:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m옵션 로드 실패: TypeError: Failed to fetch
+    at loadImageOptions (http://localhost:5174/src/App.jsx?t=1787815608275:61:77)
+    at http://localhost:5174/src/App.jsx?t=1787815608275:53:3
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:12902:13)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:851:66)
+    at commitHookEffectListMount (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:6617:153)
+    at commitHookPassiveMountEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:6652:55)
+    at reconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7701:6)
+    at recursivelyTraverseReconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7688:5)
+    at reconnectPassiveEffects (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:7713:14)
+    at doubleInvokeEffectsOnFiber (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=439b3982:8924:125)
+[2m오후 4:36:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:36:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:36:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:36:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:37:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:37:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/auto-tune[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 4:37:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/generate[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 4:37:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m생성 실패: {}
+[2m오후 4:41:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:50:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:50:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:51:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:51:25[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:51:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:51:51[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mExpected `:` but found `}`
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:806:12 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m642 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m:[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mu[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mT[0m[38;5;249ma[0m[38;5;249mb[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m=[0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m'[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mt[0m[38;5;249m'[0m[38;5;249m [0m?[38;5;249m [0m[38;5;249m([0m
+ [38;5;240m    │[0m                                      ┬  
+ [38;5;240m    │[0m                                      ╰── Conditional starts here
+ [38;5;240m    │[0m 
+ [38;5;246m806 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m}
+ [38;5;240m    │[0m            ┬  
+ [38;5;240m    │[0m            ╰── `:` expected
+[38;5;246m─────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 4:51:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/App.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m오후 4:51:51[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mExpected `:` but found `}`
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:806:12 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m642 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m:[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mu[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mT[0m[38;5;249ma[0m[38;5;249mb[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m=[0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m'[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mt[0m[38;5;249m'[0m[38;5;249m [0m?[38;5;249m [0m[38;5;249m([0m
+ [38;5;240m    │[0m                                      ┬  
+ [38;5;240m    │[0m                                      ╰── Conditional starts here
+ [38;5;240m    │[0m 
+ [38;5;246m806 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m}
+ [38;5;240m    │[0m            ┬  
+ [38;5;240m    │[0m            ╰── `:` expected
+[38;5;246m─────╯[0m
+[39m
+  Plugin: [35mvite:oxc[39m
+  File: [36mC:/Users/unjin/OneDrive - SANGJI/바탕 화면/DX AI LAB/image-studio-standalone/src/App.jsx[39m
+      at transformWithOxc (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4103:19)
+      at TransformPluginContext.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:4174:26)
+      at EnvironmentPluginContainer.transform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:30932:51)
+      at async loadAndTransform (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:20671:26)
+      at async viteTransformMiddleware (file:///C:/Users/unjin/OneDrive%20-%20SANGJI/%EB%B0%94%ED%83%95%20%ED%99%94%EB%A9%B4/DX%20AI%20LAB/image-studio-standalone/node_modules/vite/dist/node/chunks/node.js:25205:20)
+[2m오후 4:51:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/App.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m오후 4:52:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:56:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:56:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:56:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:00:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:24:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:24:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:25:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:33:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:34:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:34:25[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:54:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오전 9:06:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:30:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:30:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:31:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:33:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:33:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:34:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:43:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:43:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 1:47:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:02:42[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/chat/completions[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 2:02:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 오류: Error: 대화 요청 실패
+    at sendChatMessage (http://localhost:5174/src/App.jsx?t=1787892424724:248:23)
+[2m오후 2:15:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:15:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:16:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:16:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:20:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:27:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:27:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:28:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:28:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:28:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:28:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:38:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:38:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:38:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:38:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:39:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:39:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 2:45:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:09:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m오후 3:10:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:14:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m오후 3:14:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:15:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:15:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:15:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:15:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:15:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 3:18:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:36:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:38:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:38:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:38:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:38:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mRemoving a style property during rerender (border) when a conflicting property is set (borderColor) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values.
+[2m오후 4:56:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:56:58[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m오후 4:57:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:57:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 4:58:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+[39m > throwOnInvalidObjectTypeImpl node_modules/react-dom/cjs/react-dom-client.development.js:6099:12
+ > throwOnInvalidObjectType node_modules/react-dom/cjs/react-dom-client.development.js:6113:10
+ > createChild node_modules/react-dom/cjs/react-dom-client.development.js:6401:10
+ > reconcileChildrenArray node_modules/react-dom/cjs/react-dom-client.development.js:6670:24
+ > reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:6993:29
+ > node_modules/react-dom/cjs/react-dom-client.development.js:7098:32
+ > reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:9701:12
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12049:12
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+
+[2m오후 4:58:00[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <div> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m오후 4:58:22[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+[39m > throwOnInvalidObjectTypeImpl node_modules/react-dom/cjs/react-dom-client.development.js:6099:12
+ > throwOnInvalidObjectType node_modules/react-dom/cjs/react-dom-client.development.js:6113:10
+ > createChild node_modules/react-dom/cjs/react-dom-client.development.js:6401:10
+ > reconcileChildrenArray node_modules/react-dom/cjs/react-dom-client.development.js:6670:24
+ > reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:6993:29
+ > node_modules/react-dom/cjs/react-dom-client.development.js:7098:32
+ > reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:9701:12
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12049:12
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+
+[2m오후 4:58:22[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <div> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m오후 4:58:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+[39m > throwOnInvalidObjectTypeImpl node_modules/react-dom/cjs/react-dom-client.development.js:6099:12
+ > throwOnInvalidObjectType node_modules/react-dom/cjs/react-dom-client.development.js:6113:10
+ > createChild node_modules/react-dom/cjs/react-dom-client.development.js:6401:10
+ > reconcileChildrenArray node_modules/react-dom/cjs/react-dom-client.development.js:6670:24
+ > reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:6993:29
+ > node_modules/react-dom/cjs/react-dom-client.development.js:7098:32
+ > reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:9701:12
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12049:12
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+
+[2m오후 4:58:35[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <div> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m오후 5:00:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+[39m > throwOnInvalidObjectTypeImpl node_modules/react-dom/cjs/react-dom-client.development.js:6099:12
+ > throwOnInvalidObjectType node_modules/react-dom/cjs/react-dom-client.development.js:6113:10
+ > createChild node_modules/react-dom/cjs/react-dom-client.development.js:6401:10
+ > reconcileChildrenArray node_modules/react-dom/cjs/react-dom-client.development.js:6670:24
+ > reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:6993:29
+ > node_modules/react-dom/cjs/react-dom-client.development.js:7098:32
+ > reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:9701:12
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12049:12
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+
+[2m오후 5:00:04[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <div> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m오후 5:00:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+[39m > throwOnInvalidObjectTypeImpl node_modules/react-dom/cjs/react-dom-client.development.js:6099:12
+ > throwOnInvalidObjectType node_modules/react-dom/cjs/react-dom-client.development.js:6113:10
+ > createChild node_modules/react-dom/cjs/react-dom-client.development.js:6401:10
+ > reconcileChildrenArray node_modules/react-dom/cjs/react-dom-client.development.js:6670:24
+ > reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:6993:29
+ > node_modules/react-dom/cjs/react-dom-client.development.js:7098:32
+ > reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:9701:12
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12049:12
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+
+[2m오후 5:00:12[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <div> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m오후 5:01:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:02:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:37[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/chat/completions[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 오류: Error: 대화 요청 실패
+    at sendChatMessage (http://localhost:5174/src/App.jsx?t=1787904171021:569:23)
+[2m오후 5:06:40[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/chat/completions[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 오류: Error: 대화 요청 실패
+    at sendChatMessage (http://localhost:5174/src/App.jsx?t=1787904171021:569:23)
+[2m오후 5:06:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/chat/completions[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 오류: Error: 대화 요청 실패
+    at sendChatMessage (http://localhost:5174/src/App.jsx?t=1787904171021:569:23)
+[2m오후 5:06:43[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/chat/completions[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m대화 오류: Error: 대화 요청 실패
+    at sendChatMessage (http://localhost:5174/src/App.jsx?t=1787904171021:569:23)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:06:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:43:48[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:51:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/options[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/checkpoints[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 5:52:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /v1/image/history[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m오후 6:03:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 6:03:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 6:03:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m오후 6:03:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
