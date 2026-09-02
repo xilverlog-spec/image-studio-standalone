@@ -1,8 +1,66 @@
+# Dependencies
 node_modules/
+venv/
+env/
+.venv/
+ENV/
+
+# Build & Output
 dist/
+build/
+*.egg-info/
+output/
+generated/
+
+# Python
 __pycache__/
 *.pyc
-data/
-output/
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
 backend/.env
+*.key
+*.pem
+
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/settings.local.json
+
+# ComfyUI & Models
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+models/
+checkpoints/
+ComfyUI/models/
+downloads/
+
+# Cache & Temporary
+.cache/
+.pytest_cache/
+.mypy_cache/
+*.cache
+.tmp/
+temp/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Miscellaneous
+$null
+*.log
 .DS_Store
