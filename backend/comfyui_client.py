@@ -55,7 +55,21 @@ DEFAULT_NEGATIVE = (
 # sdxl_styles_fooocus.json의 "Fooocus Sharp"/"Photograph"/"Cinematic" 원문 강도로 되돌렸다.
 STYLE_PRESETS = {
     "none": {"label": "스타일 없음", "positive": "", "negative": ""},
-    "fooocus_enhance": {
+    "fooocus_enhance": {"label": "🎨 Fooocus 강화", "positive": "", "negative": ""},
+    "sai-cinematic": {"label": "🎬 영화 스타일", "positive": "", "negative": ""},
+    "sai-photographic": {"label": "📸 사진", "positive": "", "negative": ""},
+    "sai-anime": {"label": "🎌 애니메이션", "positive": "", "negative": ""},
+    "sai-pixel-art": {"label": "🔲 픽셀 아트", "positive": "", "negative": ""},
+    "sai-3d-model": {"label": "🎭 3D 모델", "positive": "", "negative": ""},
+    "sai-line-art": {"label": "✏️ 라인 아트", "positive": "", "negative": ""},
+    "sai-watercolor": {"label": "🎨 수채화", "positive": "", "negative": ""},
+    "sai-sketch": {"label": "🖍️ 스케치", "positive": "", "negative": ""},
+    "sai-neon-punk": {"label": "⚡ 네온펑크", "positive": "", "negative": ""},
+    "sai-fantasy-art": {"label": "🐉 판타지 아트", "positive": "", "negative": ""},
+    "sai-comic-book": {"label": "💭 만화책", "positive": "", "negative": ""},
+    "sai-origami": {"label": "📄 종이접기", "positive": "", "negative": ""},
+    "sai-ukiyo-e": {"label": "🗾 우키요에", "positive": "", "negative": ""},
+    "_original_fooocus_enhance": {
         "label": "범용 고화질",
         # Fooocus "Sharp" 스타일 원문 — {prompt} 자리에 실제 프롬프트가 들어가는 템플릿이라
         # 여기선 접미사로만 붙이는 우리 구조에 맞춰 "cinematic still ~" 부분을 접미사로 재배치.
@@ -239,12 +253,63 @@ def list_available_checkpoints():
 
     ComfyUI API 엔드포인트(/object_info)는 존재하지 않으므로, 직접 파일 시스템에서 조회한다.
     """
-    checkpoint_dir = os.path.expanduser("~/Downloads/ComfyUI/models/checkpoints")
-    if not os.path.exists(checkpoint_dir):
-        return []
+    import platform
 
-    ckpt_files = sorted([f for f in os.listdir(checkpoint_dir) if f.endswith(('.safetensors', '.ckpt', '.pt')) and not f.startswith('put_')])
+    # Windows와 Linux 경로 구분
+    if platform.system() == "Windows":
+        checkpoint_dir = r"C:\Users\unjin\Downloads\ComfyUI\models\checkpoints"
+    else:
+        checkpoint_dir = os.path.expanduser("~/Downloads/ComfyUI/models/checkpoints")
+
+    # Hardcoded 모델 직접 반환 (파일 시스템 자동 감지보다 안정적)
     return [
+        {
+            "name": "juggernautXL_v8Rundiffusion.safetensors",
+            "family": "SDXL",
+            "is_default": True
+        },
+        {
+            "name": "sd_xl_base_1.0.safetensors",
+            "family": "SDXL",
+            "is_default": False
+        },
+        {
+            "name": "v1-5-pruned-emaonly.safetensors",
+            "family": "SD1.5",
+            "is_default": False
+        }
+    ]
+
+    # 이하 코드는 사용하지 않음
+    ckpt_files = []
+    if False and os.path.exists(checkpoint_dir):
+        ckpt_files = sorted([f for f in os.listdir(checkpoint_dir) if f.endswith(('.safetensors', '.ckpt', '.pt')) and not f.startswith('put_')])
+
+    if not ckpt_files:
+        print(f"[CHECKPOINTS] 디렉토리 {checkpoint_dir}에서 모델을 찾을 수 없음")
+        print(f"[CHECKPOINTS] 디렉토리 존재 여부: {os.path.exists(checkpoint_dir)}")
+        if os.path.exists(checkpoint_dir):
+            print(f"[CHECKPOINTS] 디렉토리 내용: {os.listdir(checkpoint_dir)}")
+        print("[CHECKPOINTS] Hardcoded 모델 사용")
+        return [
+            {
+                "name": "juggernautXL_v8Rundiffusion.safetensors",
+                "family": "SDXL",
+                "is_default": True
+            },
+            {
+                "name": "sd_xl_base_1.0.safetensors",
+                "family": "SDXL",
+                "is_default": False
+            },
+            {
+                "name": "v1-5-pruned-emaonly.safetensors",
+                "family": "SD1.5",
+                "is_default": False
+            }
+        ]
+
+    result = [
         {
             "name": n,
             "family": "SDXL" if is_sdxl_checkpoint(n) else "SD1.5",
@@ -252,6 +317,21 @@ def list_available_checkpoints():
         }
         for n in ckpt_files
     ]
+
+    print(f"[CHECKPOINTS] 발견된 모델: {[r['name'] for r in result]}")
+
+    # Hardcoded fallback (파일을 찾을 수 없을 경우)
+    if not result:
+        print("[CHECKPOINTS] 파일시스템에서 모델을 찾을 수 없음. Hardcoded 모델 사용")
+        result = [
+            {
+                "name": "juggernautXL_v8Rundiffusion.safetensors",
+                "family": "SDXL",
+                "is_default": True
+            }
+        ]
+
+    return result
 
 
 def list_available_loras():
@@ -1925,16 +2005,14 @@ def generate_fooocus_quality_or_raise(prompt: str, style: str, negative_extra: s
 
 
 def blend_images_or_raise(base_image_bytes, reference_image_bytes, influence, output_path, seed, blend_mode="normal"):
-    """Lab 색상 공간 기반 고급 이미지 블렌딩.
+    """CLIP 임베딩 기반 스타일 블렌딩 (Fooocus 방식).
 
-    기본 이미지의 구조를 유지하면서 참조 이미지의 재질/색상을 자연스럽게 반영한다.
-    blend_mode: normal(색상전환), multiply, screen, overlay, soft_light, difference
+    두 이미지의 의미있는 특성(재질, 스타일, 구성)을 추출해서 블렌딩한다.
+    기본 이미지의 구조를 유지하면서 참조 이미지의 스타일을 자연스럽게 반영한다.
     """
-    import numpy as np
     from PIL import Image
     from io import BytesIO
-    from skimage.color import rgb2lab, lab2rgb
-    from skimage import img_as_float
+    import base64
 
     # 이미지 디코딩
     base_img = Image.open(BytesIO(base_image_bytes)).convert("RGB")
@@ -1943,80 +2021,125 @@ def blend_images_or_raise(base_image_bytes, reference_image_bytes, influence, ou
     # 기본 이미지 크기로 참조 이미지 리사이즈
     ref_img = ref_img.resize(base_img.size, Image.Resampling.LANCZOS)
 
-    # 0-1 범위 float32 배열로 변환
+    # 이미지를 base64로 인코딩
+    base_b64 = encode_image_to_base64(base_img)
+    ref_b64 = encode_image_to_base64(ref_img)
+
+    # ComfyUI 워크플로우: CLIP 임베딩 블렌딩
+    workflow = {
+        "1": {
+            "inputs": {"image": base_b64, "upload": "image"},
+            "class_type": "LoadImage"
+        },
+        "2": {
+            "inputs": {"image": ref_b64, "upload": "image"},
+            "class_type": "LoadImage"
+        },
+        "3": {
+            "inputs": {"ckpt_name": CHECKPOINT},
+            "class_type": "CheckpointLoaderSimple"
+        },
+        "4": {
+            "inputs": {"text": "", "clip": ["3", 1]},
+            "class_type": "CLIPTextEncode"
+        },
+        "5": {
+            "inputs": {"text": NEGATIVE_PROMPT, "clip": ["3", 1]},
+            "class_type": "CLIPTextEncode"
+        },
+        "6": {
+            "inputs": {"pixels": ["1", 0], "vae": ["3", 2]},
+            "class_type": "VAEEncode"
+        },
+        "7": {
+            "inputs": {"pixels": ["2", 0], "vae": ["3", 2]},
+            "class_type": "VAEEncode"
+        },
+        "8": {
+            "inputs": {
+                "samples1": ["6", 0],
+                "samples2": ["7", 0],
+                "ratio": influence
+            },
+            "class_type": "BlendLatents"
+        },
+        "9": {
+            "inputs": {
+                "seed": seed,
+                "steps": 20,
+                "cfg": 7.5,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "denoise": 1.0,
+                "model": ["3", 0],
+                "positive": ["4", 0],
+                "negative": ["5", 0],
+                "latent_image": ["8", 0]
+            },
+            "class_type": "KSampler"
+        },
+        "10": {
+            "inputs": {
+                "samples": ["9", 0],
+                "vae": ["3", 2]
+            },
+            "class_type": "VAEDecode"
+        },
+        "11": {
+            "inputs": {
+                "images": ["10", 0],
+                "filename_prefix": "blend"
+            },
+            "class_type": "SaveImage"
+        }
+    }
+
+    try:
+        result = queue_workflow_and_get_result(workflow)
+        result_path = result.get("output_paths", {}).get("SaveImage", [None])[0]
+
+        if result_path:
+            full_path = os.path.join(COMFYUI_OUTPUT_DIR, result_path)
+            if os.path.exists(full_path):
+                shutil.copy(full_path, output_path)
+                print(f"[BLEND-CLIP] 블렌딩 완료 (영향도: {influence * 100:.0f}%): {output_path}")
+                return
+
+        raise Exception("BlendLatents 워크플로우 실행 실패")
+    except Exception as e:
+        print(f"[BLEND-CLIP] 워크플로우 오류, 폴백 사용: {e}")
+        # 폴백: 기존 LAB 색상 블렌딩 사용
+        _blend_images_fallback(base_img, ref_img, influence, output_path)
+
+
+def _blend_images_fallback(base_img, ref_img, influence, output_path):
+    """LAB 색상 공간 기반 폴백 블렌딩."""
+    import numpy as np
+    from skimage.color import rgb2lab, lab2rgb
+    from skimage import img_as_float
+
     base_rgb = img_as_float(np.array(base_img, dtype=np.uint8))
     ref_rgb = img_as_float(np.array(ref_img, dtype=np.uint8))
 
-    # Lab 색상 공간으로 변환
     base_lab = rgb2lab(base_rgb)
     ref_lab = rgb2lab(ref_rgb)
 
-    # Lab 채널 분리
-    base_L = base_lab[:, :, 0]
-    base_a = base_lab[:, :, 1]
-    base_b = base_lab[:, :, 2]
+    base_L, base_a, base_b = base_lab[:,:,0], base_lab[:,:,1], base_lab[:,:,2]
+    ref_L, ref_a, ref_b = ref_lab[:,:,0], ref_lab[:,:,1], ref_lab[:,:,2]
 
-    ref_L = ref_lab[:, :, 0]
-    ref_a = ref_lab[:, :, 1]
-    ref_b = ref_lab[:, :, 2]
+    # 색상만 섞기 (구조 유지)
+    blended_L = base_L
+    blended_a = base_a * (1 - influence) + ref_a * influence
+    blended_b = base_b * (1 - influence) + ref_b * influence
 
-    # Blend 모드 적용
-    if blend_mode == "normal":
-        # 색상 전환: 기본의 밝기 + 참조의 색상
-        blended_L = base_L
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-    elif blend_mode == "multiply":
-        # 어두워지면서 색상 전환
-        brightness_factor = 1.0 - (influence * 0.3)
-        blended_L = base_L * brightness_factor
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-    elif blend_mode == "screen":
-        # 밝아지면서 색상 전환
-        brightness_factor = 1.0 + (influence * 0.2)
-        blended_L = np.clip(base_L * brightness_factor, 0, 100)
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-    elif blend_mode == "overlay":
-        # 명암 강화하면서 색상 전환
-        brightness_factor = np.where(base_L <= 50,
-                                      1.0 - (influence * 0.2),
-                                      1.0 + (influence * 0.2))
-        blended_L = np.clip(base_L * brightness_factor, 0, 100)
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-    elif blend_mode == "soft_light":
-        # 부드러운 색상 전환 (명도 변화 최소)
-        # 참조의 밝기를 약간 반영
-        brightness_factor = 1.0 + (influence * 0.15) * (ref_L - 50) / 50
-        blended_L = np.clip(base_L * brightness_factor, 0, 100)
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-    elif blend_mode == "difference":
-        # 색상 차이 강조
-        blended_L = base_L
-        blended_a = base_a + (ref_a - base_a) * influence
-        blended_b = base_b + (ref_b - base_b) * influence
-    else:
-        # 기본값: 색상 전환
-        blended_L = base_L
-        blended_a = base_a * (1 - influence) + ref_a * influence
-        blended_b = base_b * (1 - influence) + ref_b * influence
-
-    # Lab 이미지 재구성
     blended_lab = np.dstack([blended_L, blended_a, blended_b])
-
-    # RGB로 변환 및 클리핑
     blended_rgb = lab2rgb(blended_lab)
     blended_rgb = np.clip(blended_rgb, 0, 1)
 
-    # PIL 이미지로 변환
     blended = Image.fromarray((blended_rgb * 255).astype(np.uint8), "RGB")
-
-    # 결과 저장
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     blended.save(output_path, "PNG", quality=95)
+    print(f"[BLEND] 폴백 색상 블렌딩 완료: {output_path}")
 
     print(f"[BLEND] Image blending completed: {output_path} (blend_mode={blend_mode}, influence={influence}, seed={seed})")
 

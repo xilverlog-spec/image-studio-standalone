@@ -191,7 +191,6 @@ function App() {
   const [blendBaseImage, setBlendBaseImage] = useState(null);
   const [blendReferenceImages, setBlendReferenceImages] = useState([]);
   const [blendInfluence, setBlendInfluence] = useState(50);
-  const [blendMode, setBlendMode] = useState('normal');  // normal, multiply, screen, overlay, soft_light, difference
   const [blendPrompt, setBlendPrompt] = useState('');
   const [isDraggingOverBlend, setIsDraggingOverBlend] = useState(false);
   const [isDraggingOverBlendRef, setIsDraggingOverBlendRef] = useState(false);
@@ -203,7 +202,7 @@ function App() {
   // 2026-08-31: "실사화 1장"보다 "매스 모델 하나로 초기 컨셉 디자인을 여러 개 뽑기"가
   // 실제 주 용도에 더 맞는다는 피드백으로, 스타일 단일선택 → 다중선택 배치 생성으로 전환.
   const [editSubMode, setEditSubMode] = useState('arch'); // 'arch'가 기본값, 'edit'이 일반 수정, 'inpaint'가 인페인트/아웃페인트
-  const [archSelectedStyles, setArchSelectedStyles] = useState(Object.keys(ARCH_STYLE_PRESETS)); // 기본: 전체 스타일 선택
+  const [archSelectedStyles, setArchSelectedStyles] = useState([]); // 기본: 선택 없음, 사용자가 직접 선택
   const [archVariationsPerStyle, setArchVariationsPerStyle] = useState(1); // 스타일 하나당 몇 장씩 뽑을지
   const [archBatchProgress, setArchBatchProgress] = useState({ current: 0, total: 0 });
   const [archPrompt, setArchPrompt] = useState('');
@@ -251,7 +250,35 @@ function App() {
   const [showAdvancedQualitySettings, setShowAdvancedQualitySettings] = useState(false);
 
   // 옵션 메타데이터 & 갤러리
-  const [imageOptions, setImageOptions] = useState({ performance_presets: {}, aspect_ratios: {}, styles: {}, samplers: [], schedulers: [] });
+  const [imageOptions, setImageOptions] = useState({
+    performance_presets: {},
+    aspect_ratios: {
+      '1:1': { label: '정사각형 (1:1)' },
+      '16:9': { label: '와이드 (16:9)' },
+      '9:16': { label: '세로 (9:16)' },
+      '4:3': { label: '표준 (4:3)' },
+      '3:4': { label: '세로 표준 (3:4)' },
+      '2:1': { label: '울트라 와이드 (2:1)' }
+    },
+    styles: {
+      'fooocus_enhance': { label: '🎨 Fooocus 강화' },
+      'sai-cinematic': { label: '🎬 영화 스타일' },
+      'sai-photographic': { label: '📸 사진' },
+      'sai-anime': { label: '🎌 애니메이션' },
+      'sai-pixel-art': { label: '🔲 픽셀 아트' },
+      'sai-3d-model': { label: '🎭 3D 모델' },
+      'sai-line-art': { label: '✏️ 라인 아트' },
+      'sai-watercolor': { label: '🎨 수채화' },
+      'sai-sketch': { label: '🖍️ 스케치' },
+      'sai-neon-punk': { label: '⚡ 네온펑크' },
+      'sai-fantasy-art': { label: '🐉 판타지 아트' },
+      'sai-comic-book': { label: '💭 만화책' },
+      'sai-origami': { label: '📄 종이접기' },
+      'sai-ukiyo-e': { label: '🗾 우키요에' }
+    },
+    samplers: [],
+    schedulers: []
+  });
   const [availableCheckpoints, setAvailableCheckpoints] = useState([]);
   const [studioGallery, setStudioGallery] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -269,6 +296,7 @@ function App() {
       '3:4': { w: 15, h: 20 },
       '16:9': { w: 24, h: 13.5 },
       '9:16': { w: 13.5, h: 24 },
+      '2:1': { w: 28, h: 14 },
       '3:2': { w: 22, h: 14.5 }
     }[aspectId] || { w: 16, h: 16 };
     return (
@@ -335,7 +363,17 @@ function App() {
         fetch(API_BASE_URL + '/v1/image/options'),
         fetch(API_BASE_URL + '/v1/image/checkpoints'),
       ]);
-      if (optRes.ok) setImageOptions(await optRes.json());
+      if (optRes.ok) {
+        const backendOptions = await optRes.json();
+        // Backend 데이터와 기본값 merge (Backend가 없으면 기본값 사용)
+        setImageOptions(prev => ({
+          performance_presets: backendOptions.performance_presets || prev.performance_presets,
+          aspect_ratios: { ...prev.aspect_ratios, ...backendOptions.aspect_ratios },
+          styles: { ...prev.styles, ...backendOptions.styles },
+          samplers: backendOptions.samplers || prev.samplers,
+          schedulers: backendOptions.schedulers || prev.schedulers
+        }));
+      }
       if (ckptRes.ok) {
         const ckptData = await ckptRes.json();
         setAvailableCheckpoints(ckptData.checkpoints || []);
@@ -1175,8 +1213,7 @@ function App() {
         body: JSON.stringify({
           base_image: blendBaseImage.split(',')[1] || blendBaseImage,
           reference_image: blendReferenceImages[0].split(',')[1] || blendReferenceImages[0],
-          influence: blendInfluence / 100,
-          blend_mode: blendMode
+          influence: blendInfluence / 100
         })
       });
 
@@ -1728,7 +1765,7 @@ function App() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             <label className="field-label">스타일</label>
                             <select value={styleOverride ?? 'fooocus_enhance'} onChange={(e) => setStyleOverride(e.target.value)} style={selectStyle}>
-                              {['fooocus_enhance', 'photograph', 'cinematic'].map(id => (
+                              {['fooocus_enhance', 'sai-cinematic', 'sai-photographic', 'sai-anime', 'sai-pixel-art', 'sai-3d-model', 'sai-line-art', 'sai-watercolor', 'sai-sketch', 'sai-neon-punk', 'sai-fantasy-art', 'sai-comic-book', 'sai-origami', 'sai-ukiyo-e'].map(id => (
                                 <option key={id} value={id}>{Object.entries(imageOptions.styles || {}).find(([k]) => k === id)?.[1]?.label || id}</option>
                               ))}
                             </select>
@@ -2143,7 +2180,7 @@ function App() {
                       minHeight: '300px'
                     }}
                   >
-                    {editBaseImage ? (
+                    {inpaintEditImage ? (
                       <>
                         <canvas
                           ref={inpaintCanvasRef}
@@ -2373,6 +2410,7 @@ function App() {
                           .catch(err => console.error('이미지 로드 실패:', err));
                       }
                     }}
+                    onClick={() => blendBaseInputRef.current?.click()}
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: isDraggingOverBlend ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
@@ -2394,6 +2432,19 @@ function App() {
                       </>
                     )}
                   </div>
+                  <input
+                    ref={blendBaseInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => setBlendBaseImage(evt.target.result);
+                        reader.readAsDataURL(e.target.files[0]);
+                      }
+                    }}
+                  />
                 </div>
 
                 {/* 참조 이미지 선택 */}
@@ -2422,6 +2473,7 @@ function App() {
                           .catch(err => console.error('이미지 로드 실패:', err));
                       }
                     }}
+                    onClick={() => blendRefInputRef.current?.click()}
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: isDraggingOverBlendRef ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
@@ -2443,6 +2495,19 @@ function App() {
                       </>
                     )}
                   </div>
+                  <input
+                    ref={blendRefInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => setBlendReferenceImages([evt.target.result]);
+                        reader.readAsDataURL(e.target.files[0]);
+                      }
+                    }}
+                  />
                 </div>
               </div>
 
@@ -2455,17 +2520,11 @@ function App() {
                 <input type="range" min="0" max="100" value={blendInfluence} onChange={(e) => setBlendInfluence(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
               </div>
 
-              {/* 블렌드 모드 선택 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>블렌드 모드</span>
-                <select value={blendMode} onChange={(e) => setBlendMode(e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: '13px', cursor: 'pointer' }}>
-                  <option value="normal">일반 (Normal)</option>
-                  <option value="multiply">곱하기 (Multiply)</option>
-                  <option value="screen">스크린 (Screen)</option>
-                  <option value="overlay">오버레이 (Overlay)</option>
-                  <option value="soft_light">소프트 라이트 (Soft Light)</option>
-                  <option value="difference">차이 (Difference)</option>
-                </select>
+              {/* CLIP 블렌딩 설명 */}
+              <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  🎨 CLIP 임베딩 기반 블렌딩: 두 이미지의 <strong>재질·스타일·구성</strong>을 추출해서 자연스럽게 섞습니다.
+                </p>
               </div>
 
               {/* 블렌딩 버튼 */}
