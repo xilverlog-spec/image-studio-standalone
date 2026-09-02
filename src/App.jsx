@@ -29,7 +29,10 @@ import {
   Paintbrush
 } from 'lucide-react';
 
-const API_BASE_URL = `http://${window.location.hostname}:5000`;
+// 상대경로로 호출 — vite.config.js의 dev 서버 proxy(/v1, /generated → localhost:5000)를 통해
+// 백엔드로 전달된다. 이렇게 하면 LAN이든 터널(ngrok/cloudflared 등 외부 링크)이든 프론트엔드
+// 주소 하나만 열면 API 호출도 자동으로 같은 곳을 통해 나간다 — 백엔드 포트를 따로 노출할 필요가 없다.
+const API_BASE_URL = '';
 
 const DESIGNER_SYSTEM_PROMPT =
   '너는 이미지 생성 스튜디오의 전담 디자이너 "조니 아이구"다. ' +
@@ -71,6 +74,52 @@ const ARCH_STYLE_PRESETS = {
   }
 };
 
+// ── "퇴근 모드"(야간 배치)에서 디자인 다양성을 만드는 재료 풀 ──
+// 같은 스타일 프리셋이라도 재질/파사드 형태/조명을 매번 무작위로 섞어 넣어야
+// "시드만 다른 비슷한 그림"이 아니라 실제로 서로 다른 디자인 시안처럼 보인다.
+const NIGHT_BATCH_MATERIALS = [
+  "board-formed concrete facade", "natural stone cladding", "dark charred wood (shou sugi ban) siding",
+  "brushed aluminum and glass curtain wall", "warm oak wood paneling", "white stucco with steel trim",
+  "corten steel weathered panels", "brick masonry with black mortar", "polished travertine stone",
+  "matte black metal panels with large glazing"
+];
+const NIGHT_BATCH_FORMS = [
+  "single flat-roof rectangular volume", "cantilevered upper floor extending over the garden",
+  "stacked offset boxes massing", "curved organic facade", "split-level massing with a central courtyard",
+  "pitched mono-slope roof form", "symmetrical gabled roof form", "L-shaped floor plan wrapping a pool",
+  "modular container-inspired massing", "terraced stepped massing following the site slope"
+];
+const NIGHT_BATCH_LIGHTING = [
+  "golden hour warm sunlight", "overcast soft diffused daylight", "blue hour twilight with interior lights glowing",
+  "bright midday clear sky", "misty morning atmosphere", "dramatic side lighting with long shadows"
+];
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// Fooocus 원본 Image Prompt 슬롯 타입별 기본값 (modules/flags.py default_parameters).
+// 프로 모드에서 슬롯 타입을 바꿀 때 이 기본값으로 Stop At/Weight를 리셋한다.
+const FOOOCUS_SLOT_DEFAULTS = {
+  PyraCanny: { stopAt: 0.5, weight: 1.0 },
+  CPDS: { stopAt: 0.5, weight: 1.0 },
+  ImagePrompt: { stopAt: 0.5, weight: 0.6 },
+};
+const FOOOCUS_SLOT_TYPES = ['PyraCanny', 'CPDS', 'ImagePrompt'];
+const FOOOCUS_SLOT_TYPE_LABELS = {
+  PyraCanny: 'PyraCanny (엣지)',
+  CPDS: 'CPDS (명암 구조)',
+  ImagePrompt: 'ImagePrompt (재질/분위기)',
+};
+
+// 이지 모드의 "강조" 옵션 → IP-Adapter stop_at 매핑. 확산 초반에만 적용하면(값이 낮으면)
+// 전체적인 색감/구도 위주로, 후반까지 적용하면(값이 높으면) 질감/디테일까지 반영된다.
+const BLEND_EMPHASIS_STOP_AT = { balanced: 0.5, color: 0.35, material: 0.75 };
+const BLEND_EMPHASIS_OPTIONS = [
+  { value: 'balanced', label: '균형있게' },
+  { value: 'color', label: '색감 위주' },
+  { value: 'material', label: '질감/재질 위주' },
+];
 
 // ── Toast 알림 시스템 ──────────────────────────────────────────────
 let toastIdCounter = 0;
@@ -181,19 +230,43 @@ function App() {
   const promptFileInputRef = useRef(null);
 
   // ── "이미지 수정" 탭 전용 상태 ──
-  const [editMode, setEditMode] = useState('architecture'); // 'architecture' | 'inpaint' | 'outpaint'
+  const [editMode, setEditMode] = useState('architecture'); // 'architecture' | 'inpaint' | 'outpaint' | 'nightBatch'
   const [archImage, setArchImage] = useState(null);
   const [inpaintEditImage, setInpaintEditImage] = useState(null);
   const [outpaintEditImage, setOutpaintEditImage] = useState(null);
   const [isArchPromptRefining, setIsArchPromptRefining] = useState(false);
 
+  // ── "퇴근 모드"(야간 배치 생성) 전용 상태 ──
+  // 2026-09-02: 매스 모델 하나로 "가능한 한 다양한 디자인 시안"을 대량으로 뽑아두고 싶다는
+  // 요청 — 시간은 상관없고(퇴근~다음날 출근 사이, 최대 12시간+) 다양성이 핵심이라, 스타일뿐
+  // 아니라 재질/형태/조명 같은 디스크립터를 매 장마다 무작위로 조합해 프롬프트 자체를 바꾼다.
+  const [nightBatchCount, setNightBatchCount] = useState(50);
+  const [nightBatchSelectedStyles, setNightBatchSelectedStyles] = useState(Object.keys(ARCH_STYLE_PRESETS));
+  const [nightBatchPrompt, setNightBatchPrompt] = useState('');
+  const [nightBatchKeepStructure, setNightBatchKeepStructure] = useState(60);
+  const [nightBatchRunning, setNightBatchRunning] = useState(false);
+  const [nightBatchProgress, setNightBatchProgress] = useState({ current: 0, total: 0, failed: 0 });
+  const nightBatchStopRef = useRef(false);
+
   // ── "이미지 블렌딩" 탭 전용 상태 ──
   const [blendBaseImage, setBlendBaseImage] = useState(null);
-  const [blendReferenceImages, setBlendReferenceImages] = useState([]);
+  const [blendReferenceImages, setBlendReferenceImages] = useState([]); // 최대 4장
   const [blendInfluence, setBlendInfluence] = useState(50);
+  // 2026-09-02: Fooocus의 실제 Image Prompt 방식(Structure+Reference)으로 블렌딩을 교체 —
+  // 이지 모드에서 쓰는 간단한 on/off (기존 이미지의 형태를 ControlNet으로 고정할지).
+  const [blendStructureEnabled, setBlendStructureEnabled] = useState(true);
+  const [blendStructureType, setBlendStructureType] = useState('PyraCanny'); // 'PyraCanny' | 'CPDS'
+  // 이지 모드에서 참조 이미지의 어떤 특성을 더 강하게 반영할지 (IP-Adapter의 stop_at을 조절해 구현 —
+  // 값이 낮으면 확산 초반(전체 색감·구도)에만 적용되고, 값이 높으면 후반(질감·디테일)까지 적용됨).
+  const [blendEmphasis, setBlendEmphasis] = useState('balanced'); // 'balanced' | 'color' | 'material'
+  // 프로 모드 전용: Fooocus의 Image Prompt 패널처럼 슬롯(최대 4개)마다 타입/Stop At/Weight를
+  // 독립적으로 가진다. {image: dataURL, type: 'PyraCanny'|'CPDS'|'ImagePrompt'|'FaceSwap', stopAt, weight}
+  const [blendSlots, setBlendSlots] = useState([]);
+  const blendSlotInputRef = useRef(null);
   const [blendPrompt, setBlendPrompt] = useState('');
   const [isDraggingOverBlend, setIsDraggingOverBlend] = useState(false);
   const [isDraggingOverBlendRef, setIsDraggingOverBlendRef] = useState(false);
+  const [isDraggingOverBlendSlot, setIsDraggingOverBlendSlot] = useState(false);
   const [isBlending, setIsBlending] = useState(false);
   const blendBaseInputRef = useRef(null);
   const blendRefInputRef = useRef(null);
@@ -255,10 +328,10 @@ function App() {
     aspect_ratios: {
       '1:1': { label: '정사각형 (1:1)' },
       '16:9': { label: '와이드 (16:9)' },
-      '9:16': { label: '세로 (9:16)' },
+      '9:16': { label: '세로 와이드 (9:16)' },
       '4:3': { label: '표준 (4:3)' },
       '3:4': { label: '세로 표준 (3:4)' },
-      '2:1': { label: '울트라 와이드 (2:1)' }
+      '3:2': { label: '사진 (3:2)' }
     },
     styles: {
       'fooocus_enhance': { label: '🎨 Fooocus 강화' },
@@ -312,6 +385,14 @@ function App() {
     loadImageOptions();
     loadStudioGallery();
   }, []);
+
+  // 퇴근 모드 실행 중 실수로 탭을 닫으면 순차 생성이 그대로 끊긴다 — 확인 없이 닫히지 않게 막는다.
+  useEffect(() => {
+    if (!nightBatchRunning) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [nightBatchRunning]);
 
   // 실시간 생성 & 업스케일 진행률(Progress) 폴링
   useEffect(() => {
@@ -486,23 +567,6 @@ function App() {
     setSkipAutoTune(true);
     setStudioTab('prompt');
     setSelectedImage(null);
-  };
-
-  // 갤러리(생성 이력)의 이미지를 파일 선택 없이 바로 대화 참고 이미지로 첨부한다.
-  const attachGalleryImageToChat = async (item) => {
-    try {
-      const res = await fetch(`/generated/${item.imageFilename}`);
-      const blob = await res.blob();
-      const reader = new FileReader();
-      reader.onload = () => {
-        setChatAttachedImage(reader.result);
-        setStudioTab('chat');
-        setSelectedImage(null);
-      };
-      reader.readAsDataURL(blob);
-    } catch (err) {
-      console.error('갤러리 이미지 첨부 실패:', err);
-    }
   };
 
   // 갤러리 이미지를 이미지 수정(img2img) 탭에 바로 로드한다.
@@ -1200,11 +1264,33 @@ function App() {
     return res.json();
   };
 
-  // 이미지 블렌딩 함수
+  // 이미지 블렌딩 함수 — 이지 모드는 "참조 이미지 + 영향도" 하나로 단순하게, 프로 모드는
+  // Fooocus의 Image Prompt 패널처럼 슬롯(최대 4개)마다 타입/Stop At/Weight를 독립 조절한다.
+  // 둘 다 결국 같은 백엔드 슬롯 API(base_image + slots[])로 합쳐서 보낸다.
   const handleBlend = async () => {
-    if (!blendBaseImage || blendReferenceImages.length === 0) return;
+    const hasContent = isEasyMode ? blendReferenceImages.length > 0 : blendSlots.length > 0;
+    if (!blendBaseImage || !hasContent) return;
     setIsBlending(true);
-    addToast('info', '블렌딩 시작', `${blendInfluence}% 영향도로 블렌딩하고 있습니다.`);
+
+    let slots;
+    if (isEasyMode) {
+      const ipWeight = 0.4 + (blendInfluence / 100) * 1.1; // 0.4 ~ 1.5
+      const ipStopAt = BLEND_EMPHASIS_STOP_AT[blendEmphasis] ?? 0.5;
+      slots = [
+        ...(blendStructureEnabled
+          ? [{ image: blendBaseImage.split(',')[1] || blendBaseImage, type: blendStructureType, stop_at: 0.5, weight: 1.0 }]
+          : []),
+        ...blendReferenceImages.map(img => ({
+          image: img.split(',')[1] || img, type: 'ImagePrompt', stop_at: ipStopAt, weight: ipWeight
+        }))
+      ];
+      addToast('info', '블렌딩 시작', `참조 ${blendReferenceImages.length}장, ${blendInfluence}% 영향도로 블렌딩하고 있습니다.`);
+    } else {
+      slots = blendSlots.map(s => ({
+        image: s.image.split(',')[1] || s.image, type: s.type, stop_at: s.stopAt, weight: s.weight
+      }));
+      addToast('info', '블렌딩 시작', `슬롯 ${blendSlots.length}개로 블렌딩하고 있습니다.`);
+    }
 
     try {
       const response = await fetch(API_BASE_URL + '/v1/image/blend', {
@@ -1212,8 +1298,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           base_image: blendBaseImage.split(',')[1] || blendBaseImage,
-          reference_image: blendReferenceImages[0].split(',')[1] || blendReferenceImages[0],
-          influence: blendInfluence / 100
+          slots
         })
       });
 
@@ -1223,14 +1308,17 @@ function App() {
           const newItem = {
             id: Date.now(),
             imageFilename: data.image_filename,
-            prompt: `블렌딩 (영향도: ${blendInfluence}%)`,
+            prompt: isEasyMode
+              ? `블렌딩 (영향도 ${blendInfluence}%, ${BLEND_EMPHASIS_OPTIONS.find(o => o.value === blendEmphasis)?.label || ''}${blendStructureEnabled ? ', 형태 유지' : ''})`
+              : `블렌딩 (슬롯 ${blendSlots.length}개)`,
             isFavorite: false
           };
           setStudioGallery(prev => [newItem, ...prev]);
           addToast('success', '블렌딩 완료', '이미지가 보관함에 추가되었습니다.');
         }
       } else {
-        addToast('error', '블렌딩 실패', '블렌딩 중 오류가 발생했습니다.');
+        const err = await response.json().catch(() => ({}));
+        addToast('error', '블렌딩 실패', typeof err.detail === 'string' ? err.detail : '블렌딩 중 오류가 발생했습니다.');
       }
     } catch (err) {
       console.error('블렌딩 오류:', err);
@@ -1278,13 +1366,99 @@ function App() {
     setIsGenerating(false);
   };
 
+  // 매스 모델 하나 + 무작위로 뽑은 스타일/재질/형태/조명 조합으로 실사화 이미지 한 장을 만든다.
+  // (야간 배치의 최소 단위 — handleNightBatchGenerate가 이걸 nightBatchCount번 반복 호출한다)
+  const generateOneNightBatchDesign = async () => {
+    const stylePool = nightBatchSelectedStyles.length > 0 ? nightBatchSelectedStyles : Object.keys(ARCH_STYLE_PRESETS);
+    const styleId = pickRandom(stylePool);
+    const styleInfo = ARCH_STYLE_PRESETS[styleId] || ARCH_STYLE_PRESETS.modern;
+    const material = pickRandom(NIGHT_BATCH_MATERIALS);
+    const form = pickRandom(NIGHT_BATCH_FORMS);
+    const lighting = pickRandom(NIGHT_BATCH_LIGHTING);
+
+    const descriptorPrompt = `${form}, ${material}, ${lighting}`;
+    const combinedPrompt = nightBatchPrompt.trim()
+      ? `${nightBatchPrompt.trim()}, ${descriptorPrompt}, ${styleInfo.prompt}`
+      : `${descriptorPrompt}, ${styleInfo.prompt}`;
+
+    const controlnetStrength = 0.5 + (nightBatchKeepStructure / 100) * 0.45;
+
+    const res = await fetch(API_BASE_URL + '/v1/image/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: combinedPrompt,
+        num_steps: imageOptions.performance_presets?.[imagePerformance]?.steps || 30,
+        guidance_scale: imageOptions.performance_presets?.[imagePerformance]?.cfg || 4.5,
+        style: 'architecture',
+        aspect_ratio: imageAspectRatio,
+        negative_prompt_extra: "warped perspective, floating objects, unrealistic proportions, tilted horizon, distorted details, bad anatomy, deformed, sketch, monochrome",
+        loras: [],
+        checkpoint: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        // 매 장마다 완전히 다른 시드를 써야 같은 스타일/재질 조합이라도 다른 결과가 나온다.
+        seed: undefined,
+        input_image_base64: archImage ? archImage.split(',').pop() : (promptAttachedImages.length > 0 ? promptAttachedImages[0].split(',').pop() : undefined),
+        denoise: 0.75,
+        disable_face_detailer: true,
+        controlnet_strength: controlnetStrength
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || '알 수 없는 오류가 발생했습니다.');
+    }
+    return res.json();
+  };
+
+  // "퇴근 모드": 목표 장수만큼 순차 생성하며 매번 스타일/재질/형태/조명을 무작위로 다시 뽑는다.
+  // 시간이 오래 걸려도 상관없다는 전제(밤새 실행)라 순차 호출로 충분하며, 중간에 실패해도
+  // 계속 진행하고 마지막에 성공/실패 개수를 요약해서 알려준다. nightBatchStopRef로 중단 가능.
+  const handleNightBatchGenerate = async () => {
+    const hasImage = archImage || promptAttachedImages.length > 0;
+    if (!hasImage || nightBatchRunning) return;
+    if (nightBatchCount < 1) return;
+
+    nightBatchStopRef.current = false;
+    setNightBatchRunning(true);
+    setNightBatchProgress({ current: 0, total: nightBatchCount, failed: 0 });
+    addToast('info', '퇴근 모드 시작', `${nightBatchCount}장의 디자인 시안을 순차적으로 생성합니다. 브라우저 탭을 닫지 마세요.`);
+
+    let successCount = 0;
+    let failCount = 0;
+    for (let i = 0; i < nightBatchCount; i++) {
+      if (nightBatchStopRef.current) break;
+      try {
+        const data = await generateOneNightBatchDesign();
+        if (data.seed_used !== undefined) setLastSeedUsed(data.seed_used);
+        successCount++;
+        loadStudioGallery();
+      } catch (err) {
+        console.error('퇴근 모드 생성 실패:', err);
+        failCount++;
+      }
+      setNightBatchProgress({ current: i + 1, total: nightBatchCount, failed: failCount });
+    }
+
+    if (successCount > 0) {
+      addToast('success', '퇴근 모드 완료',
+        `${successCount}개의 디자인 시안이 생성되었습니다.${failCount > 0 ? ` (${failCount}개 실패)` : ''}`);
+    } else {
+      addToast('error', '퇴근 모드 실패', '한 장도 생성하지 못했습니다. ComfyUI 상태를 확인해 주세요.');
+    }
+    setNightBatchRunning(false);
+  };
+
+  const stopNightBatchGenerate = () => {
+    nightBatchStopRef.current = true;
+  };
+
 
   const selectStyle = {
     padding: '9px 10px',
     borderRadius: '10px',
     border: '1px solid var(--border-color)',
     background: 'var(--bg-input)',
-    color: '#fff',
+    color: 'var(--text-primary)',
     fontSize: '13.5px',
     outline: 'none',
     fontFamily: 'inherit',
@@ -1296,7 +1470,7 @@ function App() {
     padding: '11px',
     borderRadius: '10px',
     border: `1px solid ${active ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-    background: active ? 'rgba(34,211,238,0.14)' : 'transparent',
+    background: active ? 'rgba(51, 51, 153, 0.14)' : 'transparent',
     color: active ? 'var(--accent-cyan)' : 'var(--text-secondary)',
     fontWeight: 700,
     fontSize: '14.5px',
@@ -1317,27 +1491,36 @@ function App() {
       </div>
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {/* 상단 헤더 */}
+      {/* 상단 헤더 (HEADER_BRAND_GUIDE.md 반영: 로고 + 그라데이션 타이틀 + 소제목 + 우측 상태 뱃지) */}
       <header style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '16px 28px', borderBottom: '1px solid var(--border-color)', background: 'rgba(22, 28, 44, 0.4)',
-        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 10
+        height: '80px', padding: '0 28px', borderBottom: '1px solid rgba(255, 255, 255, 0.6)',
+        background: 'rgba(255, 255, 255, 0.45)',
+        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)', zIndex: 10
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '38px', height: '38px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(59,130,246,0.18))',
-            border: '1px solid rgba(34,211,238,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Sparkles style={{ color: 'var(--accent-cyan)' }} size={20} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* 로고: public/logo.png (S·E·A 브랜드 로고) */}
+          <div
+            className="app-logo"
+            style={{ width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.3s ease' }}
+          >
+            <img src="/logo.png" alt="로고" style={{ width: '44px', height: '44px', objectFit: 'contain' }} />
           </div>
-          <h1 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>
-            AI 이미지 생성 스튜디오
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-cyan)', background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.25)', padding: '3px 9px', borderRadius: '20px', marginLeft: '10px' }}>Standalone v1.0</span>
-          </h1>
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <h1 style={{
+              margin: 0, fontSize: '21px', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.2,
+              background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
+              WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent'
+            }}>
+              상지건축 AI Image Studio
+            </h1>
+            <p style={{ margin: '2px 0 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>
+              건축 실사화 · 이미지 편집 · 블렌딩을 한 곳에서
+            </p>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           {/* 이지 모드 / 프로 모드 토글 */}
           <div className="switch-container" onClick={() => setIsEasyMode(v => !v)} title="초보자를 위한 간편 설정 모드와 전문가용 정밀 설정 모드를 전환합니다">
             <span className={`switch-label ${isEasyMode ? 'active' : ''}`}>이지 모드</span>
@@ -1360,7 +1543,7 @@ function App() {
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', zIndex: 1 }}>
         {/* 좌측 */}
-        <div style={{ width: 'clamp(380px, 55%, 650px)', flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'hidden', background: 'rgba(13, 17, 23, 0.2)', backdropFilter: 'blur(6px)' }}>
+        <div style={{ width: 'clamp(380px, 55%, 650px)', flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'hidden', background: 'rgba(220, 228, 242, 0.35)', backdropFilter: 'blur(6px)' }}>
 
           {/* 탭 스위처 */}
           <div className="glass-card" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '12px' }}>
@@ -1460,8 +1643,8 @@ function App() {
                           onClick={() => loadChatSession(session)}
                           style={{
                             padding: '8px 10px', borderRadius: '8px',
-                            background: currentSessionId === session.id ? 'rgba(34, 211, 238, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                            border: `1px solid ${currentSessionId === session.id ? 'rgba(34, 211, 238, 0.35)' : 'var(--border-color)'}`,
+                            background: currentSessionId === session.id ? 'rgba(51, 51, 153, 0.15)' : 'rgba(15, 23, 42, 0.04)',
+                            border: `1px solid ${currentSessionId === session.id ? 'rgba(51, 51, 153, 0.35)' : 'var(--border-color)'}`,
                             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             gap: '8px', transition: 'all 0.15s ease'
                           }}
@@ -1516,11 +1699,10 @@ function App() {
                     fontSize: '14.5px',
                     lineHeight: 1.55,
                     whiteSpace: 'pre-wrap',
-                    background: m.role === 'user' ? 'linear-gradient(135deg, rgba(34,211,238,0.22), rgba(59,130,246,0.16))' : 'rgba(27, 34, 54, 0.55)',
-                    border: m.role === 'user' ? '1px solid rgba(34,211,238,0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                    background: m.role === 'user' ? 'linear-gradient(135deg, rgba(51, 51, 153, 0.14), rgba(59,130,246,0.10))' : 'var(--bg-elevated)',
+                    border: m.role === 'user' ? '1px solid rgba(51, 51, 153, 0.25)' : '1px solid var(--border-color)',
                     color: 'var(--text-primary)',
-                    boxShadow: 'var(--shadow-card)',
-                    backdropFilter: m.role === 'user' ? 'none' : 'blur(4px)'
+                    boxShadow: 'var(--shadow-card)'
                   }}>
                     {m.image && (
                       <img src={m.image} alt="첨부 이미지" style={{ maxWidth: '100%', maxHeight: '160px', borderRadius: '8px', marginBottom: '8px', display: 'block' }} />
@@ -1647,12 +1829,12 @@ function App() {
                     <div
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                       onDrop={handlePromptImageDrop}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px', borderRadius: '6px', border: '1px solid rgba(34,211,238,0.2)', background: 'rgba(34,211,238,0.05)', transition: 'all 0.15s ease' }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px', borderRadius: '6px', border: '1px solid rgba(51, 51, 153, 0.2)', background: 'rgba(51, 51, 153, 0.05)', transition: 'all 0.15s ease' }}
                     >
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '8px' }}>
                         {promptAttachedImages.map((img, idx) => (
                           <div key={idx} style={{ position: 'relative' }}>
-                            <img src={img} alt={`참고 이미지 ${idx + 1}`} style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(34,211,238,0.3)' }} />
+                            <img src={img} alt={`참고 이미지 ${idx + 1}`} style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(51, 51, 153, 0.3)' }} />
                             <button
                               onClick={() => removePromptAttachedImage(idx)}
                               className="btn-ghost"
@@ -1701,7 +1883,7 @@ function App() {
                 </div>
 
                 {promptSuggestion && (
-                  <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', fontSize: '13.5px' }}>
+                  <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255, 94, 54, 0.1)', border: '1px solid rgba(255, 94, 54, 0.3)', fontSize: '13.5px' }}>
                     <div style={{ color: 'var(--accent-purple)', fontWeight: 700, marginBottom: '6px' }}>💡 추천 프롬프트</div>
                     <div style={{ color: 'var(--text-primary)', marginBottom: '10px', lineHeight: 1.5 }}>{promptSuggestion}</div>
                     <button
@@ -1714,7 +1896,7 @@ function App() {
 
               {/* AI 추천 옵션 카드 */}
               {autoTuneResult && (
-                <div style={{ padding: '14px', borderRadius: '12px', border: '1px solid rgba(34,211,238,0.35)', background: 'rgba(34,211,238,0.07)', fontSize: '13.5px' }}>
+                <div style={{ padding: '14px', borderRadius: '12px', border: '1px solid rgba(51, 51, 153, 0.35)', background: 'rgba(51, 51, 153, 0.07)', fontSize: '13.5px' }}>
                   <div style={{ color: 'var(--accent-cyan)', fontWeight: 700, marginBottom: '8px' }}>
                     🤖 AI 자동 튜닝 결과 ({autoTuneResult.reasoning})
                   </div>
@@ -1760,7 +1942,7 @@ function App() {
                       </span>
 
                       {/* Fooocus Quality 설정 */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', background: 'rgba(167,139,250,0.06)', borderRadius: '8px', border: '1px solid rgba(167,139,250,0.2)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', background: 'rgba(255, 94, 54, 0.06)', borderRadius: '8px', border: '1px solid rgba(255, 94, 54, 0.2)' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             <label className="field-label">스타일</label>
@@ -1815,8 +1997,8 @@ function App() {
                                     onClick={() => setSharpness(val)}
                                     style={{
                                       flex: 1, padding: '5px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                                      background: sharpness === val ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.05)',
-                                      border: `1px solid ${sharpness === val ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.1)'}`,
+                                      background: sharpness === val ? 'var(--accent-cyan)' : 'rgba(15, 23, 42, 0.05)',
+                                      border: `1px solid ${sharpness === val ? 'var(--accent-cyan)' : 'rgba(15, 23, 42, 0.10)'}`,
                                       color: sharpness === val ? '#1a1030' : 'var(--text-secondary)',
                                       cursor: 'pointer'
                                     }}
@@ -1869,7 +2051,7 @@ function App() {
                             style={{
                               flex: 1, padding: '5px 0', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
                               border: `1px solid ${imageBatchCount === num ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-                              background: imageBatchCount === num ? 'rgba(34,211,238,0.16)' : 'transparent',
+                              background: imageBatchCount === num ? 'rgba(51, 51, 153, 0.16)' : 'transparent',
                               color: imageBatchCount === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                               transition: 'all 0.15s ease'
                             }}
@@ -1890,7 +2072,7 @@ function App() {
                           style={{
                             flex: 1, padding: '5px 0', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
                             border: `1px solid ${imageBatchCount === num ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-                            background: imageBatchCount === num ? 'rgba(34,211,238,0.16)' : 'transparent',
+                            background: imageBatchCount === num ? 'rgba(51, 51, 153, 0.16)' : 'transparent',
                             color: imageBatchCount === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             transition: 'all 0.15s ease'
                           }}
@@ -1966,7 +2148,7 @@ function App() {
                     style={{
                       position: 'absolute', top: 0, left: 0, bottom: 0,
                       width: `${generationProgress.percent || 5}%`,
-                      background: 'rgba(34, 211, 238, 0.25)',
+                      background: 'rgba(51, 51, 153, 0.25)',
                       transition: 'width 0.3s ease'
                     }}
                   />
@@ -1987,15 +2169,18 @@ function App() {
               </span>
 
               {/* 이미지 수정 기능 선택 탭 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(34,211,238,0.15)' : 'rgba(22, 28, 44, 0.4)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
                   🏗️ 건축물
                 </button>
-                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(34,211,238,0.15)' : 'rgba(22, 28, 44, 0.4)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
                   🎨 부분 수정
                 </button>
-                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(34,211,238,0.15)' : 'rgba(22, 28, 44, 0.4)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
                   📐 영역 확장
+                </button>
+                <button onClick={() => setEditMode('nightBatch')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'nightBatch' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'nightBatch' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'nightBatch' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                  🌙 퇴근 모드
                 </button>
               </div>
 
@@ -2012,7 +2197,7 @@ function App() {
                     if (e.dataTransfer.files?.[0]) {
                       const reader = new FileReader();
                       reader.onload = (evt) => {
-                        if (editMode === 'architecture') setArchImage(evt.target.result);
+                        if (editMode === 'architecture' || editMode === 'nightBatch') setArchImage(evt.target.result);
                         else if (editMode === 'inpaint') setInpaintEditImage(evt.target.result);
                         else if (editMode === 'outpaint') setOutpaintEditImage(evt.target.result);
                       };
@@ -2022,22 +2207,22 @@ function App() {
                   style={{
                     flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                     border: isDraggingOverEdit ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                    background: isDraggingOverEdit ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                    background: isDraggingOverEdit ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                     alignItems: 'center', justifyContent: 'center', minHeight: '100px', cursor: 'pointer', transition: 'all 0.15s ease'
                   }}
                 >
-                  {(editMode === 'architecture' && archImage) || (editMode === 'inpaint' && inpaintEditImage) || (editMode === 'outpaint' && outpaintEditImage) ? (
+                  {(editMode === 'architecture' && archImage) || (editMode === 'nightBatch' && archImage) || (editMode === 'inpaint' && inpaintEditImage) || (editMode === 'outpaint' && outpaintEditImage) ? (
                     <>
                       <img
                         ref={inpaintImgElRef}
-                        src={editMode === 'architecture' ? archImage : editMode === 'inpaint' ? inpaintEditImage : outpaintEditImage}
+                        src={editMode === 'architecture' || editMode === 'nightBatch' ? archImage : editMode === 'inpaint' ? inpaintEditImage : outpaintEditImage}
                         alt="기존 이미지"
                         style={{ width: '100%', maxHeight: '100px', objectFit: 'contain', borderRadius: '6px' }}
                         onLoad={() => editMode === 'inpaint' && initInpaintMaskCanvas()}
                       />
                       <button
                         onClick={() => {
-                          if (editMode === 'architecture') setArchImage(null);
+                          if (editMode === 'architecture' || editMode === 'nightBatch') setArchImage(null);
                           else if (editMode === 'inpaint') setInpaintEditImage(null);
                           else if (editMode === 'outpaint') setOutpaintEditImage(null);
                         }}
@@ -2072,7 +2257,7 @@ function App() {
                           onClick={() => setArchSelectedStyles(archSelectedStyles.includes(key) ? archSelectedStyles.filter(s => s !== key) : [...archSelectedStyles, key])}
                           style={{
                             padding: '8px', borderRadius: '8px', border: '2px solid' + (archSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
-                            background: archSelectedStyles.includes(key) ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                            background: archSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                             color: archSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
                           }}
@@ -2093,7 +2278,7 @@ function App() {
                           style={{
                             padding: '10px', borderRadius: '6px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
                             border: archVariationsPerStyle === num ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                            background: archVariationsPerStyle === num ? 'rgba(34,211,238,0.15)' : 'rgba(22, 28, 44, 0.4)',
+                            background: archVariationsPerStyle === num ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)',
                             color: archVariationsPerStyle === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             transition: 'all 0.15s ease'
                           }}
@@ -2118,12 +2303,12 @@ function App() {
                       value={archPrompt}
                       onChange={(e) => setArchPrompt(e.target.value)}
                       placeholder="건축 스타일 추가 설명 (예: 친환경 소재 강조, 현대적 파사드 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(22, 28, 44, 0.4)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     <button
                       onClick={refineArchPrompt}
                       disabled={!archPrompt.trim() || isArchPromptRefining}
-                      style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: (!archPrompt.trim() || isArchPromptRefining) ? 'rgba(100,100,100,0.2)' : 'rgba(34,211,238,0.15)', color: (!archPrompt.trim() || isArchPromptRefining) ? 'var(--text-tertiary)' : 'var(--accent-cyan)', fontSize: '12px', fontWeight: 600, cursor: (!archPrompt.trim() || isArchPromptRefining) ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease', opacity: (!archPrompt.trim() || isArchPromptRefining) ? 0.5 : 1 }}
+                      style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: (!archPrompt.trim() || isArchPromptRefining) ? 'rgba(148, 163, 184, 0.22)' : 'rgba(51, 51, 153, 0.15)', color: (!archPrompt.trim() || isArchPromptRefining) ? 'var(--text-tertiary)' : 'var(--accent-cyan)', fontSize: '12px', fontWeight: 600, cursor: (!archPrompt.trim() || isArchPromptRefining) ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease', opacity: (!archPrompt.trim() || isArchPromptRefining) ? 0.5 : 1 }}
                     >
                       {isArchPromptRefining ? '다듬는 중...' : '✨ 프롬프트 다듬기'}
                     </button>
@@ -2147,6 +2332,125 @@ function App() {
                   >
                     {archBatchProgress.total > 0 ? `생성 중... (${archBatchProgress.current}/${archBatchProgress.total})` : '스타일로 생성하기'}
                   </button>
+                </div>
+              ) : editMode === 'nightBatch' ? (
+                // ═══════════════════════════════════════════════════════════
+                // 🌙 퇴근 모드 (야간 대량 배치 생성)
+                // ═══════════════════════════════════════════════════════════
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    매스 모델 하나로 스타일·재질·형태·조명을 매번 무작위로 조합해 서로 다른 디자인 시안을 대량으로 뽑습니다.
+                    시간이 오래 걸려도 괜찮다면(퇴근 전 실행 → 다음날 아침 확인) 목표 장수를 크게 잡으세요.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>다양성 범위 (포함할 스타일)</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {Object.entries(ARCH_STYLE_PRESETS).map(([key, { label, emoji }]) => (
+                        <button
+                          key={key}
+                          onClick={() => setNightBatchSelectedStyles(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key])}
+                          style={{
+                            padding: '8px', borderRadius: '8px', border: '2px solid' + (nightBatchSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
+                            background: nightBatchSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                            color: nightBatchSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {emoji} {label}
+                        </button>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>아무것도 선택하지 않으면 전체 스타일에서 무작위로 뽑습니다.</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>목표 장수</span>
+                      <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{nightBatchCount}장 (예상 소요 약 {Math.round(nightBatchCount * 30 / 60)}분)</span>
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                      {[10, 20, 50, 100].map(num => (
+                        <button
+                          key={num}
+                          onClick={() => setNightBatchCount(num)}
+                          disabled={nightBatchRunning}
+                          style={{
+                            padding: '10px', borderRadius: '6px', fontSize: '13px', fontWeight: 700, cursor: nightBatchRunning ? 'not-allowed' : 'pointer',
+                            border: nightBatchCount === num ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                            background: nightBatchCount === num ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)',
+                            color: nightBatchCount === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease', opacity: nightBatchRunning ? 0.5 : 1
+                          }}
+                        >
+                          {num}장
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number" min="1" max="300" value={nightBatchCount}
+                      onChange={(e) => setNightBatchCount(Math.max(1, Math.min(300, parseInt(e.target.value) || 1)))}
+                      disabled={nightBatchRunning}
+                      style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>형태 보존율 (ControlNet)</span>
+                      <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{nightBatchKeepStructure}%</span>
+                    </span>
+                    <input type="range" min="0" max="100" value={nightBatchKeepStructure} onChange={(e) => setNightBatchKeepStructure(parseInt(e.target.value))} disabled={nightBatchRunning} style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: nightBatchRunning ? 'not-allowed' : 'pointer' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>공통 조건 (선택사항)</span>
+                    <textarea
+                      value={nightBatchPrompt}
+                      onChange={(e) => setNightBatchPrompt(e.target.value)}
+                      disabled={nightBatchRunning}
+                      placeholder="모든 시안에 공통으로 반영할 조건 (예: 주거용 단독주택, 친환경 소재 선호 등)..."
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  {nightBatchRunning ? (
+                    <>
+                      <div style={{ width: '100%', height: '8px', borderRadius: '4px', background: 'rgba(15, 23, 42, 0.08)', overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${nightBatchProgress.total > 0 ? (nightBatchProgress.current / nightBatchProgress.total) * 100 : 0}%`,
+                          height: '100%', background: 'var(--accent-cyan)', transition: 'width 0.3s ease'
+                        }} />
+                      </div>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                        {nightBatchProgress.current} / {nightBatchProgress.total}장 생성 중{nightBatchProgress.failed > 0 ? ` (실패 ${nightBatchProgress.failed}장)` : ''} — 이 탭을 닫지 마세요
+                      </span>
+                      <button
+                        onClick={stopNightBatchGenerate}
+                        style={{ padding: '10px', borderRadius: '8px', background: 'transparent', border: '1px solid var(--accent-rose)', color: 'var(--accent-rose)', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
+                      >
+                        중단하기
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!archImage && promptAttachedImages.length === 0) {
+                          alert('⚠️ 이미지를 먼저 업로드해주세요!');
+                          return;
+                        }
+                        handleNightBatchGenerate();
+                      }}
+                      style={{
+                        padding: '10px', borderRadius: '8px',
+                        background: 'var(--accent-cyan)',
+                        color: 'white', border: 'none', cursor: 'pointer',
+                        fontWeight: 600, fontSize: '13px'
+                      }}
+                    >
+                      🌙 퇴근 모드 시작 ({nightBatchCount}장)
+                    </button>
+                  )}
                 </div>
               ) : editMode === 'inpaint' && inpaintSubMode === 'inpaint' ? (
                 // ═══════════════════════════════════════════════════════════
@@ -2176,7 +2480,7 @@ function App() {
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: '2px solid var(--border-color)',
-                      background: 'rgba(22, 28, 44, 0.4)',
+                      background: 'rgba(255, 255, 255, 0.6)',
                       minHeight: '300px'
                     }}
                   >
@@ -2214,7 +2518,7 @@ function App() {
                         />
                         <button
                           onClick={initInpaintMaskCanvas}
-                          style={{ padding: '8px 12px', fontSize: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'rgba(34,211,238,0.1)', cursor: 'pointer', color: 'var(--accent-cyan)', fontWeight: 600, transition: 'all 0.15s ease' }}
+                          style={{ padding: '8px 12px', fontSize: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'rgba(51, 51, 153, 0.1)', cursor: 'pointer', color: 'var(--accent-cyan)', fontWeight: 600, transition: 'all 0.15s ease' }}
                         >
                           ↻ 초기화
                         </button>
@@ -2230,14 +2534,14 @@ function App() {
                       value={inpaintPrompt}
                       onChange={(e) => setInpaintPrompt(e.target.value)}
                       placeholder="수정할 부분에 대한 설명 (예: 현대적인 창으로 변경, 벽의 색상을 파란색으로 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(22, 28, 44, 0.4)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     <button
                       onClick={refineInpaintPrompt}
                       disabled={!inpaintPrompt.trim() || isInpaintPromptRefining}
                       style={{
                         padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        border: '1px solid var(--border-color)', background: 'rgba(34,211,238,0.1)', color: 'var(--accent-cyan)',
+                        border: '1px solid var(--border-color)', background: 'rgba(51, 51, 153, 0.1)', color: 'var(--accent-cyan)',
                         cursor: (!inpaintPrompt.trim() || isInpaintPromptRefining) ? 'not-allowed' : 'pointer',
                         opacity: (!inpaintPrompt.trim() || isInpaintPromptRefining) ? 0.5 : 1,
                         transition: 'all 0.15s ease'
@@ -2278,7 +2582,7 @@ function App() {
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.top ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.top ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                          background: outpaintDirections.top ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                           color: outpaintDirections.top ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           gridColumn: '1 / -1', transition: 'all 0.15s ease'
                         }}
@@ -2290,7 +2594,7 @@ function App() {
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.left ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.left ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                          background: outpaintDirections.left ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                           color: outpaintDirections.left ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           transition: 'all 0.15s ease'
                         }}
@@ -2302,7 +2606,7 @@ function App() {
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.right ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.right ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                          background: outpaintDirections.right ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                           color: outpaintDirections.right ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           transition: 'all 0.15s ease'
                         }}
@@ -2314,7 +2618,7 @@ function App() {
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.bottom ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.bottom ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                          background: outpaintDirections.bottom ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                           color: outpaintDirections.bottom ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           gridColumn: '1 / -1', transition: 'all 0.15s ease'
                         }}
@@ -2338,7 +2642,7 @@ function App() {
                       value={inpaintPrompt}
                       onChange={(e) => setInpaintPrompt(e.target.value)}
                       placeholder="확장된 부분의 스타일 설명 (예: 같은 건축 스타일 유지, 자연 경관 추가 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(22, 28, 44, 0.4)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     {inpaintPrompt.trim() && (
                       <button
@@ -2346,7 +2650,7 @@ function App() {
                         disabled={!inpaintPrompt.trim() || isInpaintPromptRefining}
                         style={{
                           padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                          border: '1px solid var(--border-color)', background: 'rgba(34,211,238,0.1)', color: 'var(--accent-cyan)',
+                          border: '1px solid var(--border-color)', background: 'rgba(51, 51, 153, 0.1)', color: 'var(--accent-cyan)',
                           cursor: (!inpaintPrompt.trim() || isInpaintPromptRefining) ? 'not-allowed' : 'pointer',
                           opacity: (!inpaintPrompt.trim() || isInpaintPromptRefining) ? 0.5 : 1,
                           transition: 'all 0.15s ease'
@@ -2380,14 +2684,14 @@ function App() {
               <span style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <ImageIcon size={13} /> 이미지 블렌딩
               </span>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>기존 이미지와 참고 이미지를 블렌딩하여 새로운 이미지를 생성합니다.</p>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>기존 이미지의 형태를 유지하면서, 참조 이미지 1~4장의 재질·분위기·색감을 입힙니다 (구조 유지 + 참조 이미지 방식).</p>
 
               {/* 이미지 선택 영역: 가로 배치 */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 {/* 기존 이미지 선택 */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <ImageIcon size={12} /> 기존 이미지
+                    <ImageIcon size={12} /> 기존 이미지 (구조 기준)
                   </span>
                   <div
                     onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBlend(true); }}
@@ -2414,7 +2718,7 @@ function App() {
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: isDraggingOverBlend ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                      background: isDraggingOverBlend ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
+                      background: isDraggingOverBlend ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
                       alignItems: 'center', justifyContent: 'center', minHeight: '120px', cursor: 'pointer', transition: 'all 0.15s ease'
                     }}
                   >
@@ -2447,94 +2751,267 @@ function App() {
                   />
                 </div>
 
-                {/* 참조 이미지 선택 */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <ImageIcon size={12} /> 참조 이미지
-                  </span>
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBlendRef(true); }}
-                    onDragLeave={() => setIsDraggingOverBlendRef(false)}
-                    onDrop={(e) => {
-                      e.preventDefault(); e.stopPropagation(); setIsDraggingOverBlendRef(false);
-                      if (e.dataTransfer.files?.[0]) {
-                        const reader = new FileReader();
-                        reader.onload = (evt) => setBlendReferenceImages([evt.target.result]);
-                        reader.readAsDataURL(e.dataTransfer.files[0]);
-                      } else if (e.dataTransfer.getData('text/plain')) {
-                        const imageUrl = e.dataTransfer.getData('text/plain');
-                        fetch(imageUrl)
-                          .then(res => res.blob())
-                          .then(blob => {
-                            const reader = new FileReader();
-                            reader.onload = (evt) => setBlendReferenceImages([evt.target.result]);
-                            reader.readAsDataURL(blob);
-                          })
-                          .catch(err => console.error('이미지 로드 실패:', err));
-                      }
-                    }}
-                    onClick={() => blendRefInputRef.current?.click()}
-                    style={{
-                      flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
-                      border: isDraggingOverBlendRef ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                      background: isDraggingOverBlendRef ? 'rgba(34,211,238,0.1)' : 'rgba(22, 28, 44, 0.4)',
-                      alignItems: 'center', justifyContent: 'center', minHeight: '120px', cursor: 'pointer', transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {blendReferenceImages.length > 0 ? (
-                      <>
-                        <img src={blendReferenceImages[0]} alt="참조 이미지" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '6px', maxHeight: '100px' }} />
-                        <button onClick={() => setBlendReferenceImages([])} style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                          변경
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon size={28} style={{ opacity: 0.3 }} />
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>드래그 또는 클릭</span>
-                      </>
+                {/* 이지 모드: 참조 이미지 선택 (최대 4장, 전부 재질/분위기용) */}
+                {isEasyMode && (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ImageIcon size={12} /> 참조 이미지 ({blendReferenceImages.length}/4)
+                    </span>
+                    {blendReferenceImages.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                        {blendReferenceImages.map((img, idx) => (
+                          <div key={idx} style={{ position: 'relative', aspectRatio: '1', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                            <img src={img} alt={`참조 ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button
+                              onClick={() => setBlendReferenceImages(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ position: 'absolute', top: '2px', right: '2px', width: '18px', height: '18px', borderRadius: '50%', border: 'none', background: 'rgba(13,13,38,0.75)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', lineHeight: 1 }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
+                    {blendReferenceImages.length < 4 && (
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBlendRef(true); }}
+                        onDragLeave={() => setIsDraggingOverBlendRef(false)}
+                        onDrop={(e) => {
+                          e.preventDefault(); e.stopPropagation(); setIsDraggingOverBlendRef(false);
+                          if (e.dataTransfer.files?.[0]) {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => setBlendReferenceImages(prev => [...prev, evt.target.result].slice(0, 4));
+                            reader.readAsDataURL(e.dataTransfer.files[0]);
+                          } else if (e.dataTransfer.getData('text/plain')) {
+                            const imageUrl = e.dataTransfer.getData('text/plain');
+                            fetch(imageUrl)
+                              .then(res => res.blob())
+                              .then(blob => {
+                                const reader = new FileReader();
+                                reader.onload = (evt) => setBlendReferenceImages(prev => [...prev, evt.target.result].slice(0, 4));
+                                reader.readAsDataURL(blob);
+                              })
+                              .catch(err => console.error('이미지 로드 실패:', err));
+                          }
+                        }}
+                        onClick={() => blendRefInputRef.current?.click()}
+                        style={{
+                          flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
+                          border: isDraggingOverBlendRef ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
+                          background: isDraggingOverBlendRef ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          alignItems: 'center', justifyContent: 'center', minHeight: '80px', cursor: 'pointer', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <ImageIcon size={24} style={{ opacity: 0.3 }} />
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>드래그 또는 클릭으로 추가</span>
+                      </div>
+                    )}
+                    <input
+                      ref={blendRefInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []).slice(0, 4 - blendReferenceImages.length);
+                        files.forEach(file => {
+                          const reader = new FileReader();
+                          reader.onload = (evt) => setBlendReferenceImages(prev => [...prev, evt.target.result].slice(0, 4));
+                          reader.readAsDataURL(file);
+                        });
+                        e.target.value = '';
+                      }}
+                    />
                   </div>
+                )}
+              </div>
+
+              {/* 이지 모드: 구조 유지 켜기/끄기 + 강조 옵션 + 영향도 슬라이더 */}
+              {isEasyMode && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 0' }}>
+                    <input
+                      type="checkbox"
+                      checked={blendStructureEnabled}
+                      onChange={(e) => setBlendStructureEnabled(e.target.checked)}
+                      id="blend-structure-check"
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <label htmlFor="blend-structure-check" style={{ cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                      🔒 기존 이미지 형태 유지
+                    </label>
+                  </div>
+                  {!blendStructureEnabled && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: 0 }}>
+                      끄면 참조 이미지의 형태·구도까지 더 자유롭게 반영됩니다.
+                    </p>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>강조</span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {BLEND_EMPHASIS_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setBlendEmphasis(opt.value)}
+                          style={{
+                            flex: 1, padding: '6px 8px', fontSize: '11.5px', borderRadius: '6px', cursor: 'pointer',
+                            border: blendEmphasis === opt.value ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                            background: blendEmphasis === opt.value ? 'rgba(51, 51, 153, 0.12)' : 'transparent',
+                            color: blendEmphasis === opt.value ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                            fontWeight: blendEmphasis === opt.value ? 600 : 500
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>참조 이미지 영향도</span>
+                      <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{blendInfluence}%</span>
+                    </span>
+                    <input type="range" min="0" max="100" value={blendInfluence} onChange={(e) => setBlendInfluence(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
+                  </div>
+                </>
+              )}
+
+              {/* 프로 모드: Fooocus의 Image Prompt 패널과 동일 — 슬롯(최대 4개)마다 타입/Stop At/Weight를 독립 조절.
+                  상단 헤더의 이지/프로 모드 스위치를 그대로 따른다(이 탭 안에 별도 스위치를 두지 않음). */}
+              {!isEasyMode && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <ImageIcon size={12} /> 슬롯 ({blendSlots.length}/4) — Image Prompt 방식
+                  </span>
+                  {blendSlots.map((slot, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
+                      <img src={slot.image} alt={`슬롯 ${idx + 1}`} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <select
+                            value={slot.type}
+                            onChange={(e) => {
+                              const newType = e.target.value;
+                              const d = FOOOCUS_SLOT_DEFAULTS[newType];
+                              setBlendSlots(prev => prev.map((s, i) => i === idx ? { ...s, type: newType, stopAt: d.stopAt, weight: d.weight } : s));
+                            }}
+                            style={{ ...selectStyle, flex: 1, padding: '4px 6px', fontSize: '11.5px' }}
+                          >
+                            {FOOOCUS_SLOT_TYPES.map(t => <option key={t} value={t}>{FOOOCUS_SLOT_TYPE_LABELS[t]}</option>)}
+                          </select>
+                          <button
+                            onClick={() => setBlendSlots(prev => prev.filter((_, i) => i !== idx))}
+                            style={{ width: '20px', height: '20px', borderRadius: '50%', border: 'none', background: 'rgba(225,29,72,0.12)', color: 'var(--accent-rose)', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}
+                          >✕</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <label style={{ flex: 1, fontSize: '10.5px', color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            Stop At {slot.stopAt.toFixed(2)}
+                            <input
+                              type="range" min="0" max="1" step="0.01" value={slot.stopAt}
+                              onChange={(e) => setBlendSlots(prev => prev.map((s, i) => i === idx ? { ...s, stopAt: parseFloat(e.target.value) } : s))}
+                              style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                            />
+                          </label>
+                          <label style={{ flex: 1, fontSize: '10.5px', color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            Weight {slot.weight.toFixed(2)}
+                            <input
+                              type="range" min="0" max="2" step="0.01" value={slot.weight}
+                              onChange={(e) => setBlendSlots(prev => prev.map((s, i) => i === idx ? { ...s, weight: parseFloat(e.target.value) } : s))}
+                              style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {blendSlots.length < 4 && (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBlendSlot(true); }}
+                      onDragLeave={() => setIsDraggingOverBlendSlot(false)}
+                      onDrop={(e) => {
+                        e.preventDefault(); e.stopPropagation(); setIsDraggingOverBlendSlot(false);
+                        const files = Array.from(e.dataTransfer.files || []).slice(0, 4 - blendSlots.length);
+                        if (files.length > 0) {
+                          files.forEach(file => {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => setBlendSlots(prev => [
+                              ...prev,
+                              { image: evt.target.result, type: 'ImagePrompt', ...FOOOCUS_SLOT_DEFAULTS.ImagePrompt }
+                            ].slice(0, 4));
+                            reader.readAsDataURL(file);
+                          });
+                        } else if (e.dataTransfer.getData('text/plain')) {
+                          const imageUrl = e.dataTransfer.getData('text/plain');
+                          fetch(imageUrl)
+                            .then(res => res.blob())
+                            .then(blob => {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => setBlendSlots(prev => [
+                                ...prev,
+                                { image: evt.target.result, type: 'ImagePrompt', ...FOOOCUS_SLOT_DEFAULTS.ImagePrompt }
+                              ].slice(0, 4));
+                              reader.readAsDataURL(blob);
+                            })
+                            .catch(err => console.error('이미지 로드 실패:', err));
+                        }
+                      }}
+                      onClick={() => blendSlotInputRef.current?.click()}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '8px',
+                        border: isDraggingOverBlendSlot ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
+                        background: isDraggingOverBlendSlot ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255,255,255,0.6)',
+                        cursor: 'pointer', minHeight: '44px', transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <ImageIcon size={16} style={{ opacity: 0.4 }} />
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>드래그 또는 클릭으로 슬롯 추가</span>
+                    </div>
+                  )}
                   <input
-                    ref={blendRefInputRef}
+                    ref={blendSlotInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     style={{ display: 'none' }}
                     onChange={(e) => {
-                      if (e.target.files?.[0]) {
+                      const files = Array.from(e.target.files || []).slice(0, 4 - blendSlots.length);
+                      files.forEach(file => {
                         const reader = new FileReader();
-                        reader.onload = (evt) => setBlendReferenceImages([evt.target.result]);
-                        reader.readAsDataURL(e.target.files[0]);
-                      }
+                        reader.onload = (evt) => setBlendSlots(prev => [
+                          ...prev,
+                          { image: evt.target.result, type: 'ImagePrompt', ...FOOOCUS_SLOT_DEFAULTS.ImagePrompt }
+                        ].slice(0, 4));
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value = '';
                     }}
                   />
                 </div>
-              </div>
+              )}
 
-              {/* 영향도 슬라이더 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>참조 이미지 영향도</span>
-                  <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{blendInfluence}%</span>
-                </span>
-                <input type="range" min="0" max="100" value={blendInfluence} onChange={(e) => setBlendInfluence(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
-              </div>
-
-              {/* CLIP 블렌딩 설명 */}
+              {/* Fooocus 방식 설명 */}
               <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  🎨 CLIP 임베딩 기반 블렌딩: 두 이미지의 <strong>재질·스타일·구성</strong>을 추출해서 자연스럽게 섞습니다.
+                  {isEasyMode
+                    ? '🎨 Image Prompt 방식: 참조 이미지들을 IP-Adapter로 인코딩해 재질·분위기·색감을 입히고, 구조 유지를 켜면 기존 이미지의 형태(엣지)는 ControlNet으로 그대로 고정합니다.'
+                    : '🎨 슬롯마다 PyraCanny/CPDS(형태 고정)와 ImagePrompt(재질/분위기)를 자유롭게 조합할 수 있습니다.'}
                 </p>
               </div>
 
               {/* 블렌딩 버튼 */}
               <button
                 onClick={handleBlend}
-                disabled={isBlending || !blendBaseImage || blendReferenceImages.length === 0}
+                disabled={isBlending || !blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)}
                 style={{
-                  padding: '12px', borderRadius: '8px', background: (!blendBaseImage || blendReferenceImages.length === 0) ? 'var(--border-color)' : 'var(--accent-cyan)',
-                  color: 'white', border: 'none', cursor: (!blendBaseImage || blendReferenceImages.length === 0) ? 'not-allowed' : 'pointer',
-                  fontWeight: 600, fontSize: '14px', opacity: (!blendBaseImage || blendReferenceImages.length === 0) ? 0.5 : 1
+                  padding: '12px', borderRadius: '8px',
+                  background: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 'var(--border-color)' : 'var(--accent-cyan)',
+                  color: 'white', border: 'none',
+                  cursor: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 'not-allowed' : 'pointer',
+                  fontWeight: 600, fontSize: '14px',
+                  opacity: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 0.5 : 1
                 }}>
                 {isBlending ? '블렌딩 중...' : '블렌딩 시작'}
               </button>
@@ -2606,19 +3083,11 @@ function App() {
                     <Trash2 size={14} />
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); attachGalleryImageToChat(item); }}
-                    title="대화에 참고 이미지로 첨부"
-                    className="overlay-chip"
-                    style={{ position: 'absolute', top: '8px', left: '8px', color: 'var(--accent-cyan)' }}
-                  >
-                    <Paperclip size={14} />
-                  </button>
-                  <button
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(item); }}
                     title={item.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
                     className="overlay-chip"
                     style={{
-                      position: 'absolute', top: '46px', left: '8px',
+                      position: 'absolute', top: '8px', left: '8px',
                       color: item.isFavorite ? 'var(--accent-amber)' : '#e2e8f0'
                     }}
                   >
@@ -2628,7 +3097,7 @@ function App() {
                     onClick={(e) => { e.stopPropagation(); downloadImage(item); }}
                     title="다운로드"
                     className="overlay-chip"
-                    style={{ position: 'absolute', top: '84px', left: '8px', color: '#e2e8f0' }}
+                    style={{ position: 'absolute', top: '46px', left: '8px', color: '#e2e8f0' }}
                   >
                     <Download size={14} />
                   </button>

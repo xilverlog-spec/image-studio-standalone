@@ -3,3 +3,6 @@ uvicorn
 pydantic
 python-multipart
 python-dotenv
+pillow
+numpy
+scikit-image

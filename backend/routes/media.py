@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import json
@@ -101,7 +102,11 @@ async def image_generate(request: ImageGenerateRequest):
           f"{', img2img denoise=' + str(request.denoise) if input_image_bytes else ''})")
 
     try:
-        res_path = comfyui_client.generate_image_or_raise(
+        # 2026-09-02: 이 호출은 ComfyUI 완료를 폴링하며 수십 초~수 분씩 걸리는 동기 함수다.
+        # await 없이 그대로 부르면 그 시간 동안 uvicorn의 이벤트 루프 전체가 막혀서
+        # 다른 요청(갤러리 조회 등)이 전부 응답 불가 상태가 된다 — 스레드로 넘겨 격리한다.
+        res_path = await asyncio.to_thread(
+            comfyui_client.generate_image_or_raise,
             request.prompt, output_path, width, height,
             steps=request.num_steps or comfyui_client.DEFAULT_STEPS,
             cfg=request.guidance_scale or comfyui_client.DEFAULT_CFG,
@@ -192,7 +197,8 @@ async def image_edit(request: ImageEditRequest):
     print(f"[KONTEXT] Editing image with instruction '{request.instruction[:50]}...' -> {output_path} (seed={seed_used})")
 
     try:
-        comfyui_client.edit_image_with_kontext_or_raise(
+        await asyncio.to_thread(
+            comfyui_client.edit_image_with_kontext_or_raise,
             image_bytes, request.instruction, output_path,
             seed=seed_used, guidance=request.guidance, steps=request.steps,
         )
@@ -305,7 +311,8 @@ async def image_inpaint(request: ImageInpaintRequest):
           f"{', expand=' + str(outpaint) if outpaint else ''})")
 
     try:
-        comfyui_client.inpaint_or_raise(
+        await asyncio.to_thread(
+            comfyui_client.inpaint_or_raise,
             request.prompt, image_bytes, output_path, mask_bytes=mask_bytes, outpaint=outpaint,
             checkpoint=checkpoint_used,
             steps=request.num_steps or comfyui_client.DEFAULT_STEPS,
@@ -415,7 +422,9 @@ async def image_upscale(request: UpscaleRequest):
     result_path = os.path.join(output_dir, result_filename)
 
     try:
-        comfyui_client.upscale_image_or_raise(source_path, result_path, model_name=request.model_name)
+        await asyncio.to_thread(
+            comfyui_client.upscale_image_or_raise, source_path, result_path, model_name=request.model_name
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"업스케일 실패: {e}")
 
@@ -733,7 +742,9 @@ async def upscale_image_endpoint(req: UpscaleRequest):
     output_path = os.path.join(OUTPUT_DIR, upscaled_filename)
 
     try:
-        res_path = comfyui_client.upscale_image(input_path, output_path, scale_by=req.scale_by)
+        res_path = await asyncio.to_thread(
+            comfyui_client.upscale_image, input_path, output_path, scale_by=req.scale_by
+        )
     except TimeoutError as e:
         raise HTTPException(status_code=504, detail=str(e))
     except Exception as e:
@@ -796,7 +807,8 @@ async def image_generate_quality(request: QualityModeGenerateRequest):
           f"adm_guidance={request.adm_guidance}, seed={seed_used}")
 
     try:
-        metadata = comfyui_client.generate_fooocus_quality_or_raise(
+        metadata = await asyncio.to_thread(
+            comfyui_client.generate_fooocus_quality_or_raise,
             request.prompt,
             style=request.style,
             negative_extra=request.negative_prompt_extra,
@@ -846,12 +858,20 @@ async def image_generate_quality(request: QualityModeGenerateRequest):
 
 
 # ── [Image Blending] ─────────────────────────────────────────
+class BlendSlot(BaseModel):
+    """Fooocus의 Image Prompt 슬롯 하나 — 타입/Stop At/Weight가 슬롯마다 독립적이다."""
+    image: str  # base64 (데이터 URL 접두사 없이)
+    type: str = "ImagePrompt"  # "PyraCanny" | "CPDS" | "ImagePrompt" | "FaceSwap"
+    stop_at: Optional[float] = None  # None이면 타입별 Fooocus 기본값 사용
+    weight: Optional[float] = None
+
+
 class ImageBlendRequest(BaseModel):
-    """이미지 블렌딩 요청."""
-    base_image: str  # base64 (데이터 URL 접두사 없이)
-    reference_image: str  # base64 (데이터 URL 접두사 없이)
-    influence: float = 0.5  # 참조 이미지 영향도 (0.0 ~ 1.0)
-    blend_mode: str = "normal"  # 블렌드 모드: normal, multiply, screen, overlay, soft_light, difference
+    """이미지 블렌딩 요청 — Fooocus의 Image Prompt 패널과 동일하게 슬롯(최대 4개)마다
+    Structure(PyraCanny/CPDS)·Reference(ImagePrompt/FaceSwap) 타입과 강도를 독립적으로 가진다."""
+    base_image: str  # base64 (데이터 URL 접두사 없이) — 캔버스 크기 + (Structure 슬롯 없을 때) img2img 소스
+    slots: List[BlendSlot]  # 1~4개
+    blend_mode: str = "normal"  # (레거시 필드, 폴백 경로에서만 참고)
     prompt: str = ""  # 선택사항: 블렌딩 결과물에 추가 설명
     seed: Optional[int] = None
     project: str = image_history_store.DEFAULT_PROJECT
@@ -859,13 +879,20 @@ class ImageBlendRequest(BaseModel):
 
 @router.post("/image/blend")
 async def image_blend(request: ImageBlendRequest):
-    """기존 이미지와 참조 이미지를 블렌딩하여 새로운 이미지를 생성한다.
-
-    기존 이미지를 기본으로 하고 참조 이미지의 특성을 영향도(0~1)에 따라 반영한다.
-    """
+    """기본 이미지 + 슬롯(최대 4개, 각자 타입/강도 독립)을 Fooocus Image Prompt 방식으로 블렌딩한다."""
     try:
         base_image_bytes = base64.b64decode(request.base_image)
-        reference_image_bytes = base64.b64decode(request.reference_image)
+        if not request.slots:
+            raise ValueError("슬롯이 최소 1개 필요합니다.")
+        slots = [
+            {
+                "image_bytes": base64.b64decode(s.image),
+                "type": s.type,
+                **({"stop_at": s.stop_at} if s.stop_at is not None else {}),
+                **({"weight": s.weight} if s.weight is not None else {}),
+            }
+            for s in request.slots
+        ]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
 
@@ -877,14 +904,13 @@ async def image_blend(request: ImageBlendRequest):
 
     seed_used = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
 
-    print(f"[BLEND] Blending images with influence={request.influence}, seed={seed_used} -> {output_path}")
+    print(f"[BLEND] Blending images with {len(slots)} slots, seed={seed_used} -> {output_path}")
 
     try:
-        # ComfyUI 블렌딩 워크플로우 호출 (Fooocus 스타일의 여러 blend 모드 지원)
-        comfyui_client.blend_images_or_raise(
+        await asyncio.to_thread(
+            comfyui_client.blend_images_or_raise,
             base_image_bytes=base_image_bytes,
-            reference_image_bytes=reference_image_bytes,
-            influence=request.influence,
+            slots=slots,
             output_path=output_path,
             seed=seed_used,
             blend_mode=request.blend_mode
@@ -897,8 +923,15 @@ async def image_blend(request: ImageBlendRequest):
 
     # 이력 저장
     try:
+        structure_types = [s.type for s in request.slots if s.type in ("PyraCanny", "CPDS")]
+        reference_count = sum(1 for s in request.slots if s.type in ("ImagePrompt", "FaceSwap"))
+        summary_parts = []
+        if structure_types:
+            summary_parts.append(f"구조유지({'/'.join(structure_types)})")
+        if reference_count:
+            summary_parts.append(f"참조 {reference_count}장")
         image_history_store.save_generation(
-            prompt=f"[블렌딩] 영향도 {int(request.influence * 100)}%" + (f" - {request.prompt}" if request.prompt else ""),
+            prompt=f"[블렌딩] {', '.join(summary_parts)}" + (f" - {request.prompt}" if request.prompt else ""),
             style="none",
             aspect_ratio=None,
             sampler_name="blend",

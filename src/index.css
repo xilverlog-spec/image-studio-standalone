@@ -1,28 +1,29 @@
 :root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161c2c;
-  --bg-card: #161c2c;
-  --bg-elevated: #1b2236;
-  --bg-input: #0f1420;
-  --border-color: rgba(255, 255, 255, 0.09);
-  --border-color-strong: rgba(255, 255, 255, 0.16);
+  /* 상지건축 DX 디자인 시스템 (DESIGN_SYSTEM.md) 반영 */
+  --bg-primary: #F4F7FB;
+  --bg-secondary: #DCE4F2;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-input: rgba(255, 255, 255, 0.75);
+  --border-color: rgba(15, 23, 42, 0.10);
+  --border-color-strong: rgba(15, 23, 42, 0.20);
 
-  --accent-cyan: #22d3ee;
-  --accent-cyan-strong: #06b6d4;
-  --accent-purple: #a78bfa;
-  --accent-rose: #fb7185;
-  --accent-amber: #fbbf24;
+  --accent-cyan: #333399;        /* brand-main (인디고) */
+  --accent-cyan-strong: #252573; /* brand-main hover */
+  --accent-purple: #FF5E36;      /* brand-accent (오렌지) */
+  --accent-rose: #e11d48;
+  --accent-amber: #d97706;
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
+  --text-primary: #0d0d26;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 24px;
 
-  --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.35);
-  --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 16px 40px rgba(30, 27, 75, 0.07);
+  --shadow-pop: 0 20px 48px rgba(30, 27, 75, 0.14);
 }
 
 * {
@@ -38,7 +39,7 @@ body {
   padding: 0;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', -apple-system,
+  font-family: 'Outfit', 'Inter', 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', -apple-system,
     BlinkMacSystemFont, 'Segoe UI', sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -54,17 +55,17 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: #cbd5e1;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 211, 238, 0.45);
+  background: #94a3b8;
 }
 
 /* ── 공용 버튼 ─────────────────────────────────────────── */
 .run-btn {
-  background: linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%);
-  color: #04111a;
+  background: linear-gradient(135deg, #333399 0%, #4f46e5 100%);
+  color: #ffffff;
   border: none;
   font-weight: 700;
   border-radius: var(--radius-sm);
@@ -77,7 +78,7 @@ body {
 }
 .run-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(34, 211, 238, 0.35);
+  box-shadow: 0 6px 20px rgba(51, 51, 153, 0.3);
 }
 .run-btn:active:not(:disabled) {
   transform: translateY(0);
@@ -88,7 +89,7 @@ body {
 }
 
 .btn-ghost {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(15, 23, 42, 0.03);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
@@ -96,7 +97,7 @@ body {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.06);
   color: var(--text-primary);
   border-color: var(--border-color-strong);
 }
@@ -106,16 +107,16 @@ body {
 }
 
 .btn-accent {
-  background: rgba(167, 139, 250, 0.12);
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  color: var(--accent-purple);
+  background: rgba(255, 94, 54, 0.10);
+  border: 1px solid rgba(255, 94, 54, 0.30);
+  color: #d33c16;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 600;
   transition: background 0.15s ease, transform 0.15s ease;
 }
 .btn-accent:hover:not(:disabled) {
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(255, 94, 54, 0.18);
   transform: translateY(-1px);
 }
 .btn-accent:disabled {
@@ -154,7 +155,7 @@ body {
 .field-textarea:focus {
   outline: none;
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15);
+  box-shadow: 0 0 0 3px rgba(51, 51, 153, 0.12);
 }
 
 /* ── 카드 ─────────────────────────────────────────────── */
@@ -164,13 +165,13 @@ body {
   border-radius: var(--radius-md);
 }
 
-/* 이미지 위에 얹는 아이콘 버튼(첨부/즐겨찾기/삭제) — 통일된 다크 칩 스타일 */
+/* 이미지 위에 얹는 아이콘 버튼(첨부/즐겨찾기/삭제) — 사진 위 대비를 위해 다크 칩 유지 */
 .overlay-chip {
   width: 30px;
   height: 30px;
   border-radius: 8px;
   border: none;
-  background: rgba(13, 17, 23, 0.72);
+  background: rgba(13, 13, 38, 0.68);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -179,7 +180,7 @@ body {
   transition: background 0.15s ease, transform 0.15s ease;
 }
 .overlay-chip:hover {
-  background: rgba(13, 17, 23, 0.92);
+  background: rgba(13, 13, 38, 0.88);
   transform: scale(1.06);
 }
 
@@ -194,6 +195,14 @@ body {
 }
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes toast-slide-in {
@@ -226,6 +235,7 @@ body {
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--text-primary);
+  background: #ffffff;
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow-pop);
   animation: toast-slide-in 0.3s ease forwards;
@@ -237,16 +247,16 @@ body {
   animation: toast-slide-out 0.3s ease forwards;
 }
 .toast-error {
-  background: rgba(244, 63, 94, 0.18);
-  border: 1px solid rgba(244, 63, 94, 0.4);
+  background: #fff1f2;
+  border: 1px solid rgba(225, 29, 72, 0.25);
 }
 .toast-success {
-  background: rgba(34, 197, 94, 0.18);
-  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: #f0fdf4;
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 .toast-info {
-  background: rgba(34, 211, 238, 0.14);
-  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: #eef0fb;
+  border: 1px solid rgba(51, 51, 153, 0.22);
 }
 .toast-content {
   flex: 1;
@@ -268,21 +278,19 @@ body {
   color: var(--text-primary);
 }
 
-/* ── 오로라 배경 효과 ───────────────────────────────────────── */
+/* ── 배경 글로우 효과 (DESIGN_SYSTEM.md § 3) ───────────────────── */
 .aurora-bg {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-color: #0b0f17;
+  background-color: #F4F7FB;
   overflow: hidden;
   pointer-events: none;
 }
 .aurora-glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(140px);
-  opacity: 0.13;
-  mix-blend-mode: screen;
+  filter: blur(90px);
   pointer-events: none;
 }
 .aurora-glow-1 {
@@ -290,29 +298,29 @@ body {
   height: 50vw;
   top: -10%;
   left: -10%;
-  background: radial-gradient(circle, var(--accent-cyan) 0%, transparent 80%);
+  background: radial-gradient(circle, rgba(179, 197, 234, 0.45) 0%, rgba(179, 197, 234, 0) 70%);
 }
 .aurora-glow-2 {
   width: 60vw;
   height: 60vw;
   bottom: -20%;
   right: -10%;
-  background: radial-gradient(circle, var(--accent-purple) 0%, transparent 80%);
+  background: radial-gradient(circle, rgba(252, 228, 214, 0.45) 0%, rgba(252, 228, 214, 0) 70%);
 }
 
-/* ── Glassmorphism 카드 ─────────────────────────────────────── */
+/* ── Glassmorphism 카드 (DESIGN_SYSTEM.md § 4.1) ───────────────── */
 .glass-card {
-  background: rgba(22, 28, 44, 0.45);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+  border-color: rgba(51, 51, 153, 0.18);
+  box-shadow: var(--shadow-pop);
 }
 
 /* ── 이지/프로 토글 스위치 ────────────────────────────────────── */
@@ -336,20 +344,20 @@ body {
   width: 44px;
   height: 22px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.06);
   border: 1px solid var(--border-color);
   position: relative;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .switch-track.active {
-  background: rgba(34, 211, 238, 0.18);
+  background: rgba(51, 51, 153, 0.14);
   border-color: var(--accent-cyan);
 }
 .switch-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--text-tertiary);
   position: absolute;
   top: 3px;
   left: 4px;
@@ -381,11 +389,11 @@ body {
 }
 .aspect-ratio-btn:hover {
   border-color: var(--border-color-strong);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(15, 23, 42, 0.02);
 }
 .aspect-ratio-btn.active {
   border-color: var(--accent-cyan);
-  background: rgba(34, 211, 238, 0.07);
+  background: rgba(51, 51, 153, 0.06);
 }
 .aspect-ratio-visual {
   border: 1.5px solid var(--text-tertiary);
@@ -395,7 +403,7 @@ body {
 }
 .aspect-ratio-btn.active .aspect-ratio-visual {
   border-color: var(--accent-cyan);
-  background: rgba(34, 211, 238, 0.15);
+  background: rgba(51, 51, 153, 0.15);
 }
 .aspect-ratio-btn:hover .aspect-ratio-visual {
   border-color: var(--text-secondary);
@@ -410,16 +418,21 @@ body {
   color: var(--text-primary);
 }
 
+/* ── 헤더 로고 (HEADER_BRAND_GUIDE.md §3) ──────────────────────── */
+.app-logo:hover {
+  transform: scale(1.05);
+}
+
 /* ── 버튼 글로우 섀도우 ────────────────────────────────────────── */
 .glow-cyan {
-  box-shadow: 0 0 15px rgba(34, 211, 238, 0.12);
+  box-shadow: 0 0 15px rgba(51, 51, 153, 0.10);
 }
 .glow-cyan:hover:not(:disabled) {
-  box-shadow: 0 0 22px rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 22px rgba(51, 51, 153, 0.28);
 }
 .glow-purple {
-  box-shadow: 0 0 15px rgba(167, 139, 250, 0.1);
+  box-shadow: 0 0 15px rgba(255, 94, 54, 0.10);
 }
 .glow-purple:hover:not(:disabled) {
-  box-shadow: 0 0 22px rgba(167, 139, 250, 0.3);
+  box-shadow: 0 0 22px rgba(255, 94, 54, 0.25);
 }

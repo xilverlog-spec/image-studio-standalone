@@ -358,6 +358,23 @@ OFFSET_LORA_STRENGTH = 0.1
 _offset_lora_cache = None
 
 
+# 2026-09-02: fooocus_port 커스텀 노드(참고자료의 Fooocus 이식 코드)가 실제로 요구하는
+# GPT-2 프롬프트 확장 모델 폴더. ComfyUI/models/prompt_expansion/fooocus_expansion/ 에
+# 다운로드해뒀다 — 노드 자체 기본값(D:\Fooocus_win64...)은 이 PC에 존재하지 않으므로
+# 워크플로우를 만들 때마다 이 경로로 명시적으로 override한다.
+FOOOCUS_EXPANSION_MODEL_DIR = os.path.expanduser("~/Downloads/ComfyUI/models/prompt_expansion/fooocus_expansion")
+
+# fooocus_port의 FooocusIPAdapterLoader는 ComfyUI 표준 노드와 달리 (folder_paths로 이름만
+# 넘기는 게 아니라) 전체 파일시스템 경로를 직접 받는다 — ip_adapter.py가 torch.load()/
+# comfy.clip_vision.load()를 그 경로로 바로 호출하기 때문. ControlNetLoader는 반대로 표준
+# 방식(파일명만)을 쓴다.
+_FOOOCUS_MODELS_DIR = os.path.expanduser("~/Downloads/ComfyUI/models")
+FOOOCUS_CLIP_VISION_PATH = os.path.join(_FOOOCUS_MODELS_DIR, "clip_vision", "clip_vision_vit_h.safetensors")
+FOOOCUS_IP_NEGATIVE_PATH = os.path.join(_FOOOCUS_MODELS_DIR, "controlnet", "fooocus_ip_negative.safetensors")
+FOOOCUS_IP_ADAPTER_PATH = os.path.join(_FOOOCUS_MODELS_DIR, "controlnet", "ip-adapter-plus_sdxl_vit-h.bin")
+FOOOCUS_PYRACANNY_CONTROLNET = "control-lora-canny-rank128.safetensors"
+FOOOCUS_CPDS_CONTROLNET = "fooocus_xl_cpds_128.safetensors"
+
 _prompt_expansion_cache = None
 
 
@@ -374,6 +391,24 @@ def is_prompt_expansion_available() -> bool:
     except Exception:
         _prompt_expansion_cache = False
     return _prompt_expansion_cache
+
+
+_fooocus_advanced_settings_cache = None
+
+
+def is_fooocus_advanced_settings_available() -> bool:
+    """Adaptive CFG/Sharpness/ADM Scale/ControlNet Softness 커스텀 노드가 설치돼 있는지 확인한다."""
+    global _fooocus_advanced_settings_cache
+    if _fooocus_advanced_settings_cache is not None:
+        return _fooocus_advanced_settings_cache
+    try:
+        req = urllib.request.Request(f"{COMFYUI_URL}/object_info/FooocusAdvancedSettings")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            info = json.loads(response.read())
+        _fooocus_advanced_settings_cache = bool(info.get("FooocusAdvancedSettings"))
+    except Exception:
+        _fooocus_advanced_settings_cache = False
+    return _fooocus_advanced_settings_cache
 
 
 def is_offset_lora_available() -> bool:
@@ -534,13 +569,23 @@ def build_sdxl_turbo_workflow(prompt: str, width: int = DEFAULT_WIDTH, height: i
     # 노드가 설치돼 있으면 CLIPTextEncode의 text를 이 노드 출력으로 대체하고, 없으면
     # 기존처럼 파이썬에서 문자열을 직접 이어붙인다(하위 호환 폴백).
     if is_prompt_expansion_available():
+        # 실제 fooocus_port 노드는 prompt/seed/model_dir 3개만 받고 style_suffix 입력이 없다
+        # (참고자료 nodes.py 기준) — style은 ComfyUI 표준 StringConcatenate로 별도 이어붙인다.
         workflow["40"] = {
             "class_type": "FooocusPromptExpansion",
-            "inputs": {"text": prompt, "style_suffix": style_def["positive"], "seed": resolved_seed},
+            "inputs": {"prompt": prompt, "seed": resolved_seed, "model_dir": FOOOCUS_EXPANSION_MODEL_DIR},
         }
-        workflow["6"]["inputs"][text_field] = ["40", 0]
+        if style_def["positive"]:
+            workflow["41"] = {
+                "class_type": "StringConcatenate",
+                "inputs": {"string_a": ["40", 0], "string_b": style_def["positive"], "delimiter": ", "},
+            }
+            expanded_ref = ["41", 0]
+        else:
+            expanded_ref = ["40", 0]
+        workflow["6"]["inputs"][text_field] = expanded_ref
         if is_sdxl:
-            workflow["6"]["inputs"]["text_l"] = ["40", 0]
+            workflow["6"]["inputs"]["text_l"] = expanded_ref
     else:
         final_prompt = prompt
         if style_def["positive"]:
@@ -839,7 +884,7 @@ def build_fooocus_parity_workflow(prompt: str, style: str, negative_extra: str,
     if use_expansion and is_prompt_expansion_available():
         workflow["40"] = {
             "class_type": "FooocusPromptExpansion",
-            "inputs": {"text": prompt, "style_suffix": "", "seed": seed},
+            "inputs": {"prompt": prompt, "seed": seed, "model_dir": FOOOCUS_EXPANSION_MODEL_DIR},
         }
         workflow["6b"] = {
             "class_type": "CLIPTextEncodeSDXL",
@@ -1372,11 +1417,22 @@ UPSCALE_TIMEOUT_SEC = 180  # 이미지 하나 확대라 본 생성(GENERATION_TI
 
 
 def list_available_upscale_models():
-    """설치된 업스케일 모델 목록. LoRA/체크포인트 조회와 동일하게 /object_info로 물어본다."""
+    """설치된 업스케일 모델 목록. LoRA/체크포인트 조회와 동일하게 /object_info로 물어본다.
+
+    2026-09-02: ComfyUI 버전에 따라 combo 입력 스키마가 둘로 갈린다 —
+    예전 방식은 [["name1", "name2"], {...}] (인덱스 0이 곧 이름 목록),
+    최신 방식은 ["COMBO", {"options": ["name1", "name2"]}] (인덱스 0은 타입 문자열
+    "COMBO"이고 실제 목록은 options 안에 있음). 인덱스 0만 믿으면 최신 스키마에서
+    "COMBO" 문자열 자체를 모델 목록으로 착각해 업스케일이 항상 실패했다.
+    """
     req = urllib.request.Request(f"{COMFYUI_URL}/object_info/UpscaleModelLoader")
     with urllib.request.urlopen(req, timeout=10) as response:
         info = json.loads(response.read())
-    return info["UpscaleModelLoader"]["input"]["required"]["model_name"][0]
+    spec = info["UpscaleModelLoader"]["input"]["required"]["model_name"]
+    first = spec[0]
+    if first == "COMBO" and len(spec) > 1 and isinstance(spec[1], dict):
+        return spec[1].get("options", [])
+    return first
 
 
 def _upload_image_to_comfyui(local_path: str) -> str:
@@ -1775,12 +1831,13 @@ def build_fooocus_quality_workflow(prompt: str, style: str, negative_extra: str,
 
     preset: 'speed', 'quality', 'extreme_quality' — steps/cfg/sampler/scheduler 결정
     sharpness: 0.0(OFF), 1.0(약함), 2.0(기본)
-    adm_guidance: True면 Fooocus의 ADM 스케일링 적용 (현재 placeholder)
+    adm_guidance: True면 Fooocus의 ADM 스케일링 적용. fooocus_port 커스텀 노드가 설치돼 있어야
+        실제로 효과가 있다(없으면 조용히 무시됨) — is_fooocus_advanced_settings_available() 참고.
     checkpoint_name: 지정 없으면 config에서 기본 체크포인트 사용
 
     구조는 build_fooocus_parity_workflow과 동일하지만:
     - preset에서 steps/cfg/sampler/scheduler 로드
-    - Sharpness/ADM 지원 추가 (향후 구현)
+    - Sharpness/ADM은 FooocusAdvancedSettings 노드(참고자료 이식 코드)로 실제 적용됨
     """
     config = load_quality_mode_config()
 
@@ -1835,6 +1892,29 @@ def build_fooocus_quality_workflow(prompt: str, style: str, negative_extra: str,
         model_link = ["lora0", 0]
         clip_link = ["lora0", 1]
 
+    # Adaptive CFG / Sharpness / ADM Scale / ControlNet Softness (fooocus_port 커스텀 노드).
+    # 2026-09-02: 예전엔 sharpness/adm_guidance 파라미터가 함수에만 있고 실제 효과가 없는
+    # placeholder였다 — 참고자료의 몽키패치 노드를 설치한 뒤로 실제로 적용된다.
+    if is_fooocus_advanced_settings_available():
+        if adm_guidance:
+            positive_adm_scale, negative_adm_scale, adm_scaler_end = 1.5, 0.8, 0.3
+        else:
+            # Fooocus 자체엔 ADM on/off 스위치가 없어서, scale을 1.0/end를 0으로 두어 무효화한다.
+            positive_adm_scale, negative_adm_scale, adm_scaler_end = 1.0, 1.0, 0.0
+        workflow["adv"] = {
+            "class_type": "FooocusAdvancedSettings",
+            "inputs": {
+                "model": model_link,
+                "adaptive_cfg": 7.0,
+                "sharpness": sharpness,
+                "positive_adm_scale": positive_adm_scale,
+                "negative_adm_scale": negative_adm_scale,
+                "adm_scaler_end": adm_scaler_end,
+                "controlnet_softness": 0.25,
+            },
+        }
+        model_link = ["adv", 0]
+
     # CLIP skip
     clip_skip = config["clip_skip"]
     workflow["2"] = {
@@ -1857,7 +1937,7 @@ def build_fooocus_quality_workflow(prompt: str, style: str, negative_extra: str,
     if use_expansion and is_prompt_expansion_available():
         workflow["40"] = {
             "class_type": "FooocusPromptExpansion",
-            "inputs": {"text": prompt, "style_suffix": "", "seed": seed},
+            "inputs": {"prompt": prompt, "seed": seed, "model_dir": FOOOCUS_EXPANSION_MODEL_DIR},
         }
         workflow["6b"] = {
             "class_type": "CLIPTextEncodeSDXL",
@@ -1885,8 +1965,7 @@ def build_fooocus_quality_workflow(prompt: str, style: str, negative_extra: str,
         },
     }
 
-    # KSampler
-    # 주석: Sharpness/ADM 구현은 향후 추가 (현재 placeholder)
+    # KSampler — model_link가 FooocusAdvancedSettings를 거쳐왔다면 Sharpness/ADM이 이미 적용된 상태
     workflow["3"] = {
         "class_type": "KSampler",
         "inputs": {
@@ -2004,117 +2083,251 @@ def generate_fooocus_quality_or_raise(prompt: str, style: str, negative_extra: s
         }
 
 
-def blend_images_or_raise(base_image_bytes, reference_image_bytes, influence, output_path, seed, blend_mode="normal"):
-    """CLIP 임베딩 기반 스타일 블렌딩 (Fooocus 방식).
+# Fooocus 원본의 Image Prompt 슬롯 타입별 기본값 (modules/flags.py의 default_parameters:
+# (stop_at, weight)). Reference 계열은 타입별로 IP-Adapter 가중치 파일도 다르다.
+FOOOCUS_SLOT_DEFAULTS = {
+    "ImagePrompt": {"stop_at": 0.5, "weight": 0.6},
+    "FaceSwap": {"stop_at": 0.9, "weight": 0.75},
+    "PyraCanny": {"stop_at": 0.5, "weight": 1.0},
+    "CPDS": {"stop_at": 0.5, "weight": 1.0},
+}
+FOOOCUS_STRUCTURE_TYPES = {"PyraCanny", "CPDS"}
+FOOOCUS_REFERENCE_TYPES = {"ImagePrompt", "FaceSwap"}
 
-    두 이미지의 의미있는 특성(재질, 스타일, 구성)을 추출해서 블렌딩한다.
-    기본 이미지의 구조를 유지하면서 참조 이미지의 스타일을 자연스럽게 반영한다.
+
+def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode="normal"):
+    """Fooocus의 실제 "Image Prompt" 패널과 동일한 구조: 슬롯(최대 4개, 참고자료 문서의
+    "이미지 변형(레퍼런스x)"/"이미지 재생성(레퍼런스o)" 기준)마다 타입(PyraCanny/CPDS/
+    ImagePrompt/FaceSwap)과 Stop At/Weight를 독립적으로 가진다 — Fooocus 원본처럼 "기본
+    이미지 vs 참조 이미지"라는 고정 역할 구분이 UI에는 없고, 슬롯이 알아서 자기 역할을 정한다.
+
+    base_image_bytes: 캔버스 크기 결정 + (Structure 슬롯이 하나도 없을 때) img2img 소스로 쓰인다.
+    slots: [{"image_bytes": bytes, "type": "PyraCanny"|"CPDS"|"ImagePrompt"|"FaceSwap",
+             "stop_at": float, "weight": float}, ...] — 1~4개.
+
+    - Structure 슬롯(PyraCanny/CPDS)은 각각 ControlNetApplyAdvanced로 순차 체이닝된다
+      (Fooocus의 core.apply_controlnet()을 여러 번 부르는 것과 동일 — 여러 장도 가능).
+    - Reference 슬롯(ImagePrompt/FaceSwap)은 FooocusIPAdapterPreprocess로 체이닝해서
+      한 번의 FooocusIPAdapterPatchModel 호출에 다 같이 넘긴다(Fooocus의 cn_tasks 누적과 동일).
     """
     from PIL import Image
     from io import BytesIO
-    import base64
 
-    # 이미지 디코딩
+    if not slots:
+        raise ValueError("슬롯이 최소 1개 필요합니다.")
+
     base_img = Image.open(BytesIO(base_image_bytes)).convert("RGB")
-    ref_img = Image.open(BytesIO(reference_image_bytes)).convert("RGB")
-
-    # 기본 이미지 크기로 참조 이미지 리사이즈
-    ref_img = ref_img.resize(base_img.size, Image.Resampling.LANCZOS)
-
-    # 이미지를 base64로 인코딩
-    base_b64 = encode_image_to_base64(base_img)
-    ref_b64 = encode_image_to_base64(ref_img)
-
-    # ComfyUI 워크플로우: CLIP 임베딩 블렌딩
-    workflow = {
-        "1": {
-            "inputs": {"image": base_b64, "upload": "image"},
-            "class_type": "LoadImage"
-        },
-        "2": {
-            "inputs": {"image": ref_b64, "upload": "image"},
-            "class_type": "LoadImage"
-        },
-        "3": {
-            "inputs": {"ckpt_name": CHECKPOINT},
-            "class_type": "CheckpointLoaderSimple"
-        },
-        "4": {
-            "inputs": {"text": "", "clip": ["3", 1]},
-            "class_type": "CLIPTextEncode"
-        },
-        "5": {
-            "inputs": {"text": NEGATIVE_PROMPT, "clip": ["3", 1]},
-            "class_type": "CLIPTextEncode"
-        },
-        "6": {
-            "inputs": {"pixels": ["1", 0], "vae": ["3", 2]},
-            "class_type": "VAEEncode"
-        },
-        "7": {
-            "inputs": {"pixels": ["2", 0], "vae": ["3", 2]},
-            "class_type": "VAEEncode"
-        },
-        "8": {
-            "inputs": {
-                "samples1": ["6", 0],
-                "samples2": ["7", 0],
-                "ratio": influence
-            },
-            "class_type": "BlendLatents"
-        },
-        "9": {
-            "inputs": {
-                "seed": seed,
-                "steps": 20,
-                "cfg": 7.5,
-                "sampler_name": "euler",
-                "scheduler": "normal",
-                "denoise": 1.0,
-                "model": ["3", 0],
-                "positive": ["4", 0],
-                "negative": ["5", 0],
-                "latent_image": ["8", 0]
-            },
-            "class_type": "KSampler"
-        },
-        "10": {
-            "inputs": {
-                "samples": ["9", 0],
-                "vae": ["3", 2]
-            },
-            "class_type": "VAEDecode"
-        },
-        "11": {
-            "inputs": {
-                "images": ["10", 0],
-                "filename_prefix": "blend"
-            },
-            "class_type": "SaveImage"
-        }
-    }
+    slot_imgs = [Image.open(BytesIO(s["image_bytes"])).convert("RGB") for s in slots]
 
     try:
-        result = queue_workflow_and_get_result(workflow)
-        result_path = result.get("output_paths", {}).get("SaveImage", [None])[0]
+        base_buf = BytesIO()
+        base_img.save(base_buf, format="PNG")
+        base_image_name = _upload_image_bytes_to_comfyui(base_buf.getvalue(), "blend_base.png")
 
-        if result_path:
-            full_path = os.path.join(COMFYUI_OUTPUT_DIR, result_path)
-            if os.path.exists(full_path):
-                shutil.copy(full_path, output_path)
-                print(f"[BLEND-CLIP] 블렌딩 완료 (영향도: {influence * 100:.0f}%): {output_path}")
-                return
+        slot_image_names = []
+        for i, slot_img in enumerate(slot_imgs):
+            buf = BytesIO()
+            slot_img.save(buf, format="PNG")
+            slot_image_names.append(_upload_image_bytes_to_comfyui(buf.getvalue(), f"blend_slot_{i}.png"))
 
-        raise Exception("BlendLatents 워크플로우 실행 실패")
+        ckpt_name = get_available_checkpoint()
+        quality_config = load_quality_mode_config()
+        quality_preset = quality_config["quality_presets"]["quality"]
+
+        workflow = {
+            "1": {"inputs": {"ckpt_name": ckpt_name}, "class_type": "CheckpointLoaderSimple"},
+            "2": {"inputs": {"image": base_image_name}, "class_type": "LoadImage"},
+        }
+
+        # ── LoRA(Offset) → FooocusAdvancedSettings(Adaptive CFG/Sharpness/ADM Scale) → CLIP Skip ──
+        # "Fooocus Quality" 생성 워크플로우(build_fooocus_quality_workflow)와 동일한 체인을 블렌딩에도
+        # 적용해서 결과물 톤을 맞춘다.
+        model_link, clip_link = ["1", 0], ["1", 1]
+        if is_offset_lora_available():
+            offset_lora_cfg = quality_config["offset_lora"]
+            workflow["lora0"] = {
+                "class_type": "LoraLoader",
+                "inputs": {
+                    "model": model_link, "clip": clip_link,
+                    "lora_name": offset_lora_cfg["name"],
+                    "strength_model": offset_lora_cfg["strength"],
+                    "strength_clip": offset_lora_cfg["strength"],
+                },
+            }
+            model_link, clip_link = ["lora0", 0], ["lora0", 1]
+
+        if is_fooocus_advanced_settings_available():
+            workflow["adv"] = {
+                "class_type": "FooocusAdvancedSettings",
+                "inputs": {
+                    "model": model_link,
+                    "adaptive_cfg": 7.0,
+                    "sharpness": quality_config["sampling_sharpness"]["default"],
+                    "positive_adm_scale": quality_config["adm_guidance"]["positive_adm_scale"],
+                    "negative_adm_scale": quality_config["adm_guidance"]["negative_adm_scale"],
+                    "adm_scaler_end": quality_config["adm_guidance"]["adm_scaler_end"],
+                    "controlnet_softness": 0.25,
+                },
+            }
+            model_link = ["adv", 0]
+
+        workflow["clipskip"] = {
+            "class_type": "CLIPSetLastLayer",
+            "inputs": {"clip": clip_link, "stop_at_clip_layer": -quality_config["clip_skip"]},
+        }
+        clip_link = ["clipskip", 0]
+
+        workflow["4"] = {"inputs": {"text": "", "clip": clip_link}, "class_type": "CLIPTextEncode"}
+        workflow["5"] = {"inputs": {"text": DEFAULT_NEGATIVE, "clip": clip_link}, "class_type": "CLIPTextEncode"}
+
+        positive_link, negative_link = ["4", 0], ["5", 0]
+        structure_slots = [(i, s) for i, s in enumerate(slots) if s["type"] in FOOOCUS_STRUCTURE_TYPES]
+        reference_slots = [(i, s) for i, s in enumerate(slots) if s["type"] in FOOOCUS_REFERENCE_TYPES]
+
+        # ── Structure: 슬롯마다 순차적으로 ControlNet 체이닝 ──
+        for n, (i, slot) in enumerate(structure_slots):
+            stop_at = slot.get("stop_at", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["stop_at"])
+            weight = slot.get("weight", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["weight"])
+            controlnet_name = FOOOCUS_PYRACANNY_CONTROLNET if slot["type"] == "PyraCanny" else FOOOCUS_CPDS_CONTROLNET
+            pre_id, ld_id, app_id = f"sPre{n}", f"sLd{n}", f"sApp{n}"
+            workflow[pre_id] = {
+                "inputs": {"image": [f"slot{i}", 0], "type": slot["type"],
+                           "canny_low_threshold": 64, "canny_high_threshold": 128},
+                "class_type": "FooocusStructurePreprocessor",
+            }
+            workflow[f"slot{i}"] = {"inputs": {"image": slot_image_names[i]}, "class_type": "LoadImage"}
+            workflow[ld_id] = {"inputs": {"control_net_name": controlnet_name}, "class_type": "ControlNetLoader"}
+            workflow[app_id] = {
+                "inputs": {
+                    "positive": positive_link, "negative": negative_link,
+                    "control_net": [ld_id, 0], "image": [pre_id, 0],
+                    "strength": weight, "start_percent": 0.0, "end_percent": stop_at,
+                },
+                "class_type": "ControlNetApplyAdvanced",
+            }
+            positive_link, negative_link = [app_id, 0], [app_id, 1]
+
+        has_structure = len(structure_slots) > 0
+        if has_structure:
+            # Structure가 형태를 고정해주므로 완전 재생성(denoise=1.0) — 빈 latent에서 시작.
+            workflow["6"] = {
+                "inputs": {"width": base_img.width, "height": base_img.height, "batch_size": 1},
+                "class_type": "EmptyLatentImage",
+            }
+            denoise = 1.0
+        else:
+            # Structure 슬롯이 하나도 없으면 기본 이미지 latent에서 부분 denoise로 시작
+            # (참조 슬롯들의 평균 weight가 셀수록 원본에서 더 멀어지게).
+            workflow["6"] = {"inputs": {"pixels": ["2", 0], "vae": ["1", 2]}, "class_type": "VAEEncode"}
+            if reference_slots:
+                avg_weight = sum(s.get("weight", 0.6) for _, s in reference_slots) / len(reference_slots)
+                denoise = min(0.9, max(0.45, avg_weight / 1.5))
+            else:
+                denoise = 0.6
+
+        # ── Reference: 타입별로 IP-Adapter 로더 하나씩(재사용), 슬롯마다 Preprocess 체이닝 ──
+        # model_link는 위에서 만든 LoRA/FooocusAdvancedSettings 체인을 이어받는다(raw checkpoint가 아님).
+        if reference_slots:
+            loader_by_type = {}
+            for i, slot in reference_slots:
+                if slot["type"] not in loader_by_type:
+                    loader_id = f"ipL_{slot['type']}"
+                    if slot["type"] == "FaceSwap":
+                        # FaceSwap 전용 가중치는 아직 설치 안 함 — ImagePrompt 가중치로 폴백하지 않고
+                        # 명시적으로 에러를 내서 조용히 잘못된 결과가 나오는 걸 막는다.
+                        raise RuntimeError("FaceSwap 타입은 아직 지원하지 않습니다 (전용 모델 미설치).")
+                    workflow[loader_id] = {
+                        "inputs": {
+                            "type": slot["type"],
+                            "clip_vision_path": FOOOCUS_CLIP_VISION_PATH,
+                            "ip_negative_path": FOOOCUS_IP_NEGATIVE_PATH,
+                            "ip_adapter_path": FOOOCUS_IP_ADAPTER_PATH,
+                        },
+                        "class_type": "FooocusIPAdapterLoader",
+                    }
+                    loader_by_type[slot["type"]] = loader_id
+
+            prev_tasks_link = None
+            for n, (i, slot) in enumerate(reference_slots):
+                stop_at = slot.get("stop_at", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["stop_at"])
+                weight = slot.get("weight", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["weight"])
+                node_id = f"ipP{n}"
+                inputs = {
+                    "ip_adapter": [loader_by_type[slot["type"]], 0],
+                    "image": [f"slot{i}", 0],
+                    "stop_at": stop_at,
+                    "weight": weight,
+                    "face_crop": slot["type"] == "FaceSwap",
+                }
+                if f"slot{i}" not in workflow:
+                    workflow[f"slot{i}"] = {"inputs": {"image": slot_image_names[i]}, "class_type": "LoadImage"}
+                if prev_tasks_link is not None:
+                    inputs["ip_tasks"] = prev_tasks_link
+                workflow[node_id] = {"inputs": inputs, "class_type": "FooocusIPAdapterPreprocess"}
+                prev_tasks_link = [node_id, 0]
+
+            workflow["ipPatch"] = {
+                "inputs": {"model": model_link, "ip_tasks": prev_tasks_link},
+                "class_type": "FooocusIPAdapterPatchModel",
+            }
+            model_link = ["ipPatch", 0]
+
+        workflow["9"] = {
+            "inputs": {
+                "seed": seed, "steps": quality_preset["steps"], "cfg": quality_preset["cfg"],
+                "sampler_name": quality_preset["sampler"], "scheduler": quality_preset["scheduler"], "denoise": denoise,
+                "model": model_link, "positive": positive_link, "negative": negative_link,
+                "latent_image": ["6", 0],
+            },
+            "class_type": "KSampler",
+        }
+        workflow["10"] = {"inputs": {"samples": ["9", 0], "vae": ["1", 2]}, "class_type": "VAEDecode"}
+        workflow["11"] = {"inputs": {"images": ["10", 0], "filename_prefix": "blend"}, "class_type": "SaveImage"}
+
+        queue_response = queue_prompt(workflow)
+        prompt_id = queue_response["prompt_id"]
+        print(f"[BLEND-FOOOCUS] Queued blend prompt {prompt_id} (slots={len(slots)}: "
+              f"structure={len(structure_slots)}, reference={len(reference_slots)}, denoise={denoise:.2f})...")
+
+        deadline = time.time() + GENERATION_TIMEOUT_SEC
+        history = None
+        while time.time() < deadline:
+            history = get_history(prompt_id)
+            if prompt_id in history:
+                break
+            time.sleep(1)
+        else:
+            raise TimeoutError(f"ComfyUI가 {GENERATION_TIMEOUT_SEC}초 안에 블렌딩을 마치지 못했습니다 (prompt_id={prompt_id}).")
+
+        history_data = history[prompt_id]
+        for node_id in history_data["outputs"]:
+            node_output = history_data["outputs"][node_id]
+            if "images" in node_output:
+                for image in node_output["images"]:
+                    image_data = get_image(image["filename"], image["subfolder"], image["type"])
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    with open(output_path, "wb") as f:
+                        f.write(image_data)
+                    print(f"[BLEND-FOOOCUS] 블렌딩 완료: {output_path}")
+                    return
+
+        raise RuntimeError(
+            f"ComfyUI 실행 결과에 이미지가 없습니다: {json.dumps(history_data.get('status', {}), ensure_ascii=False)[:300]}"
+        )
     except Exception as e:
-        print(f"[BLEND-CLIP] 워크플로우 오류, 폴백 사용: {e}")
-        # 폴백: 기존 LAB 색상 블렌딩 사용
-        _blend_images_fallback(base_img, ref_img, influence, output_path)
+        print(f"[BLEND-FOOOCUS] 워크플로우 오류, 폴백 사용: {e}")
+        # 폴백: 기존 LAB 색상 블렌딩 사용 (첫 번째 Reference 슬롯, 없으면 첫 슬롯을 참조로 사용)
+        fallback_slot_img = next((slot_imgs[i] for i, s in enumerate(slots) if s["type"] in FOOOCUS_REFERENCE_TYPES), slot_imgs[0])
+        avg_weight = sum(s.get("weight", 0.6) for s in slots) / len(slots)
+        fallback_influence = min(1.0, max(0.0, avg_weight / 1.5))
+        fallback_ref = fallback_slot_img.resize(base_img.size, Image.Resampling.LANCZOS)
+        _blend_images_fallback(base_img, fallback_ref, fallback_influence, output_path)
 
 
 def _blend_images_fallback(base_img, ref_img, influence, output_path):
     """LAB 색상 공간 기반 폴백 블렌딩."""
     import numpy as np
+    from PIL import Image
     from skimage.color import rgb2lab, lab2rgb
     from skimage import img_as_float
 
@@ -2140,8 +2353,6 @@ def _blend_images_fallback(base_img, ref_img, influence, output_path):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     blended.save(output_path, "PNG", quality=95)
     print(f"[BLEND] 폴백 색상 블렌딩 완료: {output_path}")
-
-    print(f"[BLEND] Image blending completed: {output_path} (blend_mode={blend_mode}, influence={influence}, seed={seed})")
 
     return output_path
 

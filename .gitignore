@@ -37,6 +37,8 @@ backend/.env
 *.swo
 *~
 .claude/settings.local.json
+.claude/devlog-state.json
+scripts/devlog/logs/
 
 # ComfyUI & Models
 *.safetensors
