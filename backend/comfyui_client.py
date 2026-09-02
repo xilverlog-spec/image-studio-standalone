@@ -2095,7 +2095,8 @@ FOOOCUS_STRUCTURE_TYPES = {"PyraCanny", "CPDS"}
 FOOOCUS_REFERENCE_TYPES = {"ImagePrompt", "FaceSwap"}
 
 
-def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode="normal"):
+def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode="normal",
+                           prompt="", denoise_override=None):
     """Fooocus의 실제 "Image Prompt" 패널과 동일한 구조: 슬롯(최대 4개, 참고자료 문서의
     "이미지 변형(레퍼런스x)"/"이미지 재생성(레퍼런스o)" 기준)마다 타입(PyraCanny/CPDS/
     ImagePrompt/FaceSwap)과 Stop At/Weight를 독립적으로 가진다 — Fooocus 원본처럼 "기본
@@ -2104,6 +2105,9 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
     base_image_bytes: 캔버스 크기 결정 + (Structure 슬롯이 하나도 없을 때) img2img 소스로 쓰인다.
     slots: [{"image_bytes": bytes, "type": "PyraCanny"|"CPDS"|"ImagePrompt"|"FaceSwap",
              "stop_at": float, "weight": float}, ...] — 1~4개.
+    prompt: 추가 텍스트 프롬프트 (비워두면 이미지만으로 블렌딩 — 기존 동작과 동일).
+    denoise_override: 지정하면 자동 계산(구조 슬롯 유무/참조 weight 평균 기반) 대신 이
+        값을 그대로 denoise로 쓴다 — 프로 모드의 "기존 이미지 감도" 슬라이더용.
 
     - Structure 슬롯(PyraCanny/CPDS)은 각각 ControlNetApplyAdvanced로 순차 체이닝된다
       (Fooocus의 core.apply_controlnet()을 여러 번 부르는 것과 동일 — 여러 장도 가능).
@@ -2177,7 +2181,7 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
         }
         clip_link = ["clipskip", 0]
 
-        workflow["4"] = {"inputs": {"text": "", "clip": clip_link}, "class_type": "CLIPTextEncode"}
+        workflow["4"] = {"inputs": {"text": prompt or "", "clip": clip_link}, "class_type": "CLIPTextEncode"}
         workflow["5"] = {"inputs": {"text": DEFAULT_NEGATIVE, "clip": clip_link}, "class_type": "CLIPTextEncode"}
 
         positive_link, negative_link = ["4", 0], ["5", 0]
@@ -2208,7 +2212,13 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
             positive_link, negative_link = [app_id, 0], [app_id, 1]
 
         has_structure = len(structure_slots) > 0
-        if has_structure:
+        if denoise_override is not None:
+            # 프로 모드 "기존 이미지 감도" 슬라이더 — 구조 슬롯이 있어도 기존 이미지의 실제
+            # 픽셀(색감/질감)을 denoise 비율만큼 남겨둔 채로 시작한다(ControlNet은 그대로
+            # 형태를 잡아줌). 자동 계산을 완전히 대체한다.
+            workflow["6"] = {"inputs": {"pixels": ["2", 0], "vae": ["1", 2]}, "class_type": "VAEEncode"}
+            denoise = max(0.05, min(1.0, denoise_override))
+        elif has_structure:
             # Structure가 형태를 고정해주므로 완전 재생성(denoise=1.0) — 빈 latent에서 시작.
             workflow["6"] = {
                 "inputs": {"width": base_img.width, "height": base_img.height, "batch_size": 1},

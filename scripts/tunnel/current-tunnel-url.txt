@@ -1,0 +1,4 @@
+https://pix-organize-spider-badge.trycloudflare.com
+issued_at_kst: 2026-09-02 15:53
+note: Cloudflare Quick Tunnel (trycloudflare.com) — URL은 cloudflared 재시작 시마다 바뀐다.
+      재시작하게 되면 이 파일을 새 URL로 반드시 갱신할 것. (cloudflared --url http://localhost:5181)

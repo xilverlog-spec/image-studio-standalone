@@ -264,6 +264,14 @@ function App() {
   const [blendSlots, setBlendSlots] = useState([]);
   const blendSlotInputRef = useRef(null);
   const [blendPrompt, setBlendPrompt] = useState('');
+  const [isBlendPromptRefining, setIsBlendPromptRefining] = useState(false);
+  // 프로 모드 전용: "기존 이미지 감도" — 0에 가까울수록 기존 이미지를 많이 유지하고,
+  // 100에 가까울수록 완전히 새로 그린다(denoise로 변환해서 백엔드에 전달).
+  const [blendDenoise, setBlendDenoise] = useState(100);
+  // 프로 모드 전용: 기존 이미지도 슬롯처럼 Stop At/Weight를 갖는다 — 블렌딩 시 base image를
+  // PyraCanny 구조 슬롯으로 자동 포함시켜, ControlNet 강도/적용 구간을 직접 조절할 수 있게 한다.
+  const [blendBaseStopAt, setBlendBaseStopAt] = useState(0.5);
+  const [blendBaseWeight, setBlendBaseWeight] = useState(1.0);
   const [isDraggingOverBlend, setIsDraggingOverBlend] = useState(false);
   const [isDraggingOverBlendRef, setIsDraggingOverBlendRef] = useState(false);
   const [isDraggingOverBlendSlot, setIsDraggingOverBlendSlot] = useState(false);
@@ -1065,6 +1073,46 @@ function App() {
     }
   };
 
+  const refineBlendPrompt = async () => {
+    if (!blendPrompt.trim() || isBlendPromptRefining) return;
+    setIsBlendPromptRefining(true);
+    try {
+      const res = await fetch(API_BASE_URL + '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemma4:e4b',
+          max_tokens: 3000,
+          temperature: 0.2,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert prompt engineer for AI image blending. The user provided a short description '
+                + 'of what they want the blended result to emphasize (on top of reference images). '
+                + 'Enhance it into a detailed, professional prompt for AI image generation. '
+                + 'Focus on: mood, lighting, material/texture cues, composition — things that complement image-based '
+                + 'reference inputs rather than describing a whole new scene from scratch. '
+                + 'Output ONLY the refined prompt text in Korean and English mixed format.'
+            },
+            { role: 'user', content: blendPrompt }
+          ]
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const refined = (data.choices?.[0]?.message?.content || '')
+          .replace(/```[\s\S]*?```/g, '')
+          .replace(/^["'`]+|["'`]+$/g, '')
+          .trim();
+        if (refined) setBlendPrompt(refined);
+      }
+    } catch (e) {
+      console.error('블렌딩 프롬프트 개선 실패:', e);
+    } finally {
+      setIsBlendPromptRefining(false);
+    }
+  };
+
   // img2img(전역 재확산)는 마스크 없이 이미지 전체를 다시 그리는 방식이라, 원본에 없던
   // 사람·동물 같은 새 피사체를 "추가"하는 지시는 원본 보존 강도가 낮으면(구조를 많이 남겨둠)
   // 새 형태가 들어갈 자리가 없어 원본과 뒤섞이며 뭉개진다 — 마스크 기반 인페인팅 없이 고칠 수
@@ -1268,7 +1316,9 @@ function App() {
   // Fooocus의 Image Prompt 패널처럼 슬롯(최대 4개)마다 타입/Stop At/Weight를 독립 조절한다.
   // 둘 다 결국 같은 백엔드 슬롯 API(base_image + slots[])로 합쳐서 보낸다.
   const handleBlend = async () => {
-    const hasContent = isEasyMode ? blendReferenceImages.length > 0 : blendSlots.length > 0;
+    // 프로 모드는 기존 이미지 자체가 항상 PyraCanny 구조 슬롯으로 포함되므로, 별도 슬롯 없이
+    // 기존 이미지만으로도 블렌딩 가능하다 — 이지 모드는 여전히 참조 이미지가 최소 1장 필요.
+    const hasContent = isEasyMode ? blendReferenceImages.length > 0 : true;
     if (!blendBaseImage || !hasContent) return;
     setIsBlending(true);
 
@@ -1286,10 +1336,15 @@ function App() {
       ];
       addToast('info', '블렌딩 시작', `참조 ${blendReferenceImages.length}장, ${blendInfluence}% 영향도로 블렌딩하고 있습니다.`);
     } else {
-      slots = blendSlots.map(s => ({
-        image: s.image.split(',')[1] || s.image, type: s.type, stop_at: s.stopAt, weight: s.weight
-      }));
-      addToast('info', '블렌딩 시작', `슬롯 ${blendSlots.length}개로 블렌딩하고 있습니다.`);
+      // 기존 이미지도 슬롯 카드와 동일하게 Stop At/Weight를 가지므로, PyraCanny 구조 슬롯으로
+      // 자동 포함시킨다 — 사용자가 슬롯에 같은 이미지를 다시 올릴 필요가 없다.
+      slots = [
+        { image: blendBaseImage.split(',')[1] || blendBaseImage, type: 'PyraCanny', stop_at: blendBaseStopAt, weight: blendBaseWeight },
+        ...blendSlots.map(s => ({
+          image: s.image.split(',')[1] || s.image, type: s.type, stop_at: s.stopAt, weight: s.weight
+        }))
+      ];
+      addToast('info', '블렌딩 시작', `기존 이미지 + 슬롯 ${blendSlots.length}개로 블렌딩하고 있습니다.`);
     }
 
     try {
@@ -1298,7 +1353,10 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           base_image: blendBaseImage.split(',')[1] || blendBaseImage,
-          slots
+          slots,
+          // 프롬프트/감도는 프로 모드 전용 — 이지 모드는 기존처럼 이미지만으로 블렌딩한다.
+          ...(!isEasyMode && blendPrompt.trim() ? { prompt: blendPrompt.trim() } : {}),
+          ...(!isEasyMode ? { denoise: blendDenoise / 100 } : {})
         })
       });
 
@@ -1310,7 +1368,7 @@ function App() {
             imageFilename: data.image_filename,
             prompt: isEasyMode
               ? `블렌딩 (영향도 ${blendInfluence}%, ${BLEND_EMPHASIS_OPTIONS.find(o => o.value === blendEmphasis)?.label || ''}${blendStructureEnabled ? ', 형태 유지' : ''})`
-              : `블렌딩 (슬롯 ${blendSlots.length}개)`,
+              : `블렌딩 (슬롯 ${blendSlots.length}개, 감도 ${blendDenoise}%)`,
             isFavorite: false
           };
           setStudioGallery(prev => [newItem, ...prev]);
@@ -2882,6 +2940,43 @@ function App() {
                   상단 헤더의 이지/프로 모드 스위치를 그대로 따른다(이 탭 안에 별도 스위치를 두지 않음). */}
               {!isEasyMode && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {/* 기존 이미지도 슬롯과 똑같은 카드 형태로 — 슬롯과 동일하게 Stop At/Weight를 갖고
+                      (블렌딩 시 PyraCanny 구조 슬롯으로 자동 포함됨), 추가로 감도(=denoise)까지 조절 */}
+                  {blendBaseImage && (
+                    <div style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
+                      <img src={blendBaseImage} alt="기존 이미지" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                        <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>기존 이미지 (구조 기준)</span>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <label style={{ flex: 1, fontSize: '10.5px', color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            Stop At {blendBaseStopAt.toFixed(2)}
+                            <input
+                              type="range" min="0" max="1" step="0.01" value={blendBaseStopAt}
+                              onChange={(e) => setBlendBaseStopAt(parseFloat(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                            />
+                          </label>
+                          <label style={{ flex: 1, fontSize: '10.5px', color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            Weight {blendBaseWeight.toFixed(2)}
+                            <input
+                              type="range" min="0" max="2" step="0.01" value={blendBaseWeight}
+                              onChange={(e) => setBlendBaseWeight(parseFloat(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                            />
+                          </label>
+                        </div>
+                        <label style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          감도 {blendDenoise}% — 낮을수록 원본 유지, 높을수록 완전히 새로 그림
+                          <input
+                            type="range" min="0" max="100" value={blendDenoise}
+                            onChange={(e) => setBlendDenoise(parseInt(e.target.value))}
+                            style={{ width: '100%', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <ImageIcon size={12} /> 슬롯 ({blendSlots.length}/4) — Image Prompt 방식
                   </span>
@@ -2992,6 +3087,32 @@ function App() {
                 </div>
               )}
 
+              {/* 프로 모드: 추가 프롬프트 (선택) + 다듬기 */}
+              {!isEasyMode && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>프롬프트 (선택)</span>
+                  <textarea
+                    value={blendPrompt}
+                    onChange={(e) => setBlendPrompt(e.target.value)}
+                    placeholder="결과물에서 강조하고 싶은 내용 (예: 야간 조명, 따뜻한 색감 등). 비워두면 이미지만으로 블렌딩합니다."
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                  />
+                  {blendPrompt.trim() && (
+                    <button
+                      onClick={refineBlendPrompt}
+                      disabled={!blendPrompt.trim() || isBlendPromptRefining}
+                      style={{
+                        padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                        border: '1px solid var(--border-color)', background: 'rgba(51, 51, 153, 0.1)', color: 'var(--accent-cyan)',
+                        cursor: isBlendPromptRefining ? 'not-allowed' : 'pointer', opacity: isBlendPromptRefining ? 0.6 : 1
+                      }}
+                    >
+                      {isBlendPromptRefining ? '✨ 다듬는 중...' : '✨ 프롬프트 다듬기'}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Fooocus 방식 설명 */}
               <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
@@ -3001,17 +3122,17 @@ function App() {
                 </p>
               </div>
 
-              {/* 블렌딩 버튼 */}
+              {/* 블렌딩 버튼 — 프로 모드는 기존 이미지 자체가 항상 구조 슬롯이라 슬롯 추가 없이도 가능 */}
               <button
                 onClick={handleBlend}
-                disabled={isBlending || !blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)}
+                disabled={isBlending || !blendBaseImage || (isEasyMode && blendReferenceImages.length === 0)}
                 style={{
                   padding: '12px', borderRadius: '8px',
-                  background: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 'var(--border-color)' : 'var(--accent-cyan)',
+                  background: (!blendBaseImage || (isEasyMode && blendReferenceImages.length === 0)) ? 'var(--border-color)' : 'var(--accent-cyan)',
                   color: 'white', border: 'none',
-                  cursor: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 'not-allowed' : 'pointer',
+                  cursor: (!blendBaseImage || (isEasyMode && blendReferenceImages.length === 0)) ? 'not-allowed' : 'pointer',
                   fontWeight: 600, fontSize: '14px',
-                  opacity: (!blendBaseImage || (isEasyMode ? blendReferenceImages.length === 0 : blendSlots.length === 0)) ? 0.5 : 1
+                  opacity: (!blendBaseImage || (isEasyMode && blendReferenceImages.length === 0)) ? 0.5 : 1
                 }}>
                 {isBlending ? '블렌딩 중...' : '블렌딩 시작'}
               </button>

@@ -872,7 +872,8 @@ class ImageBlendRequest(BaseModel):
     base_image: str  # base64 (데이터 URL 접두사 없이) — 캔버스 크기 + (Structure 슬롯 없을 때) img2img 소스
     slots: List[BlendSlot]  # 1~4개
     blend_mode: str = "normal"  # (레거시 필드, 폴백 경로에서만 참고)
-    prompt: str = ""  # 선택사항: 블렌딩 결과물에 추가 설명
+    prompt: str = ""  # 선택사항: 블렌딩 결과물에 추가 설명 (실제 생성에도 반영됨)
+    denoise: Optional[float] = None  # 프로 모드 "기존 이미지 감도" — 지정 시 자동 계산 대신 이 값을 그대로 씀
     seed: Optional[int] = None
     project: str = image_history_store.DEFAULT_PROJECT
 
@@ -913,7 +914,9 @@ async def image_blend(request: ImageBlendRequest):
             slots=slots,
             output_path=output_path,
             seed=seed_used,
-            blend_mode=request.blend_mode
+            blend_mode=request.blend_mode,
+            prompt=request.prompt,
+            denoise_override=request.denoise
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이미지 블렌딩 실패: {e}")

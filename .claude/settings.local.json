@@ -243,7 +243,8 @@
       "Bash(powershell -Command 'Get-ScheduledTask -TaskName '\\\\''ImageStudio-HourlyBackup'\\\\'' | Select-Object TaskName, State; \\(Get-ScheduledTask -TaskName '\\\\''ImageStudio-HourlyBackup'\\\\''\\).Triggers | Select-Object StartBoundary, @{N='\\\\''RepeatEvery'\\\\'';E={$_.Repetition.Interval}}')",
       "Bash(powershell -Command \"Start-ScheduledTask -TaskName 'ImageStudio-HourlyBackup'\")",
       "Bash(powershell -Command \"\\(Get-ScheduledTaskInfo -TaskName 'ImageStudio-HourlyBackup'\\).LastTaskResult\")",
-      "PowerShell(& \"C:\\\\Users\\\\unjin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone\\\\d7cdf044-f0fa-4b20-bcfc-cb2604711502\\\\scratchpad\\\\Test-DevLogFormat.ps1\" -RepoRoot \"C:\\\\Users\\\\unjin\\\\OneDrive - SANGJI\\\\���� ȭ��\\\\DX AI LAB\\\\image-studio-standalone\")"
+      "PowerShell(& \"C:\\\\Users\\\\unjin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone\\\\d7cdf044-f0fa-4b20-bcfc-cb2604711502\\\\scratchpad\\\\Test-DevLogFormat.ps1\" -RepoRoot \"C:\\\\Users\\\\unjin\\\\OneDrive - SANGJI\\\\���� ȭ��\\\\DX AI LAB\\\\image-studio-standalone\")",
+      "Bash(tail -20 /tmp/backend_restart2.log | grep -i BLEND)"
     ]
   }
 }
