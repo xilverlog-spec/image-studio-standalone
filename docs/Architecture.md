@@ -1,4 +1,4 @@
-﻿- 프론트엔드: Vite 기반 React 앱(src/App.jsx, src/main.jsx, src/index.css)이 단일 페이지 스튜디오 UI를 구성.
+- 프론트엔드: Vite 기반 React 앱(src/App.jsx, src/main.jsx, src/index.css)이 단일 페이지 스튜디오 UI를 구성.
 - 백엔드: Python FastAPI 서버(backend/server.py)가 backend/routes/media.py, backend/routes/chat.py 등 라우트를 노출하고, backend/comfyui_client.py를 통해 로컬/원격 ComfyUI 인스턴스(기본 http://localhost:8188)와 통신해 이미지 생성을 수행. backend/services/에 이미지 히스토리 저장(image_history_store.py), 간단한 챗 서비스(simple_chat.py) 존재.
 - 이미지 생성 워크플로: comfyui_workflows/ 하위에 flux_kontext_gguf, flux_schnell_gguf, sdxl_turbo용 ComfyUI 워크플로 JSON을 미리 정의해 백엔드에서 사용.
 - 참고/부속 자산: Fooocus-main(서드파티 Stable Diffusion UI) 소스 전체가 저장소 내 하위 디렉터리로 함께 커밋되어 있음(직접 실행 종속성인지 단순 참고용인지는 추가 확인 필요).
