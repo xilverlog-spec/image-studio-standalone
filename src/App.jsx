@@ -3403,53 +3403,58 @@ function App() {
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                   style={{
-                    borderRadius: '10px', overflow: 'hidden', cursor: 'grab',
+                    borderRadius: '10px', cursor: 'grab',
                     border: '1px solid var(--border-color)',
-                    background: 'var(--bg-elevated)', cursor: 'grab', position: 'relative',
-                    boxShadow: 'var(--shadow-card)', transition: 'transform 0.15s ease, border-color 0.15s ease',
-                    aspectRatio: '1 / 1'
+                    background: 'var(--bg-elevated)', position: 'relative',
+                    boxShadow: 'var(--shadow-card)', transition: 'transform 0.15s ease, border-color 0.15s ease'
                   }}
                 >
-                  <img
-                    src={`/generated/${item.imageFilename}`}
-                    alt={item.prompt}
-                    loading="lazy"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
-                    className="overlay-chip"
-                    style={{ position: 'absolute', top: '8px', right: '8px', color: 'var(--accent-rose)' }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(item); }}
-                    title={item.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
-                    className="overlay-chip"
-                    style={{
-                      position: 'absolute', top: '8px', left: '8px',
-                      color: item.isFavorite ? 'var(--accent-amber)' : '#e2e8f0'
-                    }}
-                  >
-                    <Star size={14} fill={item.isFavorite ? 'var(--accent-amber)' : 'none'} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); downloadImage(item); }}
-                    title="다운로드"
-                    className="overlay-chip"
-                    style={{ position: 'absolute', top: '46px', left: '8px', color: '#e2e8f0' }}
-                  >
-                    <Download size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setFolderMenuOpenFor(prev => prev === item.id ? null : item.id); }}
-                    title="폴더에 담기"
-                    className="overlay-chip"
-                    style={{ position: 'absolute', top: '46px', right: '8px', color: item.folderId ? 'var(--accent-cyan)' : '#e2e8f0' }}
-                  >
-                    <Folder size={14} fill={item.folderId ? 'var(--accent-cyan)' : 'none'} />
-                  </button>
+                  {/* 정사각형 썸네일 영역만 overflow:hidden으로 잘라서 모서리를 둥글게 —
+                      카드 전체에 걸면 폴더 팝오버(이 영역 밖으로 나감)까지 잘려버려서 분리했다. */}
+                  <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden', borderRadius: '10px 10px 0 0' }}>
+                    <img
+                      src={`/generated/${item.imageFilename}`}
+                      alt={item.prompt}
+                      loading="lazy"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
+                      className="overlay-chip"
+                      style={{ position: 'absolute', top: '8px', right: '8px', color: 'var(--accent-rose)' }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(item); }}
+                      title={item.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                      className="overlay-chip"
+                      style={{
+                        position: 'absolute', top: '8px', left: '8px',
+                        color: item.isFavorite ? 'var(--accent-amber)' : '#e2e8f0'
+                      }}
+                    >
+                      <Star size={14} fill={item.isFavorite ? 'var(--accent-amber)' : 'none'} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadImage(item); }}
+                      title="다운로드"
+                      className="overlay-chip"
+                      style={{ position: 'absolute', top: '46px', left: '8px', color: '#e2e8f0' }}
+                    >
+                      <Download size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setFolderMenuOpenFor(prev => prev === item.id ? null : item.id); }}
+                      title="폴더에 담기"
+                      className="overlay-chip"
+                      style={{ position: 'absolute', top: '46px', right: '8px', color: item.folderId ? 'var(--accent-cyan)' : '#e2e8f0' }}
+                    >
+                      <Folder size={14} fill={item.folderId ? 'var(--accent-cyan)' : 'none'} />
+                    </button>
+                  </div>
+                  {/* 팝오버는 썸네일 영역 밖(카드 레벨)에 둬서 안 잘리게 한다 — 카드가
+                      position:relative라 좌표 기준(top/right)은 썸네일 영역과 동일하다. */}
                   {folderMenuOpenFor === item.id && (
                     <div
                       onClick={(e) => e.stopPropagation()}
@@ -3459,31 +3464,24 @@ function App() {
                         boxShadow: 'var(--shadow-pop)', padding: '4px', display: 'flex', flexDirection: 'column', gap: '2px'
                       }}
                     >
-                      <button
-                        onClick={() => setImageFolder(item, null)}
-                        style={{
-                          padding: '6px 8px', borderRadius: '5px', border: 'none', textAlign: 'left', cursor: 'pointer',
-                          background: !item.folderId ? 'rgba(51, 51, 153, 0.1)' : 'transparent',
-                          color: 'var(--text-secondary)', fontSize: '12px'
-                        }}
-                      >
-                        폴더 없음
-                      </button>
-                      {galleryFolders.map(folder => (
-                        <button
-                          key={folder.id}
-                          onClick={() => setImageFolder(item, folder.id)}
-                          style={{
-                            padding: '6px 8px', borderRadius: '5px', border: 'none', textAlign: 'left', cursor: 'pointer',
-                            background: item.folderId === folder.id ? 'rgba(51, 51, 153, 0.1)' : 'transparent',
-                            color: item.folderId === folder.id ? 'var(--accent-cyan)' : 'var(--text-primary)', fontSize: '12px'
-                          }}
-                        >
-                          {folder.name}
-                        </button>
-                      ))}
-                      {galleryFolders.length === 0 && (
+                      {galleryFolders.length === 0 ? (
                         <div style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>폴더가 없습니다</div>
+                      ) : (
+                        galleryFolders.map(folder => (
+                          <button
+                            key={folder.id}
+                            onClick={() => setImageFolder(item, item.folderId === folder.id ? null : folder.id)}
+                            style={{
+                              padding: '6px 8px', borderRadius: '5px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                              background: item.folderId === folder.id ? 'rgba(51, 51, 153, 0.1)' : 'transparent',
+                              color: item.folderId === folder.id ? 'var(--accent-cyan)' : 'var(--text-primary)', fontSize: '12px'
+                            }}
+                          >
+                            {folder.name}
+                            {item.folderId === folder.id && <Check size={12} />}
+                          </button>
+                        ))
                       )}
                     </div>
                   )}
