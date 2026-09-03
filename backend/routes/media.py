@@ -350,28 +350,34 @@ async def image_inpaint(request: ImageInpaintRequest):
 
 
 @router.get("/image/history")
-async def get_image_history(project: str = image_history_store.DEFAULT_PROJECT, limit: int = 60):
-    """이미지 생성 스튜디오의 생성 이력 (2026-08-20 신설)."""
-    return {"status": "success", "generations": image_history_store.list_generations(project, limit)}
+async def get_image_history(project: str = image_history_store.DEFAULT_PROJECT, limit: int = 60,
+                             folder_id: Optional[int] = None):
+    """이미지 생성 스튜디오의 생성 이력 (2026-08-20 신설). folder_id를 주면 그 폴더에
+    속한 이미지만 반환한다(2026-09-03, 즐겨찾기 폴더 기능)."""
+    return {"status": "success", "generations": image_history_store.list_generations(project, limit, folder_id)}
 
 
 @router.delete("/image/history/{gen_id}")
 async def delete_image_history(gen_id: int, project: str = image_history_store.DEFAULT_PROJECT):
     """이력 한 건과 그 실제 이미지 파일을 함께 지운다(2026-08-20, "생성 결과물 삭제" 요청).
     DB 행만 지우고 파일을 안 지우면 디스크에 계속 쌓이므로 같이 처리한다."""
-    image_filename = image_history_store.delete_generation(gen_id, project)
-    if image_filename is None:
+    deleted = image_history_store.delete_generation(gen_id, project)
+    if deleted is None:
         raise HTTPException(status_code=404, detail="해당 이력을 찾을 수 없습니다.")
+    image_filename = deleted["image_filename"]
 
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
     # 경로 탈출 방지 — DB에 있던 값이라도 파일명만 허용한다
-    safe_name = os.path.basename(image_filename)
-    file_path = os.path.join(output_dir, safe_name)
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except OSError as e:
-            print(f"[WARNING] ImageHistory: 이력은 지웠지만 파일 삭제 실패({safe_name}): {e}")
+    for fname in (deleted["image_filename"], deleted["before_image_filename"]):
+        if not fname:
+            continue
+        safe_name = os.path.basename(fname)
+        file_path = os.path.join(output_dir, safe_name)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError as e:
+                print(f"[WARNING] ImageHistory: 이력은 지웠지만 파일 삭제 실패({safe_name}): {e}")
 
     return {"status": "success", "deleted": 1, "image_filename": image_filename}
 
@@ -388,6 +394,68 @@ async def set_image_favorite(gen_id: int, request: SetFavoriteRequest):
     if not ok:
         raise HTTPException(status_code=404, detail="해당 이력을 찾을 수 없습니다.")
     return {"status": "success", "id": gen_id, "is_favorite": request.is_favorite}
+
+
+# ── 보관함 즐겨찾기 폴더 (2026-09-03) ──────────────────────────────────────
+# 이미지 1장은 폴더 1개에만 속한다(참고자료 FAVORITES_FOLDER_FEATURE.md 검토 후,
+# 사용자 확인 결과 여러 폴더 동시 소속은 불필요 — image_generations.folder_id 컬럼 방식).
+
+class CreateFolderRequest(BaseModel):
+    name: str
+    project: str = image_history_store.DEFAULT_PROJECT
+
+
+class RenameFolderRequest(BaseModel):
+    name: str
+    project: str = image_history_store.DEFAULT_PROJECT
+
+
+class SetFolderRequest(BaseModel):
+    folder_id: Optional[int] = None  # None이면 폴더에서 뺀다("폴더 없음")
+    project: str = image_history_store.DEFAULT_PROJECT
+
+
+@router.get("/image/folders")
+async def list_image_folders(project: str = image_history_store.DEFAULT_PROJECT):
+    return {"status": "success", "folders": image_history_store.list_folders(project)}
+
+
+@router.post("/image/folders")
+async def create_image_folder(request: CreateFolderRequest):
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="폴더 이름을 입력해주세요.")
+    folder_id = image_history_store.create_folder(name, request.project)
+    return {"status": "success", "id": folder_id, "name": name}
+
+
+@router.put("/image/folders/{folder_id}")
+async def rename_image_folder(folder_id: int, request: RenameFolderRequest):
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="폴더 이름을 입력해주세요.")
+    ok = image_history_store.rename_folder(folder_id, name, request.project)
+    if not ok:
+        raise HTTPException(status_code=404, detail="해당 폴더를 찾을 수 없습니다.")
+    return {"status": "success", "id": folder_id, "name": name}
+
+
+@router.delete("/image/folders/{folder_id}")
+async def delete_image_folder(folder_id: int, project: str = image_history_store.DEFAULT_PROJECT):
+    """폴더를 지운다 — 안에 있던 이미지는 지워지지 않고 "폴더 없음" 상태로 돌아간다."""
+    ok = image_history_store.delete_folder(folder_id, project)
+    if not ok:
+        raise HTTPException(status_code=404, detail="해당 폴더를 찾을 수 없습니다.")
+    return {"status": "success", "id": folder_id}
+
+
+@router.put("/image/history/{gen_id}/folder")
+async def set_image_folder(gen_id: int, request: SetFolderRequest):
+    """이미지 한 장을 폴더에 넣거나(folder_id 지정) 뺀다(folder_id 생략/None)."""
+    ok = image_history_store.set_folder(gen_id, request.folder_id, request.project)
+    if not ok:
+        raise HTTPException(status_code=404, detail="해당 이력을 찾을 수 없습니다.")
+    return {"status": "success", "id": gen_id, "folder_id": request.folder_id}
 
 
 class UpscaleRequest(BaseModel):
@@ -900,8 +968,16 @@ async def image_blend(request: ImageBlendRequest):
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
     os.makedirs(output_dir, exist_ok=True)
 
-    filename = f"blend_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    suffix = os.urandom(3).hex()
+    filename = f"blend_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
     output_path = os.path.join(output_dir, filename)
+
+    # 라이트박스의 "전/후" 비교 슬라이더가 새로고침/서버 재시작 후에도 동작하도록, 원본(블렌딩
+    # 전) 이미지도 결과와 함께 파일로 저장해둔다.
+    before_filename = f"blend_before_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
+    before_path = os.path.join(output_dir, before_filename)
+    with open(before_path, "wb") as f:
+        f.write(base_image_bytes)
 
     seed_used = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
 
@@ -944,6 +1020,7 @@ async def image_blend(request: ImageBlendRequest):
             image_filename=filename,
             checkpoint="blend",
             project=request.project,
+            before_image_filename=before_filename,
         )
     except Exception as e:
         print(f"[WARNING] 블렌딩 이력 저장 실패: {e}")

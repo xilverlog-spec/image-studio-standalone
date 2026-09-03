@@ -27,7 +27,9 @@ import {
   Upload,
   Layers,
   Paintbrush,
-  ChevronsLeftRight
+  ChevronsLeftRight,
+  Folder,
+  FolderPlus
 } from 'lucide-react';
 
 // 상대경로로 호출 — vite.config.js의 dev 서버 proxy(/v1, /generated → localhost:5000)를 통해
@@ -200,8 +202,6 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, maxHeight = '72vh' }) {
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
         <img src={beforeSrc} alt="전" draggable={false} style={{ width: '100%', maxHeight, objectFit: 'contain', display: 'block' }} />
       </div>
-      <div style={{ position: 'absolute', top: '10px', left: '10px', padding: '3px 9px', borderRadius: '5px', background: 'rgba(13,13,38,0.7)', color: 'white', fontSize: '12px', fontWeight: 600, pointerEvents: 'none' }}>전</div>
-      <div style={{ position: 'absolute', top: '10px', right: '10px', padding: '3px 9px', borderRadius: '5px', background: 'rgba(13,13,38,0.7)', color: 'white', fontSize: '12px', fontWeight: 600, pointerEvents: 'none' }}>후</div>
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${pos}%`, width: '2px', background: 'white', boxShadow: '0 0 6px rgba(0,0,0,0.5)', pointerEvents: 'none' }} />
       <div style={{
         position: 'absolute', top: '50%', left: `${pos}%`, transform: 'translate(-50%, -50%)',
@@ -427,6 +427,12 @@ function App() {
   const [studioGallery, setStudioGallery] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  // 보관함 즐겨찾기 폴더 (2026-09-03) — 이미지 1장은 폴더 1개에만 속한다.
+  const [galleryFolders, setGalleryFolders] = useState([]);
+  const [activeFolderId, setActiveFolderId] = useState(null); // null이면 전체 보기
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [folderMenuOpenFor, setFolderMenuOpenFor] = useState(null); // 폴더 담기 팝오버가 열려있는 카드의 id
 
   // 이지 모드 (Easy Mode) vs 프로 모드 (Pro Mode)
   // 초보자 유저를 위한 복잡한 옵션 자동 숨김 상태
@@ -455,6 +461,7 @@ function App() {
   useEffect(() => {
     loadImageOptions();
     loadStudioGallery();
+    loadGalleryFolders();
   }, []);
 
   // 퇴근 모드 실행 중 실수로 탭을 닫으면 순차 생성이 그대로 끊긴다 — 확인 없이 닫히지 않게 막는다.
@@ -540,10 +547,85 @@ function App() {
       const res = await fetch(API_BASE_URL + '/v1/image/history');
       if (res.ok) {
         const data = await res.json();
-        setStudioGallery(data.generations || []);
+        // beforeImageFilename(블렌딩 전 원본, 서버에 파일로 저장됨)이 있으면 라이트박스의
+        // 전/후 비교 슬라이더가 쓸 수 있게 beforeImage 경로로 변환해둔다.
+        const generations = (data.generations || []).map(g => ({
+          ...g,
+          ...(g.beforeImageFilename ? { beforeImage: `/generated/${g.beforeImageFilename}` } : {})
+        }));
+        setStudioGallery(generations);
       }
     } catch (err) {
       console.error('갤러리 로드 실패:', err);
+    }
+  };
+
+  const loadGalleryFolders = async () => {
+    try {
+      const res = await fetch(API_BASE_URL + '/v1/image/folders');
+      if (res.ok) {
+        const data = await res.json();
+        setGalleryFolders(data.folders || []);
+      }
+    } catch (err) {
+      console.error('폴더 목록 로드 실패:', err);
+    }
+  };
+
+  const createGalleryFolder = async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    try {
+      const res = await fetch(API_BASE_URL + '/v1/image/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        setNewFolderName('');
+        setIsCreatingFolder(false);
+        loadGalleryFolders();
+      } else {
+        addToast('error', '폴더 생성 실패', '폴더를 만들지 못했습니다.');
+      }
+    } catch (err) {
+      console.error('폴더 생성 실패:', err);
+      addToast('error', '폴더 생성 실패', err.message);
+    }
+  };
+
+  const deleteGalleryFolder = async (folderId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/image/folders/${folderId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (activeFolderId === folderId) setActiveFolderId(null);
+        setGalleryFolders(prev => prev.filter(f => f.id !== folderId));
+        setStudioGallery(prev => prev.map(g => g.folderId === folderId ? { ...g, folderId: null } : g));
+      }
+    } catch (err) {
+      console.error('폴더 삭제 실패:', err);
+    }
+  };
+
+  // 이미지 한 장을 폴더에 넣거나(folderId 지정) 뺀다(folderId=null). 즐겨찾기 토글과 동일하게
+  // 먼저 화면을 낙관적으로 갱신하고, 실패하면 되돌린다.
+  const setImageFolder = async (item, folderId) => {
+    const prevFolderId = item.folderId ?? null;
+    setStudioGallery(prev => prev.map(g => g.id === item.id ? { ...g, folderId } : g));
+    setSelectedImage(prev => (prev && prev.id === item.id) ? { ...prev, folderId } : prev);
+    setFolderMenuOpenFor(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/image/history/${item.id}/folder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_id: folderId })
+      });
+      if (!res.ok) throw new Error('폴더 변경 실패');
+      loadGalleryFolders(); // 폴더별 이미지 수(itemCount)가 서버 계산값이라 다시 불러온다.
+    } catch (err) {
+      console.error('폴더 변경 실패:', err);
+      setStudioGallery(prev => prev.map(g => g.id === item.id ? { ...g, folderId: prevFolderId } : g));
+      setSelectedImage(prev => (prev && prev.id === item.id) ? { ...prev, folderId: prevFolderId } : prev);
     }
   };
 
@@ -3232,6 +3314,75 @@ function App() {
             </button>
           </div>
 
+          {/* 즐겨찾기 폴더 칩 목록 — 이미지 1장은 폴더 1개에만 속한다 */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+            <button
+              onClick={() => setActiveFolderId(null)}
+              style={{
+                padding: '5px 11px', borderRadius: '16px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                border: activeFolderId === null ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                background: activeFolderId === null ? 'rgba(51, 51, 153, 0.12)' : 'transparent',
+                color: activeFolderId === null ? 'var(--accent-cyan)' : 'var(--text-secondary)'
+              }}
+            >
+              전체
+            </button>
+            {galleryFolders.map(folder => (
+              <div
+                key={folder.id}
+                onClick={() => setActiveFolderId(folder.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 8px 5px 11px', borderRadius: '16px',
+                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                  border: activeFolderId === folder.id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                  background: activeFolderId === folder.id ? 'rgba(51, 51, 153, 0.12)' : 'transparent',
+                  color: activeFolderId === folder.id ? 'var(--accent-cyan)' : 'var(--text-secondary)'
+                }}
+              >
+                <Folder size={12} /> {folder.name} <span style={{ opacity: 0.6 }}>({folder.itemCount})</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteGalleryFolder(folder.id); }}
+                  title="폴더 삭제 (안의 이미지는 지워지지 않음)"
+                  style={{
+                    width: '15px', height: '15px', borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    background: 'transparent', color: 'inherit', opacity: 0.6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '10px', padding: 0
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {isCreatingFolder ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createGalleryFolder();
+                    if (e.key === 'Escape') { setIsCreatingFolder(false); setNewFolderName(''); }
+                  }}
+                  placeholder="폴더 이름"
+                  style={{ padding: '4px 8px', borderRadius: '14px', border: '1px solid var(--accent-cyan)', fontSize: '12px', width: '110px' }}
+                />
+                <button onClick={createGalleryFolder} style={{ padding: '4px 9px', borderRadius: '14px', border: 'none', background: 'var(--accent-cyan)', color: 'white', fontSize: '12px', cursor: 'pointer' }}>추가</button>
+                <button onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }} style={{ padding: '4px 9px', borderRadius: '14px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}>취소</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsCreatingFolder(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 11px', borderRadius: '16px',
+                  border: '1px dashed var(--border-color)', background: 'transparent', color: 'var(--text-secondary)',
+                  fontSize: '12px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                <FolderPlus size={12} /> 새 폴더
+              </button>
+            )}
+          </div>
+
           {studioGallery.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', gap: '12px' }}>
               <ImageIcon size={40} style={{ opacity: 0.3 }} />
@@ -3239,7 +3390,10 @@ function App() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-              {(showFavoritesOnly ? studioGallery.filter(item => item.isFavorite) : studioGallery).map(item => (
+              {studioGallery
+                .filter(item => !showFavoritesOnly || item.isFavorite)
+                .filter(item => activeFolderId === null || item.folderId === activeFolderId)
+                .map(item => (
                 <div
                   key={item.id}
                   onClick={() => setSelectedImage(item)}
@@ -3288,6 +3442,51 @@ function App() {
                   >
                     <Download size={14} />
                   </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setFolderMenuOpenFor(prev => prev === item.id ? null : item.id); }}
+                    title="폴더에 담기"
+                    className="overlay-chip"
+                    style={{ position: 'absolute', top: '46px', right: '8px', color: item.folderId ? 'var(--accent-cyan)' : '#e2e8f0' }}
+                  >
+                    <Folder size={14} fill={item.folderId ? 'var(--accent-cyan)' : 'none'} />
+                  </button>
+                  {folderMenuOpenFor === item.id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', top: '80px', right: '8px', zIndex: 2, minWidth: '130px',
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                        boxShadow: 'var(--shadow-pop)', padding: '4px', display: 'flex', flexDirection: 'column', gap: '2px'
+                      }}
+                    >
+                      <button
+                        onClick={() => setImageFolder(item, null)}
+                        style={{
+                          padding: '6px 8px', borderRadius: '5px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                          background: !item.folderId ? 'rgba(51, 51, 153, 0.1)' : 'transparent',
+                          color: 'var(--text-secondary)', fontSize: '12px'
+                        }}
+                      >
+                        폴더 없음
+                      </button>
+                      {galleryFolders.map(folder => (
+                        <button
+                          key={folder.id}
+                          onClick={() => setImageFolder(item, folder.id)}
+                          style={{
+                            padding: '6px 8px', borderRadius: '5px', border: 'none', textAlign: 'left', cursor: 'pointer',
+                            background: item.folderId === folder.id ? 'rgba(51, 51, 153, 0.1)' : 'transparent',
+                            color: item.folderId === folder.id ? 'var(--accent-cyan)' : 'var(--text-primary)', fontSize: '12px'
+                          }}
+                        >
+                          {folder.name}
+                        </button>
+                      ))}
+                      {galleryFolders.length === 0 && (
+                        <div style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>폴더가 없습니다</div>
+                      )}
+                    </div>
+                  )}
                   <div style={{
                     padding: '10px 12px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45,
                     display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
