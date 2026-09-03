@@ -244,7 +244,9 @@
       "Bash(powershell -Command \"Start-ScheduledTask -TaskName 'ImageStudio-HourlyBackup'\")",
       "Bash(powershell -Command \"\\(Get-ScheduledTaskInfo -TaskName 'ImageStudio-HourlyBackup'\\).LastTaskResult\")",
       "PowerShell(& \"C:\\\\Users\\\\unjin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone\\\\d7cdf044-f0fa-4b20-bcfc-cb2604711502\\\\scratchpad\\\\Test-DevLogFormat.ps1\" -RepoRoot \"C:\\\\Users\\\\unjin\\\\OneDrive - SANGJI\\\\���� ȭ��\\\\DX AI LAB\\\\image-studio-standalone\")",
-      "Bash(tail -20 /tmp/backend_restart2.log | grep -i BLEND)"
+      "Bash(tail -20 /tmp/backend_restart2.log | grep -i BLEND)",
+      "Bash(grep -i \"BLEND-FOOOCUS\" /tmp/backend_restart2.log | tail -3)",
+      "Bash(tail -5 /tmp/backend_restart2.log)"
     ]
   }
 }

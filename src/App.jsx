@@ -26,7 +26,8 @@ import {
   Zap,
   Upload,
   Layers,
-  Paintbrush
+  Paintbrush,
+  ChevronsLeftRight
 } from 'lucide-react';
 
 // 상대경로로 호출 — vite.config.js의 dev 서버 proxy(/v1, /generated → localhost:5000)를 통해
@@ -147,6 +148,68 @@ function ToastContainer({ toasts, removeToast }) {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+// 결과물을 "전/후" 비교로 볼 수 있는 드래그 슬라이더. beforeSrc 위에 afterSrc를 얹고,
+// 드래그 위치만큼 afterSrc를 clip-path로 잘라내 왼쪽엔 전, 오른쪽엔 후가 보이게 한다.
+function BeforeAfterSlider({ beforeSrc, afterSrc, maxHeight = '72vh' }) {
+  const [pos, setPos] = useState(50); // 0~100, 왼쪽(전)이 차지하는 비율
+  const containerRef = useRef(null);
+  const isDraggingRef = useRef(false);
+
+  const updateFromClientX = (clientX) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = ((clientX - rect.left) / rect.width) * 100;
+    setPos(Math.min(100, Math.max(0, ratio)));
+  };
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      updateFromClientX(clientX);
+    };
+    const onUp = () => { isDraggingRef.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      onMouseDown={(e) => { isDraggingRef.current = true; updateFromClientX(e.clientX); }}
+      onTouchStart={(e) => { isDraggingRef.current = true; updateFromClientX(e.touches[0].clientX); }}
+      style={{
+        position: 'relative', width: '100%', maxHeight, borderRadius: 'var(--radius-md)',
+        overflow: 'hidden', boxShadow: 'var(--shadow-pop)', cursor: 'ew-resize', userSelect: 'none', lineHeight: 0
+      }}
+    >
+      <img src={afterSrc} alt="후" draggable={false} style={{ width: '100%', maxHeight, objectFit: 'contain', display: 'block' }} />
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
+        <img src={beforeSrc} alt="전" draggable={false} style={{ width: '100%', maxHeight, objectFit: 'contain', display: 'block' }} />
+      </div>
+      <div style={{ position: 'absolute', top: '10px', left: '10px', padding: '3px 9px', borderRadius: '5px', background: 'rgba(13,13,38,0.7)', color: 'white', fontSize: '12px', fontWeight: 600, pointerEvents: 'none' }}>전</div>
+      <div style={{ position: 'absolute', top: '10px', right: '10px', padding: '3px 9px', borderRadius: '5px', background: 'rgba(13,13,38,0.7)', color: 'white', fontSize: '12px', fontWeight: 600, pointerEvents: 'none' }}>후</div>
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${pos}%`, width: '2px', background: 'white', boxShadow: '0 0 6px rgba(0,0,0,0.5)', pointerEvents: 'none' }} />
+      <div style={{
+        position: 'absolute', top: '50%', left: `${pos}%`, transform: 'translate(-50%, -50%)',
+        width: '32px', height: '32px', borderRadius: '50%', background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none'
+      }}>
+        <ChevronsLeftRight size={16} style={{ color: 'var(--accent-cyan)' }} />
+      </div>
     </div>
   );
 }
@@ -1369,7 +1432,10 @@ function App() {
             prompt: isEasyMode
               ? `블렌딩 (영향도 ${blendInfluence}%, ${BLEND_EMPHASIS_OPTIONS.find(o => o.value === blendEmphasis)?.label || ''}${blendStructureEnabled ? ', 형태 유지' : ''})`
               : `블렌딩 (슬롯 ${blendSlots.length}개, 감도 ${blendDenoise}%)`,
-            isFavorite: false
+            isFavorite: false,
+            // 라이트박스에서 "전/후" 비교 슬라이더로 보여주기 위해 기존 이미지를 같이 보관한다.
+            // 브라우저 메모리(data URL)에만 있어서 새로고침하면 사라진다 — 이번 세션 한정.
+            beforeImage: blendBaseImage
           };
           setStudioGallery(prev => [newItem, ...prev]);
           addToast('success', '블렌딩 완료', '이미지가 보관함에 추가되었습니다.');
@@ -3256,11 +3322,15 @@ function App() {
             >
               <X size={17} />
             </button>
-            <img
-              src={`/generated/${selectedImage.imageFilename}`}
-              alt=""
-              style={{ maxWidth: '100%', maxHeight: '72vh', borderRadius: 'var(--radius-md)', objectFit: 'contain', boxShadow: 'var(--shadow-pop)' }}
-            />
+            {selectedImage.beforeImage ? (
+              <BeforeAfterSlider beforeSrc={selectedImage.beforeImage} afterSrc={`/generated/${selectedImage.imageFilename}`} />
+            ) : (
+              <img
+                src={`/generated/${selectedImage.imageFilename}`}
+                alt=""
+                style={{ maxWidth: '100%', maxHeight: '72vh', borderRadius: 'var(--radius-md)', objectFit: 'contain', boxShadow: 'var(--shadow-pop)' }}
+              />
+            )}
             <div className="surface-card" style={{ color: 'var(--text-primary)', fontSize: '14.5px', padding: '14px 16px', lineHeight: 1.5 }}>
               <div><strong style={{ color: 'var(--accent-cyan)' }}>프롬프트</strong> · {selectedImage.prompt}</div>
               <div style={{ fontSize: '12.5px', color: 'var(--text-tertiary)', marginTop: '6px' }}>
