@@ -246,7 +246,14 @@
       "PowerShell(& \"C:\\\\Users\\\\unjin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone\\\\d7cdf044-f0fa-4b20-bcfc-cb2604711502\\\\scratchpad\\\\Test-DevLogFormat.ps1\" -RepoRoot \"C:\\\\Users\\\\unjin\\\\OneDrive - SANGJI\\\\���� ȭ��\\\\DX AI LAB\\\\image-studio-standalone\")",
       "Bash(tail -20 /tmp/backend_restart2.log | grep -i BLEND)",
       "Bash(grep -i \"BLEND-FOOOCUS\" /tmp/backend_restart2.log | tail -3)",
-      "Bash(tail -5 /tmp/backend_restart2.log)"
+      "Bash(tail -5 /tmp/backend_restart2.log)",
+      "Bash(tail -60 /tmp/server_dev.log | tail -40)",
+      "Read(//c/ComfyUI/custom_nodes/**)",
+      "Read(//c//**)",
+      "Bash(find /c -maxdepth 5 -iname \"*fooocus*port*\")",
+      "Bash(python -c \"import torch; print\\(torch.__version__\\)\")",
+      "Bash(nohup /c/Users/unjin/AppData/Local/Temp/claude/C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone/d7cdf044-f0fa-4b20-bcfc-cb2604711502/scratchpad/cloudflared/cloudflared.exe tunnel --url http://localhost:5000)",
+      "Bash(echo \"started pid $!\")"
     ]
   }
 }

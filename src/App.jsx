@@ -1719,10 +1719,10 @@ function App() {
               background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
               WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent'
             }}>
-              상지건축 AI Image Studio
+              상지건축 DX설계본부 AX LAB
             </h1>
             <p style={{ margin: '2px 0 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>
-              건축 실사화 · 이미지 편집 · 블렌딩을 한 곳에서
+              AI Image Studio
             </p>
           </div>
         </div>
