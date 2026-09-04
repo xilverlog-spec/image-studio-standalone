@@ -21,6 +21,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows 작업 스케줄러가 실행하는 PowerShell 5.1은 콘솔 인코딩이 시스템 로캘(한글 Windows면
+# CP949)로 잡혀있다. 이 상태로 claude -p에 한글 프롬프트를 파이프로 넘기거나 응답을 받으면
+# 전부 깨진다(mojibake) — 그래서 아래에서 명시적으로 UTF-8로 맞춘다.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Set-Location $RepoRoot
 
 $StateFile = Join-Path $RepoRoot ".claude\devlog-state.json"

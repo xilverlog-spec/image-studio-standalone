@@ -8,6 +8,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
 
 # Add backend directory to sys.path
@@ -44,6 +45,22 @@ app.mount("/generated", StaticFiles(directory=OUTPUT_IMAGES_DIR), name="generate
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": "image-studio-standalone"}
+
+# 2026-09-04: 100명 규모 사내 배포를 위해 각 PC에 Node.js/npm 설치를 요구하지 않도록,
+# `npm run build`로 미리 빌드해둔 정적 파일(dist/)을 백엔드가 직접 서빙한다 — 이러면
+# 설치기가 Python 하나만 준비하면 되고, 프론트도 백엔드도 이 프로세스 하나(포트 5000)로 뜬다.
+# dist/가 없으면(개발 중 `npm run dev`로 따로 띄우는 경우) 조용히 건너뛴다.
+FRONTEND_DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist"))
+if os.path.isdir(FRONTEND_DIST_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="frontend-assets")
+
+    @app.get("/{full_path:path}")
+    def serve_frontend(full_path: str):
+        candidate = os.path.join(FRONTEND_DIST_DIR, full_path)
+        if full_path and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        # SPA 라우팅: 나머지 경로는 전부 index.html로 돌려보내 React Router 등에 위임한다.
+        return FileResponse(os.path.join(FRONTEND_DIST_DIR, "index.html"))
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=5000, reload=False)
