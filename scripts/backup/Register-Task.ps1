@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   "ImageStudio-HourlyBackup" Windows 작업 스케줄러 작업을 등록(또는 재등록)한다.
   최초 1회, 또는 스케줄/경로를 바꿨을 때 직접 실행하면 된다.

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Windows 작업 스케줄러가 매시간 실행하는 로컬 Git 백업.
   이 PC의 실제 작업 폴더에서 변경사항을 감지해 커밋하고 origin main에 푸시한다.
