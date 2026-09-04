@@ -99,7 +99,7 @@ def save_generation(prompt: str, style: str, aspect_ratio: str, sampler_name: st
         conn.close()
 
 
-def list_generations(project: str = DEFAULT_PROJECT, limit: int = 60, folder_id: int = None) -> list:
+def list_generations(project: str = DEFAULT_PROJECT, limit: int = 500, folder_id: int = None) -> list:
     conn = _connect()
     try:
         cur = conn.cursor()

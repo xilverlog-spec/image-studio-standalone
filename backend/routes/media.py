@@ -350,7 +350,7 @@ async def image_inpaint(request: ImageInpaintRequest):
 
 
 @router.get("/image/history")
-async def get_image_history(project: str = image_history_store.DEFAULT_PROJECT, limit: int = 60,
+async def get_image_history(project: str = image_history_store.DEFAULT_PROJECT, limit: int = 500,
                              folder_id: Optional[int] = None):
     """이미지 생성 스튜디오의 생성 이력 (2026-08-20 신설). folder_id를 주면 그 폴더에
     속한 이미지만 반환한다(2026-09-03, 즐겨찾기 폴더 기능)."""
