@@ -253,7 +253,13 @@
       "Bash(find /c -maxdepth 5 -iname \"*fooocus*port*\")",
       "Bash(python -c \"import torch; print\\(torch.__version__\\)\")",
       "Bash(nohup /c/Users/unjin/AppData/Local/Temp/claude/C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone/d7cdf044-f0fa-4b20-bcfc-cb2604711502/scratchpad/cloudflared/cloudflared.exe tunnel --url http://localhost:5000)",
-      "Bash(echo \"started pid $!\")"
+      "Bash(echo \"started pid $!\")",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''python.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*main.py*'\\\\'' } | Select-Object ProcessId, CommandLine | Format-List')",
+      "Bash(powershell -NoProfile -Command \"\\(Get-CimInstance Win32_Process -Filter \\\\\"ProcessId=46848\\\\\"\\).ExecutablePath; \\(Get-CimInstance Win32_Process -Filter \\\\\"ProcessId=46848\\\\\"\\) | Select-Object CreationDate, ParentProcessId\")",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 46848 | Select-Object Path, StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 46848 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 26852 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv)",
+      "Bash(curl -s -X POST http://localhost:5000/v1/image/generate -H \"Content-Type: application/json\" -d '{\"prompt\":\"a simple red cube on white background\",\"style\":\"none\"}' -o /tmp/gen_test_result.json -w \"http_code=%{http_code} time=%{time_total}s\\\\n\")"
     ]
   }
 }
