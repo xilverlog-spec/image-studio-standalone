@@ -259,7 +259,14 @@
       "Bash(powershell -NoProfile -Command \"Get-Process -Id 46848 | Select-Object Path, StartTime\")",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 46848 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 26852 -Force -ErrorAction SilentlyContinue\")",
       "Bash(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv)",
-      "Bash(curl -s -X POST http://localhost:5000/v1/image/generate -H \"Content-Type: application/json\" -d '{\"prompt\":\"a simple red cube on white background\",\"style\":\"none\"}' -o /tmp/gen_test_result.json -w \"http_code=%{http_code} time=%{time_total}s\\\\n\")"
+      "Bash(curl -s -X POST http://localhost:5000/v1/image/generate -H \"Content-Type: application/json\" -d '{\"prompt\":\"a simple red cube on white background\",\"style\":\"none\"}' -o /tmp/gen_test_result.json -w \"http_code=%{http_code} time=%{time_total}s\\\\n\")",
+      "Bash(curl -s -o /dev/null -w \"tunnel=%{http_code}\\\\n\" https://showtimes-rapid-zero-ballet.trycloudflare.com/health)",
+      "Bash(curl -s -o /dev/null -w \"backend=%{http_code}\\\\n\" http://localhost:5000/health)",
+      "Bash(curl -s -o /dev/null -w \"comfyui=%{http_code}\\\\n\" http://localhost:8188/)",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''python.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*main.py*'\\\\'' } | Measure-Object | Select-Object Count')",
+      "Bash(nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv)",
+      "Bash(CF=\"/c/Users/unjin/AppData/Local/Temp/claude/C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone/d7cdf044-f0fa-4b20-bcfc-cb2604711502/scratchpad/cloudflared/cloudflared.exe\" *)",
+      "Bash(curl -s -o /dev/null -w \"tunnel_health=%{http_code}\\\\n\" https://roll-instrumentation-cream-digital.trycloudflare.com/health)"
     ]
   }
 }
