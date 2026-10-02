@@ -4,6 +4,9 @@ venv/
 env/
 .venv/
 ENV/
+# 2026-09-18 StarVector 실험용 격리 venv/레포 — 방향 폐기됨, 5GB라 커밋 금지
+backend/star_vector_env/
+backend/star_vector_lib/
 
 # Build & Output
 dist/

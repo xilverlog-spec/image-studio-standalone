@@ -266,7 +266,26 @@
       "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''python.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*main.py*'\\\\'' } | Measure-Object | Select-Object Count')",
       "Bash(nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv)",
       "Bash(CF=\"/c/Users/unjin/AppData/Local/Temp/claude/C--Users-unjin-OneDrive---SANGJI-------DX-AI-LAB-image-studio-standalone/d7cdf044-f0fa-4b20-bcfc-cb2604711502/scratchpad/cloudflared/cloudflared.exe\" *)",
-      "Bash(curl -s -o /dev/null -w \"tunnel_health=%{http_code}\\\\n\" https://roll-instrumentation-cream-digital.trycloudflare.com/health)"
+      "Bash(curl -s -o /dev/null -w \"tunnel_health=%{http_code}\\\\n\" https://roll-instrumentation-cream-digital.trycloudflare.com/health)",
+      "PowerShell(node -v)",
+      "PowerShell(npm -v)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(pip --version 2>&1)",
+      "PowerShell(ollama -v 2>&1)",
+      "PowerShell(nvidia-smi 2>&1)",
+      "PowerShell(winget --version)",
+      "PowerShell(winget list --id OpenJS.NodeJS.LTS 2>&1)",
+      "PowerShell(winget list --id Python.Python.3.12 2>&1)",
+      "PowerShell(winget install -e --id OpenJS.NodeJS.LTS --source winget --accept-package-agreements --accept-source-agreements --silent)",
+      "PowerShell(winget install -e --id Python.Python.3.12 --source winget --accept-package-agreements --accept-source-agreements --silent)",
+      "PowerShell(winget install -e --id Ollama.Ollama --source winget --accept-package-agreements --accept-source-agreements --silent)",
+      "PowerShell(Invoke-WebRequest -Uri \"https://api.github.com/repos/comfyanonymous/ComfyUI/releases/latest\" -UseBasicParsing)",
+      "PowerShell(winget install -e --id 7zip.7zip --source winget --accept-package-agreements --accept-source-agreements --silent)",
+      "PowerShell(Get-Process msiexec, python-3.12.10-amd64, OllamaSetup, 7z2603-x64, powershell -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-BitsTransfer -AllUsers -ErrorAction SilentlyContinue)",
+      "PowerShell(& \"C:\\\\Program Files\\\\7-Zip\\\\7z.exe\" x \"C:\\\\ComfyUI_dl\\\\ComfyUI_windows_portable_nvidia.7z\" -o\"C:\\\\\" -y)",
+      "PowerShell(Get-ChildItem \"C:\\\\\" -Directory | Where-Object { $_.Name -match \"ComfyUI\" })",
+      "PowerShell(Get-Process 7z -ErrorAction SilentlyContinue)"
     ]
   }
 }

@@ -41,7 +41,11 @@ DEFAULT_NEGATIVE = (
     "bad photography, bad art, error, username, autograph, trademark, grainy, "
     "morbid, asymmetrical, mutilated, poorly lit, bad shadow, draft, cut off, censored, "
     "out of focus, glitch, duplicate, airbrushed, semi-realistic, cgi, render, blender, "
-    "digital art, amateur, bad teeth, bad arms, bad legs, deformities"
+    "digital art, amateur, bad teeth, bad arms, bad legs, deformities, "
+    # 2026-09-11: 사내 공유 배포용 안전 억제 — 키워드 차단(services/content_safety.py)을
+    # 통과한 프롬프트라도 이 방향으로는 덜 나오도록 항상 얹는다.
+    "nsfw, nudity, nude, naked, explicit content, sexual content, porn, hentai, "
+    "gore, graphic violence, disturbing, offensive content"
 )
 
 # ── 2026-08-20: Fooocus의 "다운로드 없이 되는" 전문가 튜닝 기능 이식 ──────────
@@ -253,36 +257,10 @@ def list_available_checkpoints():
 
     ComfyUI API 엔드포인트(/object_info)는 존재하지 않으므로, 직접 파일 시스템에서 조회한다.
     """
-    import platform
+    checkpoint_dir = os.path.expanduser("~/Downloads/ComfyUI/models/checkpoints")
 
-    # Windows와 Linux 경로 구분
-    if platform.system() == "Windows":
-        checkpoint_dir = r"C:\Users\unjin\Downloads\ComfyUI\models\checkpoints"
-    else:
-        checkpoint_dir = os.path.expanduser("~/Downloads/ComfyUI/models/checkpoints")
-
-    # Hardcoded 모델 직접 반환 (파일 시스템 자동 감지보다 안정적)
-    return [
-        {
-            "name": "juggernautXL_v8Rundiffusion.safetensors",
-            "family": "SDXL",
-            "is_default": True
-        },
-        {
-            "name": "sd_xl_base_1.0.safetensors",
-            "family": "SDXL",
-            "is_default": False
-        },
-        {
-            "name": "v1-5-pruned-emaonly.safetensors",
-            "family": "SD1.5",
-            "is_default": False
-        }
-    ]
-
-    # 이하 코드는 사용하지 않음
     ckpt_files = []
-    if False and os.path.exists(checkpoint_dir):
+    if os.path.exists(checkpoint_dir):
         ckpt_files = sorted([f for f in os.listdir(checkpoint_dir) if f.endswith(('.safetensors', '.ckpt', '.pt')) and not f.startswith('put_')])
 
     if not ckpt_files:
@@ -500,7 +478,8 @@ def build_sdxl_turbo_workflow(prompt: str, width: int = DEFAULT_WIDTH, height: i
                               style: str = "none", sampler_name: str = None, scheduler: str = None,
                               seed: int = None, negative_extra: str = "", loras: list = None,
                               checkpoint: str = None, input_image_name: str = None, denoise: float = 1.0,
-                              enable_face_detailer: bool = False, controlnet_strength: float = 0.0):
+                              enable_face_detailer: bool = False, controlnet_strength: float = 0.0,
+                              controlnet_end_percent: float = 1.0):
     """
     style/sampler_name/scheduler/seed/loras는 2026-08-20 Fooocus 기능 이식으로 추가된 선택 인자.
     전부 기본값이 있어 기존 호출부(ppt.py 등 안 넘기는 곳)는 그대로 동작한다.
@@ -656,12 +635,12 @@ def build_sdxl_turbo_workflow(prompt: str, width: int = DEFAULT_WIDTH, height: i
                         "image": ["20", 0],
                         "strength": controlnet_strength,
                         "start_percent": 0.0,
-                        "end_percent": 1.0,
+                        "end_percent": controlnet_end_percent,
                     },
                 }
                 workflow["3"]["inputs"]["positive"] = ["22", 0]
                 workflow["3"]["inputs"]["negative"] = ["22", 1]
-                print(f"  [ControlNet] Canny 엣지 고정 적용 (model={canny_model}, strength={controlnet_strength})")
+                print(f"  [ControlNet] Canny 엣지 고정 적용 (model={canny_model}, strength={controlnet_strength}, end_percent={controlnet_end_percent})")
             else:
                 print("  [ControlNet] Canny 모델이 설치돼 있지 않아 형태 고정 없이 진행합니다.")
 
@@ -1544,7 +1523,8 @@ def generate_image_or_raise(prompt: str, output_path: str, width: int = DEFAULT_
                             style: str = "none", sampler_name: str = None, scheduler: str = None,
                             seed: int = None, negative_extra: str = "", loras: list = None,
                             checkpoint: str = None, input_image_bytes: bytes = None, denoise: float = 1.0,
-                            disable_face_detailer: bool = False, controlnet_strength: float = 0.0):
+                            disable_face_detailer: bool = False, controlnet_strength: float = 0.0,
+                            controlnet_end_percent: float = 1.0):
     """generate_image와 동일하지만 실패 원인을 예외로 그대로 올린다.
 
     호출자(API 라우트)가 "ComfyUI가 꺼져 있나요?" 같은 뭉뚱그린 메시지 대신
@@ -1597,6 +1577,7 @@ def generate_image_or_raise(prompt: str, output_path: str, width: int = DEFAULT_
             input_image_name=input_image_name, denoise=denoise,
             enable_face_detailer=enable_face_detailer,
             controlnet_strength=controlnet_strength,
+            controlnet_end_percent=controlnet_end_percent,
         )
     queue_response = queue_prompt(workflow)
     prompt_id = queue_response["prompt_id"]
@@ -2181,17 +2162,35 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
         }
         clip_link = ["clipskip", 0]
 
-        workflow["4"] = {"inputs": {"text": prompt or "", "clip": clip_link}, "class_type": "CLIPTextEncode"}
-        workflow["5"] = {"inputs": {"text": DEFAULT_NEGATIVE, "clip": clip_link}, "class_type": "CLIPTextEncode"}
-
-        positive_link, negative_link = ["4", 0], ["5", 0]
         structure_slots = [(i, s) for i, s in enumerate(slots) if s["type"] in FOOOCUS_STRUCTURE_TYPES]
         reference_slots = [(i, s) for i, s in enumerate(slots) if s["type"] in FOOOCUS_REFERENCE_TYPES]
 
+        # 2026-09-10: Structure 슬롯이 있으면 아래에서 denoise=1.0(완전 재생성, 빈 latent에서
+        # 시작)으로 돌아간다 — 이때 프롬프트까지 비어있으면 텍스트 가이드가 하나도 없이
+        # ControlNet 엣지만 보고 그리게 되어 채도가 뒤집힌 네온 추상화가 나온다(실측 버그).
+        # 이지 모드는 원래 "이미지만으로 블렌딩"이라 프롬프트를 안 보내므로, 이 경우에만
+        # 무난한 기본 문구로 채워 최소한의 사실적 가이드를 준다.
+        effective_prompt = prompt
+        if not effective_prompt and structure_slots:
+            effective_prompt = "masterpiece, best quality, photorealistic, natural colors, highly detailed"
+
+        workflow["4"] = {"inputs": {"text": effective_prompt or "", "clip": clip_link}, "class_type": "CLIPTextEncode"}
+        workflow["5"] = {"inputs": {"text": DEFAULT_NEGATIVE, "clip": clip_link}, "class_type": "CLIPTextEncode"}
+
+        positive_link, negative_link = ["4", 0], ["5", 0]
+
         # ── Structure: 슬롯마다 순차적으로 ControlNet 체이닝 ──
+        # 2026-09-10 실측: Structure(ControlNet)를 기본 강도(1.0)로 Reference(IP-Adapter)와
+        # 같이 쓰면 두 조건이 서로 과하게 경합해 채도가 뒤집힌 추상적 결과가 나온다.
+        # 0.4 정도로 낮추면 건물 형태는 그대로 유지되면서 훨씬 안정적으로 섞인다 — 슬롯 하나만
+        # 쓸 때(구조 단독)는 그대로 강하게 둬도 문제없다.
+        structure_weight_cap = 0.4 if len(reference_slots) > 0 else None
+
         for n, (i, slot) in enumerate(structure_slots):
             stop_at = slot.get("stop_at", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["stop_at"])
             weight = slot.get("weight", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["weight"])
+            if structure_weight_cap is not None:
+                weight = min(weight, structure_weight_cap)
             controlnet_name = FOOOCUS_PYRACANNY_CONTROLNET if slot["type"] == "PyraCanny" else FOOOCUS_CPDS_CONTROLNET
             pre_id, ld_id, app_id = f"sPre{n}", f"sLd{n}", f"sApp{n}"
             workflow[pre_id] = {
@@ -2212,19 +2211,28 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
             positive_link, negative_link = [app_id, 0], [app_id, 1]
 
         has_structure = len(structure_slots) > 0
+        has_reference = len(reference_slots) > 0
         if denoise_override is not None:
             # 프로 모드 "기존 이미지 감도" 슬라이더 — 구조 슬롯이 있어도 기존 이미지의 실제
             # 픽셀(색감/질감)을 denoise 비율만큼 남겨둔 채로 시작한다(ControlNet은 그대로
             # 형태를 잡아줌). 자동 계산을 완전히 대체한다.
             workflow["6"] = {"inputs": {"pixels": ["2", 0], "vae": ["1", 2]}, "class_type": "VAEEncode"}
             denoise = max(0.05, min(1.0, denoise_override))
-        elif has_structure:
-            # Structure가 형태를 고정해주므로 완전 재생성(denoise=1.0) — 빈 latent에서 시작.
+        elif has_structure and not has_reference:
+            # Structure만 있으면 ControlNet이 형태를 완전히 고정해주므로 순수 재생성
+            # (denoise=1.0, 빈 latent에서 시작)해도 안전하다.
             workflow["6"] = {
                 "inputs": {"width": base_img.width, "height": base_img.height, "batch_size": 1},
                 "class_type": "EmptyLatentImage",
             }
             denoise = 1.0
+        elif has_structure and has_reference:
+            # 2026-09-10 실측 버그: Structure(ControlNet)와 Reference(IP-Adapter)를 같이 쓰면서
+            # 빈 latent(denoise=1.0)로 시작하면, 색감을 잡아줄 실제 픽셀 정보가 전혀 없는 채로
+            # 두 조건이 서로 경합해 채도가 뒤집힌 추상적인 결과가 나온다. 실제 이미지 픽셀에서
+            # 살짝만(0.85) denoise해 최소한의 색감 기준점을 남겨두면 훨씬 안정적으로 섞인다.
+            workflow["6"] = {"inputs": {"pixels": ["2", 0], "vae": ["1", 2]}, "class_type": "VAEEncode"}
+            denoise = 0.85
         else:
             # Structure 슬롯이 하나도 없으면 기본 이미지 latent에서 부분 denoise로 시작
             # (참조 슬롯들의 평균 weight가 셀수록 원본에서 더 멀어지게).

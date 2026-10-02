@@ -15,8 +15,44 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import comfyui_client
 from services.simple_chat import chat_completion
 from services import image_history_store
+from services import content_safety
 
 router = APIRouter(prefix="/v1")
+
+
+def _reject_if_unsafe(*texts: str, project: str = ""):
+    """사내 공유 배포용 1차 방어선(2026-09-11) — ComfyUI로 넘기기 전에 프롬프트에
+    선정적/폭력적/혐오 표현이 섞여 있으면 GPU를 쓰기도 전에 거부한다."""
+    blocked = content_safety.find_blocked_terms(*texts)
+    if blocked:
+        content_safety.log_blocked("prompt", f"project={project} terms={blocked} text={' | '.join(t for t in texts if t)[:200]}")
+        raise HTTPException(
+            status_code=400,
+            detail="부적절한 내용(선정적/폭력적 표현 등)이 포함된 요청이라 생성할 수 없습니다. 프롬프트를 수정해주세요.",
+        )
+
+
+async def _reject_if_unsafe_image(*file_paths: str, project: str = ""):
+    """2차 방어선(2026-09-11) — 프롬프트가 무해해 보여도, 모델 자체 편향 등으로 결과물이
+    부적절하게 나올 수 있다. 실제 생성된 파일을 검사해서 걸리면 그 파일(들)을 지우고
+    거부한다 — 부적절한 이미지가 갤러리/디스크에 남지 않게 한다."""
+    for path in file_paths:
+        if not path or not os.path.exists(path):
+            continue
+        is_safe, reason, score = await asyncio.to_thread(content_safety.check_image_safety, path)
+        if not is_safe:
+            content_safety.log_blocked("image", f"project={project} path={path} reason={reason} score={score:.3f}")
+            for p in file_paths:
+                if p and os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+            raise HTTPException(
+                status_code=400,
+                detail=f"생성된 이미지가 {reason} 내용으로 판단되어 차단되었습니다(신뢰도 {score:.0%}). 프롬프트를 수정해서 다시 시도해주세요.",
+            )
+
 
 class LoraSpec(BaseModel):
     name: str
@@ -58,6 +94,11 @@ class ImageGenerateRequest(BaseModel):
     # 2026-08-31: img2img일 때 Canny ControlNet으로 원본 외곽선(형태)을 고정한 채
     # denoise를 높여 재질/조명만 실사로 다시 그리게 한다. 0이면 미사용(기존 동작).
     controlnet_strength: float = 0.0
+    # 2026-09-15: ControlNet이 diffusion 과정 중 몇 %까지 개입할지. 1.0(기본값)이면 끝까지
+    # 강제 — strength를 낮게 줘도 Canny 엣지 자체가 워낙 촘촘해서 "약하게 거는" 느낌이 잘 안
+    # 살아 여전히 형태가 거의 고정되는 문제가 있었다. 이 값을 낮추면 초반 일부 스텝만 참고하고
+    # 후반은 AI가 자유롭게 재해석하게 되어 훨씬 부드러운 형태 보존율 조절이 된다.
+    controlnet_end_percent: float = 1.0
 
 @router.post("/image/generate")
 async def image_generate(request: ImageGenerateRequest):
@@ -67,12 +108,16 @@ async def image_generate(request: ImageGenerateRequest):
 
     응답에는 프론트엔드가 채팅창에 바로 그려 넣을 수 있도록 base64를 함께 담는다.
     """
-    # output file path will be saved inside output/images
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
+    _reject_if_unsafe(request.prompt, project=request.project)
+    # output file path will be saved inside output/images/<project> — 프로젝트마다 결과물
+    # 파일 자체를 실제로 분리 저장한다(2026-09-10, DB 필터링만으로는 부족하다는 요청).
+    project_dir = image_history_store.project_dir_name(request.project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
     os.makedirs(output_dir, exist_ok=True)
 
-    filename = request.filename or f"gen_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
-    output_path = os.path.join(output_dir, filename)
+    bare_filename = request.filename or f"gen_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    output_path = os.path.join(output_dir, bare_filename)
+    filename = f"{project_dir}/{bare_filename}"
 
     # 실제로 어떤 체크포인트가 쓰일지 먼저 확정한다 — 화면비→픽셀 변환이 여기에 따라 달라진다.
     # (SD1.5에 1024를 주거나 SDXL에 640을 주면 결과물이 망가진다 — resolve_dimensions 주석 참고)
@@ -121,6 +166,7 @@ async def image_generate(request: ImageGenerateRequest):
             denoise=request.denoise,
             disable_face_detailer=request.disable_face_detailer,
             controlnet_strength=request.controlnet_strength,
+            controlnet_end_percent=request.controlnet_end_percent,
         )
     except Exception as e:
         # 실제 원인을 그대로 올려보낸다 (체크포인트 없음/타임아웃/노드 오류 등)
@@ -131,6 +177,8 @@ async def image_generate(request: ImageGenerateRequest):
             status_code=500,
             detail="ComfyUI가 이미지를 반환하지 않았습니다. ComfyUI가 켜져 있는지 확인하세요."
         )
+
+    await _reject_if_unsafe_image(res_path, project=request.project)
 
     # 2026-08-20: 이미지 생성 스튜디오의 "이력이 새로고침 후에도 남아야 한다" 요구사항 —
     # 콘솔 자동 위임/스튜디오 직접 생성 어느 경로든 여기 한 줄씩 쌓인다.
@@ -175,6 +223,7 @@ async def image_edit(request: ImageEditRequest):
     일반 생성(/image/generate)의 img2img와 달리 프롬프트를 처음부터 다시 쓰는 게 아니라
     "이 이미지에서 이것만 바꿔줘" 식의 지시를 그대로 이해해서 편집한다.
     """
+    _reject_if_unsafe(request.instruction, project=request.project)
     if not comfyui_client.is_flux_kontext_available():
         raise HTTPException(
             status_code=503,
@@ -187,10 +236,12 @@ async def image_edit(request: ImageEditRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
 
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
+    project_dir = image_history_store.project_dir_name(request.project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"kontext_edit_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
-    output_path = os.path.join(output_dir, filename)
+    bare_filename = f"kontext_edit_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    output_path = os.path.join(output_dir, bare_filename)
+    filename = f"{project_dir}/{bare_filename}"
 
     seed_used = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
 
@@ -207,6 +258,8 @@ async def image_edit(request: ImageEditRequest):
 
     if not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="ComfyUI가 편집된 이미지를 반환하지 않았습니다.")
+
+    await _reject_if_unsafe_image(output_path, project=request.project)
 
     try:
         image_history_store.save_generation(
@@ -269,6 +322,7 @@ async def image_inpaint(request: ImageInpaintRequest):
     Fooocus의 Inpaint/Outpaint 기능을 이 프로젝트의 ComfyUI 백엔드로 이식한 것 —
     InpaintModelConditioning 노드를 써서 별도 모델 다운로드 없이 지금 체크포인트 그대로 동작한다.
     """
+    _reject_if_unsafe(request.prompt, project=request.project)
     has_mask = bool(request.mask_base64)
     has_expand = any([request.expand_left, request.expand_top, request.expand_right, request.expand_bottom])
     if not has_mask and not has_expand:
@@ -293,11 +347,13 @@ async def image_inpaint(request: ImageInpaintRequest):
             "right": request.expand_right, "bottom": request.expand_bottom,
         }
 
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
+    project_dir = image_history_store.project_dir_name(request.project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
     os.makedirs(output_dir, exist_ok=True)
     mode = "outpaint" if outpaint else "inpaint"
-    filename = f"{mode}_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
-    output_path = os.path.join(output_dir, filename)
+    bare_filename = f"{mode}_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    output_path = os.path.join(output_dir, bare_filename)
+    filename = f"{project_dir}/{bare_filename}"
 
     try:
         checkpoint_used = comfyui_client.get_available_checkpoint(prefer=request.checkpoint)
@@ -325,6 +381,8 @@ async def image_inpaint(request: ImageInpaintRequest):
 
     if not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="ComfyUI가 이미지를 반환하지 않았습니다.")
+
+    await _reject_if_unsafe_image(output_path, project=request.project)
 
     try:
         image_history_store.save_generation(
@@ -367,17 +425,23 @@ async def delete_image_history(gen_id: int, project: str = image_history_store.D
     image_filename = deleted["image_filename"]
 
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
-    # 경로 탈출 방지 — DB에 있던 값이라도 파일명만 허용한다
+    # 경로 탈출 방지 — DB에 있던 값이라도 output_dir 밖으로 못 나가게만 막는다.
+    # 2026-09-10: 이미지가 프로젝트별 하위 폴더에 저장되므로 os.path.basename으로 폴더째
+    # 지워버리면 파일을 못 찾아 삭제가 조용히 실패한다 — normpath 검증으로 바꿨다.
     for fname in (deleted["image_filename"], deleted["before_image_filename"]):
         if not fname:
             continue
-        safe_name = os.path.basename(fname)
-        file_path = os.path.join(output_dir, safe_name)
+        normalized_rel = os.path.normpath(fname.replace("\\", "/"))
+        if normalized_rel.startswith("..") or os.path.isabs(normalized_rel):
+            continue
+        file_path = os.path.join(output_dir, normalized_rel)
+        if not os.path.abspath(file_path).startswith(os.path.abspath(output_dir) + os.sep):
+            continue
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
             except OSError as e:
-                print(f"[WARNING] ImageHistory: 이력은 지웠지만 파일 삭제 실패({safe_name}): {e}")
+                print(f"[WARNING] ImageHistory: 이력은 지웠지만 파일 삭제 실패({normalized_rel}): {e}")
 
     return {"status": "success", "deleted": 1, "image_filename": image_filename}
 
@@ -459,8 +523,9 @@ async def set_image_folder(gen_id: int, request: SetFolderRequest):
 
 
 class UpscaleRequest(BaseModel):
-    filename: str  # output/images/의 기존 이미지 파일명 (경로 아님)
+    filename: str  # output/images/<project>/파일명 (project 하위 경로 포함)
     model_name: Optional[str] = None  # 없으면 설치된 것 중 첫 번째
+    project: str = image_history_store.DEFAULT_PROJECT
 
 
 @router.get("/image/upscale_models")
@@ -480,14 +545,23 @@ async def image_upscale(request: UpscaleRequest):
     원본은 건드리지 않고 `upscaled_<원본파일명>`으로 새로 저장한다 — 업스케일 결과가
     마음에 안 들어도 원본을 잃지 않도록.
     """
+    # 2026-09-10: 이미지가 프로젝트별 하위 폴더(output/images/<project>/...)에 저장되므로
+    # 파일명에 폴더 구분자가 하나 섞여 들어온다 — 예전처럼 os.path.basename으로 통째로
+    # 지워버리면 원본을 못 찾는다. 대신 정규화한 경로가 output_dir 밖으로 못 나가게만 막는다.
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
-    safe_name = os.path.basename(request.filename)  # 경로 탈출 방지
-    source_path = os.path.join(output_dir, safe_name)
+    normalized_rel = os.path.normpath(request.filename.replace("\\", "/"))
+    if normalized_rel.startswith("..") or os.path.isabs(normalized_rel):
+        raise HTTPException(status_code=400, detail="잘못된 파일 경로입니다.")
+    source_path = os.path.join(output_dir, normalized_rel)
+    if not os.path.abspath(source_path).startswith(os.path.abspath(output_dir) + os.sep):
+        raise HTTPException(status_code=400, detail="잘못된 파일 경로입니다.")
     if not os.path.exists(source_path):
-        raise HTTPException(status_code=404, detail=f"원본 이미지를 찾을 수 없습니다: {safe_name}")
+        raise HTTPException(status_code=404, detail=f"원본 이미지를 찾을 수 없습니다: {request.filename}")
 
-    result_filename = f"upscaled_{safe_name}"
-    result_path = os.path.join(output_dir, result_filename)
+    rel_dir = os.path.dirname(normalized_rel)
+    result_bare_name = f"upscaled_{os.path.basename(normalized_rel)}"
+    result_filename = f"{rel_dir}/{result_bare_name}" if rel_dir else result_bare_name
+    result_path = os.path.join(output_dir, rel_dir, result_bare_name) if rel_dir else os.path.join(output_dir, result_bare_name)
 
     try:
         await asyncio.to_thread(
@@ -495,6 +569,19 @@ async def image_upscale(request: UpscaleRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"업스케일 실패: {e}")
+
+    # 2026-09-11: 업스케일 결과 파일은 원본과 같은 프로젝트 폴더에 잘 저장되고 있었지만
+    # 이력(image_generations)에 남기는 걸 빠뜨려서, 실제로는 성공해도 갤러리에 영영 안 보였다
+    # (프론트는 "보관함에 추가되었습니다"라고 토스트까지 띄우는데 거짓말이 되는 상태였음).
+    try:
+        image_history_store.save_generation(
+            prompt=f"[4K 업스케일] {request.filename}", style="none", aspect_ratio=None,
+            sampler_name=None, scheduler=None, seed=0, loras=[],
+            image_filename=result_filename, checkpoint=request.model_name or "upscale",
+            project=request.project,
+        )
+    except Exception as e:
+        print(f"[WARNING] ImageHistory: 업스케일 이력 저장 실패(업스케일 자체는 성공): {e}")
 
     with open(result_path, "rb") as f:
         image_base64 = base64.b64encode(f.read()).decode("ascii")
@@ -639,6 +726,30 @@ async def image_auto_tune(request: AutoTuneRequest):
     ):
         category = "general"
 
+    # 2.7 세부 스타일 키워드 강제 보정 — auto-tune이 LLM에게 주는 스키마(위 analysis_system_prompt)는
+    # "architecture"|"photograph"|"cinematic"|"anime"|"flat_illustration"|"fooocus_enhance"|"none" 7개만
+    # 선택지로 주기 때문에, 픽셀아트/수채화/만화책 같은 sai-* 세부 스타일은 LLM이 애초에 고를 수 없다.
+    # 2026-09-10 실측: "cute pixel art..." 프롬프트가 category=cinematic으로 오분류되며
+    # style="none"으로 저장됨(픽셀아트 스타일 프리셋이 전혀 적용 안 됨). 프롬프트에 특정 스타일을
+    # 명확히 가리키는 키워드가 있으면 LLM 응답과 무관하게 그 스타일로 강제 확정한다.
+    STYLE_KEYWORD_HINTS = {
+        "sai-pixel-art": ("pixel art", "pixelart", "8-bit", "8bit", "픽셀 아트", "픽셀아트", "도트 아트", "도트그림"),
+        "sai-watercolor": ("watercolor", "수채화"),
+        "sai-comic-book": ("comic book", "comic style", "만화책", "코믹북"),
+        "sai-line-art": ("line art", "라인 아트", "라인아트"),
+        "sai-neon-punk": ("neon punk", "네온펑크"),
+        "sai-fantasy-art": ("fantasy art", "판타지 아트"),
+        "sai-origami": ("origami", "종이접기"),
+        "sai-ukiyo-e": ("ukiyo-e", "우키요에"),
+        "sai-3d-model": ("3d render", "3d model", "3d 렌더", "3d 모델"),
+        "sai-sketch": ("pencil sketch", "연필 스케치", "스케치풍"),
+    }
+    _style_haystack = f"{user_prompt} {refined_prompt}".lower()
+    for _style_key, _keywords in STYLE_KEYWORD_HINTS.items():
+        if any(kw.lower() in _style_haystack for kw in _keywords):
+            suggested_style = _style_key
+            break
+
     # 3. Rule-based Guardrails (화이트리스트 대조 및 안전한 확정 매핑)
     # 스타일 검증
     if suggested_style not in comfyui_client.STYLE_PRESETS:
@@ -689,8 +800,11 @@ async def image_auto_tune(request: AutoTuneRequest):
         # portrait/cinematic 힌트는 RealVisXL(포토리얼 전용) 강제 배정이므로, 확정된 스타일이
         # 실사 계열(photograph/cinematic)일 때만 적용한다 — 그렇지 않으면 "수채화 느낌의 고양이"처럼
         # illustration/anime로 확정된 요청에도 포토리얼 체크포인트가 잘못 씌워진다(실측으로 발견).
-        photoreal_categories = {"architecture"} | ({"portrait", "cinematic"} if suggested_style in ("photograph", "cinematic") else set())
-        if category in photoreal_categories:
+        # architecture/anime/illustration/general은 이런 충돌이 없으므로 항상 힌트를 적용한다 —
+        # 예전 코드가 portrait/cinematic 전용 제약을 anime/illustration에도 실수로 걸어놔서
+        # animagine/dreamshaper 힌트가 전혀 매칭되지 않던 버그를 수정(2026-09-10).
+        skip_photoreal_hint = category in ("portrait", "cinematic") and suggested_style not in ("photograph", "cinematic")
+        if not skip_photoreal_hint:
             for pattern in CATEGORY_CHECKPOINT_HINTS.get(category, ()):
                 match = next((c["name"] for c in installed_checkpoints if pattern in c["name"].lower()), None)
                 if match:
@@ -788,60 +902,6 @@ async def get_generation_progress():
     }
 
 
-class UpscaleRequest(BaseModel):
-    filename: Optional[str] = None
-    image_filename: Optional[str] = None
-    scale_by: float = 2.0
-
-
-@router.post("/image/upscale")
-async def upscale_image_endpoint(req: UpscaleRequest):
-    """갤러리의 마음에 드는 이미지를 4K 초고화질로 2배~4배 리터칭 및 확장한다."""
-    target_filename = req.image_filename or req.filename
-    if not target_filename:
-        raise HTTPException(status_code=400, detail="업스케일할 이미지 파일명이 전달되지 않았습니다.")
-
-    input_path = os.path.join(OUTPUT_DIR, target_filename)
-    if not os.path.exists(input_path):
-        raise HTTPException(status_code=404, detail=f"업스케일할 원본 이미지를 찾을 수 없습니다: {target_filename}")
-
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    upscaled_filename = f"studio_4k_{timestamp_str}.png"
-    output_path = os.path.join(OUTPUT_DIR, upscaled_filename)
-
-    try:
-        res_path = await asyncio.to_thread(
-            comfyui_client.upscale_image, input_path, output_path, scale_by=req.scale_by
-        )
-    except TimeoutError as e:
-        raise HTTPException(status_code=504, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"4K 업스케일 처리 중 오류: {e}")
-
-    # 이력 저장소에 4K 업스케일 결과 등록
-    try:
-        image_history_store.save_generation(
-            prompt=f"[4K 초고화질 업스케일] {req.image_filename}",
-            style="photograph",
-            aspect_ratio="4K",
-            sampler_name="bicubic",
-            scheduler="normal",
-            seed=0,
-            loras=[],
-            image_filename=upscaled_filename,
-            checkpoint="ComfyUI_Upscaler_4K"
-        )
-    except Exception as e:
-        print(f"[WARNING] 4K 업스케일 이력 저장 실패: {e}")
-
-    return {
-        "status": "success",
-        "message": "4K 초고화질 업스케일 완료",
-        "filename": upscaled_filename,
-        "file_path": res_path
-    }
-
-
 # ── [Fooocus Quality Mode] ─────────────────────────────────────────
 class QualityModeGenerateRequest(BaseModel):
     """Fooocus Quality Mode 생성 요청."""
@@ -863,11 +923,14 @@ async def image_generate_quality(request: QualityModeGenerateRequest):
     Fooocus Quality Mode 이미지 생성.
     기존 production 파이프라인과 독립적인 별도 경로로 실행된다.
     """
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
+    _reject_if_unsafe(request.prompt, project=request.project)
+    project_dir = image_history_store.project_dir_name(request.project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
     os.makedirs(output_dir, exist_ok=True)
 
-    filename = f"quality_{request.preset}_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
-    output_path = os.path.join(output_dir, filename)
+    bare_filename = f"quality_{request.preset}_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    output_path = os.path.join(output_dir, bare_filename)
+    filename = f"{project_dir}/{bare_filename}"
 
     seed_used = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
 
@@ -890,6 +953,8 @@ async def image_generate_quality(request: QualityModeGenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fooocus Quality Mode 생성 실패: {e}")
 
+    await _reject_if_unsafe_image(output_path, project=request.project)
+
     # 생성된 이미지를 base64로 읽어서 응답에 포함
     try:
         with open(output_path, "rb") as f:
@@ -899,19 +964,14 @@ async def image_generate_quality(request: QualityModeGenerateRequest):
         image_base64 = ""
 
     # 이력 저장
+    # 2026-09-10: 예전에는 존재하지 않는 save_image_record()를 호출하고 있어서 try/except에
+    # 조용히 삼켜졌다 — Quality Mode로 생성한 이미지가 이력에 전혀 안 남던 버그였다.
+    # 다른 생성 경로와 동일하게 save_generation()으로 통일해서 고친다.
     try:
-        image_history_store.save_image_record(
-            project=request.project,
-            prompt=request.prompt,
-            output_filename=filename,
-            metadata={
-                "mode": "fooocus_quality",
-                "preset": request.preset,
-                "sharpness": request.sharpness,
-                "adm_guidance": request.adm_guidance,
-                "prompt_enhance": request.prompt_enhance,
-                **metadata
-            }
+        image_history_store.save_generation(
+            prompt=request.prompt, style=request.style, aspect_ratio=None,
+            sampler_name="fooocus", scheduler="fooocus", seed=seed_used, loras=[],
+            image_filename=filename, checkpoint=request.checkpoint, project=request.project,
         )
     except Exception as e:
         print(f"[WARNING] 이미지 이력 저장 실패: {e}")
@@ -949,6 +1009,7 @@ class ImageBlendRequest(BaseModel):
 @router.post("/image/blend")
 async def image_blend(request: ImageBlendRequest):
     """기본 이미지 + 슬롯(최대 4개, 각자 타입/강도 독립)을 Fooocus Image Prompt 방식으로 블렌딩한다."""
+    _reject_if_unsafe(request.prompt, project=request.project)
     try:
         base_image_bytes = base64.b64decode(request.base_image)
         if not request.slots:
@@ -965,17 +1026,20 @@ async def image_blend(request: ImageBlendRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
 
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images"))
+    project_dir = image_history_store.project_dir_name(request.project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
     os.makedirs(output_dir, exist_ok=True)
 
     suffix = os.urandom(3).hex()
-    filename = f"blend_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
-    output_path = os.path.join(output_dir, filename)
+    bare_filename = f"blend_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
+    output_path = os.path.join(output_dir, bare_filename)
+    filename = f"{project_dir}/{bare_filename}"
 
     # 라이트박스의 "전/후" 비교 슬라이더가 새로고침/서버 재시작 후에도 동작하도록, 원본(블렌딩
     # 전) 이미지도 결과와 함께 파일로 저장해둔다.
-    before_filename = f"blend_before_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
-    before_path = os.path.join(output_dir, before_filename)
+    bare_before_filename = f"blend_before_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.png"
+    before_path = os.path.join(output_dir, bare_before_filename)
+    before_filename = f"{project_dir}/{bare_before_filename}"
     with open(before_path, "wb") as f:
         f.write(base_image_bytes)
 
@@ -999,6 +1063,9 @@ async def image_blend(request: ImageBlendRequest):
 
     if not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="ComfyUI가 블렌딩된 이미지를 반환하지 않았습니다.")
+
+    # 결과물뿐 아니라 업로드된 원본(before) 이미지 자체가 부적절한 경우까지 같이 잡는다.
+    await _reject_if_unsafe_image(output_path, before_path, project=request.project)
 
     # 이력 저장
     try:
@@ -1080,4 +1147,57 @@ async def process_mask(request: MaskProcessRequest):
         "operation": operation,
         "mask_base64": result_base64,
     }
+
+
+# ── 2026-09-18: 다이어그램 탭 - 래스터 PNG를 벡터 SVG로 변환 (vtracer, 완전 로컬/무료) ──
+class VectorizeRequest(BaseModel):
+    image_base64: str
+
+
+@router.post("/image/vectorize")
+async def vectorize_image(request: VectorizeRequest):
+    """SDXL로 생성한 플랫 일러스트 스타일 PNG를 vtracer로 SVG로 변환한다.
+    진짜 벡터 논리로 그리는 게 아니라 래스터를 트레이싱하는 방식이라, 복잡한 이미지보다는
+    플랫 컬러/단순한 도형 위주 다이어그램에서 결과가 깔끔하다."""
+    try:
+        import vtracer
+    except ImportError:
+        raise HTTPException(status_code=500, detail="vtracer가 설치되어 있지 않습니다 (pip install vtracer).")
+
+    try:
+        image_bytes = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+
+    tmp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "tmp"))
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_in = os.path.join(tmp_dir, f"vectorize_in_{int(time.time() * 1000)}.png")
+    tmp_out = tmp_in.replace("_in_", "_out_").replace(".png", ".svg")
+
+    try:
+        with open(tmp_in, "wb") as f:
+            f.write(image_bytes)
+
+        await asyncio.to_thread(
+            vtracer.convert_image_to_svg_py,
+            tmp_in, tmp_out,
+            colormode="color", hierarchical="stacked", mode="spline",
+            filter_speckle=4, color_precision=6, layer_difference=16,
+            corner_threshold=60, length_threshold=4.0, max_iterations=10,
+            splice_threshold=45, path_precision=3,
+        )
+
+        with open(tmp_out, "r", encoding="utf-8") as f:
+            svg_text = f.read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"벡터화 실패: {e}")
+    finally:
+        for p in (tmp_in, tmp_out):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+    return {"status": "success", "svg": svg_text}
 

@@ -6,12 +6,23 @@
 """
 
 import json
+import re
 import sqlite3
 import time
 
 from config import DB_PATH
 
 DEFAULT_PROJECT = "default"
+
+
+def project_dir_name(project: str) -> str:
+    """프로젝트 이름을 실제 폴더명으로 안전하게 바꾼다(2026-09-10, 프로젝트별 결과물 파일
+    자체를 분리 저장하기 위해 신설). 사용자가 프로젝트 이름에 "../"나 OS가 못 쓰는 문자를
+    넣어도 경로 탈출/깨짐이 없도록 화이트리스트(문자/숫자/한글/공백/-/_)만 허용한다."""
+    if not project:
+        return DEFAULT_PROJECT
+    safe = re.sub(r"[^\w\-. 가-힣]", "_", project).strip().strip(".")
+    return safe or DEFAULT_PROJECT
 
 
 def _connect():

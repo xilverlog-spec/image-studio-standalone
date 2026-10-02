@@ -6,7 +6,9 @@ echo ========================================================
 echo.
 
 echo [1/3] ComfyUI 시작 중 (Port 8188)...
-if exist "C:\ComfyUI\venv\Scripts\python.exe" (
+if exist "C:\ComfyUI\python_embeded\python.exe" (
+    start "ComfyUI (8188)" cmd /k "cd /d C:\ComfyUI && python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build"
+) else if exist "C:\ComfyUI\venv\Scripts\python.exe" (
     start "ComfyUI (8188)" cmd /k "cd /d C:\ComfyUI && venv\Scripts\python.exe main.py --port 8188"
 ) else (
     echo   ⚠️ C:\ComfyUI 를 찾을 수 없습니다 — SETUP_GUIDE.md 5단계를 먼저 진행하세요.

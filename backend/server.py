@@ -16,7 +16,9 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from routes.media import router as media_router
 from routes.chat import router as chat_router
+from routes.projects import router as projects_router
 from services.image_history_store import init_image_history_db
+from services.project_store import init_project_db
 
 app = FastAPI(title="AI Image Studio Standalone API", version="1.0.0")
 
@@ -32,8 +34,10 @@ app.add_middleware(
 # Include Image Generation & ComfyUI Media Router (media_router already has prefix="/v1")
 app.include_router(media_router)
 app.include_router(chat_router)
+app.include_router(projects_router)
 
 init_image_history_db()
+init_project_db()
 
 # 생성된 이미지는 이 패키지 안에서 완결되도록 로컬 output/images 폴더에만 저장한다
 # (DX 랩 본체의 workspace_outputs 산출물 보관함은 여러 스튜디오가 공유하는 개념이라

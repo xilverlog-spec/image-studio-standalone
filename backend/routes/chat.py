@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.simple_chat import chat_completion
+from services.gemini_chat import gemini_chat_completion
 
 router = APIRouter(prefix="/v1")
 
@@ -33,15 +34,28 @@ class ChatCompletionRequest(BaseModel):
 
 @router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
+    # "gemini"로 시작하는 모델명은 로컬 Ollama 대신 Gemini API(무료 등급, 텍스트/비전 전용)로
+    # 라우팅한다 — § config.py GEMINI_API_KEY 주석 참고. 호출부(프론트엔드)는 두 경우 모두
+    # 같은 /v1/chat/completions 모양을 그대로 쓴다.
+    is_gemini = request.model.lower().startswith("gemini")
     try:
-        content = chat_completion(
-            model=request.model,
-            messages=[m.model_dump(exclude_none=True) for m in request.messages],
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        )
+        messages = [m.model_dump(exclude_none=True) for m in request.messages]
+        if is_gemini:
+            content = gemini_chat_completion(
+                model=request.model,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+            )
+        else:
+            content = chat_completion(
+                model=request.model,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+            )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM 요청 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"{'Gemini' if is_gemini else 'LLM'} 요청 실패: {e}")
 
     return {
         "id": "chatcmpl-standalone",

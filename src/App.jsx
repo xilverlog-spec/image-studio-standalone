@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import DiagramEditor from './DiagramEditor';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -29,7 +30,8 @@ import {
   Paintbrush,
   ChevronsLeftRight,
   Folder,
-  FolderPlus
+  FolderPlus,
+  ZoomIn
 } from 'lucide-react';
 
 // 상대경로로 호출 — vite.config.js의 dev 서버 proxy(/v1, /generated → localhost:5000)를 통해
@@ -95,6 +97,108 @@ const NIGHT_BATCH_FORMS = [
 const NIGHT_BATCH_LIGHTING = [
   "golden hour warm sunlight", "overcast soft diffused daylight", "blue hour twilight with interior lights glowing",
   "bright midday clear sky", "misty morning atmosphere", "dramatic side lighting with long shadows"
+];
+
+// 2026-09-15: "결과물이 미세한 차이만 있다"는 회의 피드백으로 추가 — 재질/조명처럼 스치는
+// 요소 말고, 건물 외관 자체(디자인)에 영향을 주는 차원들을 더 넣어서 진짜 다른 안처럼
+// 보이게 한다. 기본은 끔(위 3개 차원만 사용) — "확장 다양성 모드" 토글로만 켜진다.
+const NIGHT_BATCH_ARCHITECT_STYLES = [
+  "Tadao Ando-inspired bare board-formed concrete geometry with dramatic light and shadow",
+  "Zaha Hadid-inspired fluid parametric curves and futuristic massing",
+  "Le Corbusier-inspired pilotis, white volumes and modular proportions",
+  "Frank Lloyd Wright-inspired organic architecture with strong horizontal lines",
+  "Frank Gehry-inspired deconstructivist irregular curved metal forms",
+  "Renzo Piano-inspired high-tech exposed structure and transparency",
+  "Peter Zumthor-inspired minimal tactile materials and quiet atmosphere",
+  "SANAA-inspired ultra-light minimalist white box with transparent glass",
+  "Mies van der Rohe-inspired steel and glass grid, less-is-more minimalism",
+  "Louis Kahn-inspired monumental massing and architecture of light",
+  "Alvaro Siza-inspired restrained modernism with soft curves",
+  "Bjarke Ingels (BIG)-inspired pragmatic sculptural hybrid massing",
+  "Herzog & de Meuron-inspired experimental material facade",
+  "Kengo Kuma-inspired timber lattice in harmony with nature",
+  "Jean Nouvel-inspired context-responsive intricate screen facade"
+];
+// 2026-09-16: "다양성 범위"에 있던 야경/실내투시도/비오는날/화창한날 4개는 환경·분위기
+// 묘사일 뿐 건물 디자인과 무관하고(퇴근 모드는 매스/외관 판단용), 이미 따로 있는 "조명"
+// 차원과도 내용이 겹쳐 모순된 조합("야경"+"안개 낀 아침"처럼)이 나올 수 있었다 — 회의
+// 피드백으로 제거. 2개(모던/목조)만 남기면 너무 적어서, 건축양식 15개를 흡수해 총 17개로
+// 채운다(전부 "건물이 어떻게 생겼는지"만 다루는 항목).
+//
+// 2026-09-17 실측: modern/wood를 ARCH_STYLE_PRESETS 원본 그대로 재사용했더니, 그 프롬프트에
+// 박혀있던 "villa"/"residence" 같은 단독주택 뉘앙스 단어 때문에 3~4층짜리 원본 매스를 넣어도
+// 계속 저층 단독주택으로 해석돼버렸다("공통 조건"에 아무것도 안 써도 이 단어가 항상 자동으로
+// 섞여 들어가기 때문). 그렇다고 "building"처럼 반대쪽으로 고정해도 이번엔 저층 주택 프로젝트가
+// 괜히 고층으로 부풀려질 수 있다 — Canny 엣지는 "선 위치"만 알려줄 뿐 "몇 층/무슨 용도"는
+// 순전히 텍스트가 결정하는 별개 채널이라, 스케일을 시스템이 한쪽으로 추측하게 두면 항상
+// 틀릴 위험이 있다. 그래서 퇴근 모드 전용 사본을 따로 만들어 층수/용도를 암시하는 단어를
+// 아예 빼고 중립적으로 바꿨다 — 그 대신 "공통 조건"에 사용자가 직접 층수/용도를 적도록
+// 안내 문구를 붙인다(아래 UI). 건축물 탭의 ARCH_STYLE_PRESETS 원본은 그대로 둔다(영향 없음).
+const NIGHT_BATCH_STYLE_PRESETS = {
+  modern: { label: "모던 & 미니멀", desc: "콘크리트, 글라스, 철골 조화", prompt: "modern minimalist architecture, concrete and glass facade, black metal frames, neat grass garden, architectural photography, 8k resolution" },
+  wood: { label: "친환경 목조 & 석조", desc: "석재 데크와 우디 외벽 마감", prompt: "eco-friendly natural wooden panels, stone walls, warm integration with surrounding forest landscape, award-winning design, architectural photography" },
+  bauhaus: { label: "바우하우스", desc: "기능주의, 기하학적 단순함", prompt: "Bauhaus functionalist geometric simplicity, architectural photography, 8k" },
+  brutalist: { label: "브루탈리즘", desc: "노출 콘크리트, 육중한 매스", prompt: "brutalist raw concrete heavy massing, architectural photography, 8k" },
+  international: { label: "인터내셔널 스타일", desc: "무장식 백색 박스", prompt: "international style unadorned white volumes, architectural photography, 8k" },
+  postmodern: { label: "포스트모더니즘", desc: "장식적 요소, 컬러풀한 파사드", prompt: "postmodern decorative colorful facade elements, architectural photography, 8k" },
+  deconstructivist: { label: "디컨스트럭티비즘", desc: "파편화된 불규칙 형태", prompt: "deconstructivist fragmented irregular forms, architectural photography, 8k" },
+  hightech: { label: "하이테크 건축", desc: "노출 구조/설비, 유리+철골", prompt: "high-tech architecture exposed structure and services, architectural photography, 8k" },
+  parametricism: { label: "파라메트리시즘", desc: "알고리즘 기반 유기적 곡면", prompt: "parametricism algorithmic organic curved surfaces, architectural photography, 8k" },
+  minimalist: { label: "미니멀리즘", desc: "극단적 절제, 순수 형태", prompt: "extreme minimalist pure form architecture, architectural photography, 8k" },
+  regionalist: { label: "리전널리즘/버내큘러", desc: "지역 재료·전통 반영", prompt: "regionalist vernacular architecture with local materials, architectural photography, 8k" },
+  artdeco: { label: "아르데코", desc: "기하학적 장식, 수직성 강조", prompt: "art deco geometric ornamentation with strong verticality, architectural photography, 8k" },
+  metabolism: { label: "메타볼리즘", desc: "모듈형 확장 가능 구조", prompt: "Japanese metabolism modular expandable structure, architectural photography, 8k" },
+  midcentury: { label: "미드센추리 모던", desc: "유기적 라인, 우드+유리", prompt: "mid-century modern organic lines with wood and glass, architectural photography, 8k" },
+  industrial: { label: "인더스트리얼", desc: "노출 벽돌/철골, 창고형", prompt: "industrial style exposed brick and steel warehouse aesthetic, architectural photography, 8k" },
+  zen: { label: "젠/일본 전통 건축", desc: "미닫이, 자연광, 정원과의 연계", prompt: "Japanese zen traditional architecture with sliding screens and garden integration, architectural photography, 8k" },
+  scandinavian: { label: "스칸디나비안 모던", desc: "밝은 목재, 따뜻한 미니멀", prompt: "Scandinavian modern bright wood warm minimalism, architectural photography, 8k" },
+};
+const NIGHT_BATCH_WINDOWS = [
+  "grid pattern punched windows", "horizontal ribbon windows", "floor-to-ceiling glass curtain wall",
+  "irregular randomly placed window openings", "circular porthole windows", "vertical slit windows",
+  "corner wraparound glazing", "arched window openings", "deep-set recessed windows", "frameless minimal glazing"
+];
+const NIGHT_BATCH_ROOF = [
+  "flat roof", "gabled pitched roof", "butterfly roof", "cantilevered overhanging roof",
+  "green roof with rooftop planting", "mono-slope shed roof", "curved shell roof",
+  "stepped terraced roof", "skylight-punctuated roof", "deep overhanging eave roof"
+];
+const NIGHT_BATCH_COLOR_TONE = [
+  "monochrome white finish", "dark charcoal black finish", "earthy terracotta tones",
+  "bold accent color panel", "natural warm wood tone", "muted grey concrete tone",
+  "deep navy blue accent finish", "warm beige stucco finish", "matte black metal finish",
+  "off-white lime plaster finish"
+];
+const NIGHT_BATCH_STRUCTURE = [
+  "exposed structural frame", "hidden seamless structure", "diagrid diagonal structural frame",
+  "exposed piloti columns", "exposed steel trusses", "visible cross-bracing",
+  "monolithic solid mass with no visible structure"
+];
+const NIGHT_BATCH_OPENING_RATIO = [
+  "mostly glazed open facade", "mostly solid mass with small punched openings",
+  "balanced fifty-fifty glazing and solid wall", "high glazing ratio transparent facade",
+  "low glazing ratio fortress-like facade"
+];
+const NIGHT_BATCH_FACADE_PATTERN = [
+  "vertical louvers sun-shading screen", "horizontal louvers sun-shading screen",
+  "perforated metal panel screen", "irregular fragmented panel facade",
+  "geometric lattice screen facade", "woven timber screen facade", "diagonal grid pattern facade"
+];
+const NIGHT_BATCH_BALCONY = [
+  "cantilevered protruding balconies", "recessed inset terraces", "no balconies, clean smooth mass",
+  "wraparound continuous balcony", "stepped terraced balconies"
+];
+const NIGHT_BATCH_SUSTAINABILITY = [
+  "green wall vertical garden", "rooftop solar panels", "rooftop garden",
+  "rainwater collection feature", "no visible sustainability features"
+];
+// UI/생성 로직에서 순회하기 쉽도록 이름+배열을 묶어둔다.
+// 2026-09-16: 건축양식은 기본 스타일 풀(NIGHT_BATCH_STYLE_PRESETS)로 흡수돼 10개→9개로 줄었다
+// (중복 방지 — 건축양식을 두 군데서 따로 뽑으면 한 프롬프트에 서로 다른 양식이 두 번 낄 수 있음).
+const NIGHT_BATCH_EXTENDED_DIMENSIONS = [
+  NIGHT_BATCH_ARCHITECT_STYLES, NIGHT_BATCH_WINDOWS, NIGHT_BATCH_ROOF,
+  NIGHT_BATCH_COLOR_TONE, NIGHT_BATCH_STRUCTURE, NIGHT_BATCH_OPENING_RATIO, NIGHT_BATCH_FACADE_PATTERN,
+  NIGHT_BATCH_BALCONY, NIGHT_BATCH_SUSTAINABILITY
 ];
 
 function pickRandom(arr) {
@@ -214,7 +318,405 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, maxHeight = '72vh' }) {
   );
 }
 
+// 시작 화면 — 프로젝트(작업 공간)를 고르거나 새로 만들게 한다. 여러 PC가 같은 서버를 쓸 때
+// 이름+비밀번호로 서로의 결과물을 구분/보호하기 위한 가벼운 게이트(2026-09-10). 계정 시스템이
+// 아니라 "실수로 섞어보는 것"을 막는 수준이라, 서버 API를 직접 두드리면 우회할 수 있다.
+function ProjectGate({ onSelected }) {
+  const [projects, setProjects] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [mode, setMode] = useState('pick'); // 'pick' | 'login' | 'create' | 'rename' | 'delete'
+  const [selectedName, setSelectedName] = useState(null);
+  const [name, setName] = useState('');
+  const [newName, setNewName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch('/v1/projects')
+      .then(res => res.json())
+      .then(data => setProjects(data.projects || []))
+      .catch(() => setError('프로젝트 목록을 불러오지 못했습니다. 서버 연결을 확인해주세요.'))
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  const openLogin = (projectName) => {
+    setSelectedName(projectName);
+    setPassword('');
+    setError('');
+    setMode('login');
+  };
+
+  const openCreate = () => {
+    setName('');
+    setPassword('');
+    setConfirmPassword('');
+    setError('');
+    setMode('create');
+  };
+
+  const submitLogin = async (e) => {
+    e.preventDefault();
+    if (!password) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/v1/projects/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedName, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        onSelected(selectedName);
+      } else {
+        setError(data.detail || '비밀번호가 올바르지 않습니다.');
+      }
+    } catch (err) {
+      setError('서버에 연결할 수 없습니다: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openRename = () => {
+    setNewName(selectedName);
+    setPassword('');
+    setError('');
+    setMode('rename');
+  };
+
+  const submitRename = async (e) => {
+    e.preventDefault();
+    const trimmed = newName.trim();
+    if (!trimmed || !password) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/v1/projects/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedName, new_name: trimmed, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        onSelected(trimmed);
+      } else {
+        setError(data.detail || '이름을 바꾸지 못했습니다.');
+      }
+    } catch (err) {
+      setError('서버에 연결할 수 없습니다: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openDelete = () => {
+    setPassword('');
+    setDeleteConfirmText('');
+    setError('');
+    setMode('delete');
+  };
+
+  const submitDelete = async (e) => {
+    e.preventDefault();
+    if (!password || deleteConfirmText !== selectedName) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/v1/projects/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedName, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setProjects(prev => prev.filter(p => p !== selectedName));
+        setMode('pick');
+        setSelectedName(null);
+        setPassword('');
+        setDeleteConfirmText('');
+      } else {
+        setError(data.detail || '프로젝트를 삭제하지 못했습니다.');
+      }
+    } catch (err) {
+      setError('서버에 연결할 수 없습니다: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitCreate = async (e) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed || !password) return;
+    if (password !== confirmPassword) {
+      setError('비밀번호가 서로 일치하지 않습니다.');
+      return;
+    }
+    if (password.length < 4) {
+      setError('비밀번호는 4자 이상이어야 합니다.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/v1/projects/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        onSelected(trimmed);
+      } else {
+        setError(data.detail || '프로젝트를 만들지 못했습니다.');
+      }
+    } catch (err) {
+      setError('서버에 연결할 수 없습니다: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const cardStyle = {
+    width: '380px', maxWidth: '92vw', padding: '32px',
+    background: 'rgba(255, 255, 255, 0.85)', borderRadius: '20px',
+    boxShadow: '0 20px 60px rgba(30, 27, 75, 0.15)', border: '1px solid rgba(255,255,255,0.6)',
+    backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)'
+  };
+  const inputStyle = {
+    width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #e2e8f0',
+    fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px'
+  };
+  const primaryBtnStyle = {
+    width: '100%', padding: '12px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+    background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)', color: '#fff',
+    fontWeight: 700, fontSize: '14px', marginTop: '4px'
+  };
+  const ghostBtnStyle = {
+    width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', cursor: 'pointer',
+    background: 'transparent', color: 'var(--text-secondary, #475569)', fontWeight: 600, fontSize: '13.5px', marginTop: '8px'
+  };
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', background: 'linear-gradient(160deg, #f8fafc 0%, #eef1fb 100%)'
+    }}>
+      <img src="/logo.png" alt="로고" style={{ width: '52px', height: '52px', objectFit: 'contain', marginBottom: '18px' }} />
+      <h1 style={{
+        margin: '0 0 4px', fontSize: '20px', fontWeight: 900,
+        background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
+        WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent'
+      }}>
+        상지건축 DX설계본부 AX LAB
+      </h1>
+      <p style={{ margin: '0 0 24px', fontSize: '13px', color: 'var(--text-secondary, #64748b)' }}>
+        작업할 프로젝트를 선택하거나 새로 만들어주세요
+      </p>
+
+      <div style={cardStyle}>
+        {mode === 'pick' && (
+          <>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+              내 프로젝트 선택
+            </div>
+            {loadingList ? (
+              <div style={{ fontSize: '13px', color: '#94a3b8', padding: '12px 0' }}>불러오는 중...</div>
+            ) : projects.length === 0 ? (
+              <div style={{ fontSize: '13px', color: '#94a3b8', padding: '4px 0 14px' }}>
+                아직 프로젝트가 없습니다. 아래에서 새로 만들어주세요.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                {projects.map(p => (
+                  <button
+                    key={p}
+                    onClick={() => openLogin(p)}
+                    style={{
+                      textAlign: 'left', padding: '11px 14px', borderRadius: '10px',
+                      border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer',
+                      fontSize: '14px', fontWeight: 600, color: '#1e293b'
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginTop: '10px' }}>{error}</div>}
+            <button onClick={openCreate} style={primaryBtnStyle}>+ 새 프로젝트 만들기</button>
+          </>
+        )}
+
+        {mode === 'login' && (
+          <form onSubmit={submitLogin}>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+              "{selectedName}" 비밀번호 입력
+            </div>
+            <input
+              type="password" autoFocus placeholder="비밀번호"
+              value={password} onChange={e => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            <button type="submit" disabled={submitting || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !password) ? 0.6 : 1 }}>
+              {submitting ? '확인 중...' : '입장하기'}
+            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => { setMode('pick'); setError(''); }} style={{ ...ghostBtnStyle, flex: 1 }}>
+                ← 목록으로
+              </button>
+              <button type="button" onClick={openRename} style={{ ...ghostBtnStyle, flex: 1 }}>
+                이름 바꾸기
+              </button>
+            </div>
+            <button type="button" onClick={openDelete} style={{ ...ghostBtnStyle, color: '#e11d48', borderColor: '#fecdd3' }}>
+              프로젝트 삭제
+            </button>
+          </form>
+        )}
+
+        {mode === 'rename' && (
+          <form onSubmit={submitRename}>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+              "{selectedName}" 이름 바꾸기
+            </div>
+            <input
+              type="text" autoFocus placeholder="새 프로젝트 이름"
+              value={newName} onChange={e => setNewName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="password" placeholder="현재 비밀번호 (본인 확인용)"
+              value={password} onChange={e => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            <button type="submit" disabled={submitting || !newName.trim() || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !newName.trim() || !password) ? 0.6 : 1 }}>
+              {submitting ? '바꾸는 중...' : '이름 바꾸고 입장하기'}
+            </button>
+            <button type="button" onClick={() => { setMode('login'); setError(''); }} style={ghostBtnStyle}>
+              ← 취소
+            </button>
+          </form>
+        )}
+
+        {mode === 'delete' && (
+          <form onSubmit={submitDelete}>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '4px', color: '#e11d48' }}>
+              "{selectedName}" 프로젝트 삭제
+            </div>
+            <div style={{ fontSize: '12.5px', color: '#64748b', marginBottom: '12px', lineHeight: 1.5 }}>
+              이 프로젝트의 모든 생성 이력과 이미지 파일이 영구적으로 삭제됩니다.
+              되돌릴 수 없습니다.
+            </div>
+            <input
+              type="password" autoFocus placeholder="현재 비밀번호 (본인 확인용)"
+              value={password} onChange={e => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="text" placeholder={`확인을 위해 "${selectedName}" 입력`}
+              value={deleteConfirmText} onChange={e => setDeleteConfirmText(e.target.value)}
+              style={inputStyle}
+            />
+            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            <button
+              type="submit" disabled={submitting || !password || deleteConfirmText !== selectedName}
+              style={{
+                ...primaryBtnStyle, background: '#e11d48',
+                opacity: (submitting || !password || deleteConfirmText !== selectedName) ? 0.5 : 1
+              }}
+            >
+              {submitting ? '삭제하는 중...' : '영구 삭제'}
+            </button>
+            <button type="button" onClick={() => { setMode('login'); setError(''); }} style={ghostBtnStyle}>
+              ← 취소
+            </button>
+          </form>
+        )}
+
+        {mode === 'create' && (
+          <form onSubmit={submitCreate}>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+              새 프로젝트 만들기
+            </div>
+            <input
+              type="text" autoFocus placeholder="프로젝트 이름 (예: 부서/PC 이름)"
+              value={name} onChange={e => setName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="password" placeholder="비밀번호 (4자 이상)"
+              value={password} onChange={e => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="password" placeholder="비밀번호 확인"
+              value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+              style={inputStyle}
+            />
+            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            <button type="submit" disabled={submitting || !name.trim() || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !name.trim() || !password) ? 0.6 : 1 }}>
+              {submitting ? '만드는 중...' : '만들고 시작하기'}
+            </button>
+            <button type="button" onClick={() => { setMode('pick'); setError(''); }} style={ghostBtnStyle}>
+              ← 목록으로
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  // 프로젝트(작업 공간) — 여러 PC에서 같은 서버를 쓸 때 결과물이 섞이지 않도록 이름+비밀번호로
+  // 구분한다(2026-09-10). localStorage에 프로젝트 이름만 저장해두고(비밀번호는 저장 안 함),
+  // 다음에 켤 때도 같은 프로젝트로 자동 진입한다 — 완전한 계정 시스템은 아니고 "실수로
+  // 서로 결과물을 섞어보는 것"을 막는 수준의 가벼운 장치다.
+  const [currentProject, setCurrentProject] = useState(() => {
+    try { return localStorage.getItem('image_studio_project') || null; } catch { return null; }
+  });
+  const currentProjectRef = useRef(currentProject);
+  useEffect(() => { currentProjectRef.current = currentProject; }, [currentProject]);
+
+  // 모든 백엔드 API 호출에 현재 프로젝트를 자동으로 실어 보낸다 — GET/DELETE는 쿼리스트링,
+  // POST/PUT은 JSON 바디에 project 필드로 끼워 넣는다(백엔드가 이미 project 파라미터를
+  // 지원하고 있어 호출부 하나하나를 고치지 않고 여기서만 처리하면 된다).
+  const apiFetch = useCallback((url, options = {}) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return fetch(url, options);
+    const method = (options.method || 'GET').toUpperCase();
+    if (method === 'GET' || method === 'DELETE') {
+      const sep = url.includes('?') ? '&' : '?';
+      return fetch(`${url}${sep}project=${encodeURIComponent(proj)}`, options);
+    }
+    if (typeof options.body === 'string') {
+      try {
+        const parsed = JSON.parse(options.body);
+        if (parsed && typeof parsed === 'object' && parsed.project === undefined) {
+          return fetch(url, { ...options, body: JSON.stringify({ ...parsed, project: proj }) });
+        }
+      } catch { /* JSON이 아닌 바디는 그대로 통과 */ }
+    }
+    return fetch(url, options);
+  }, []);
+
+  const selectProject = useCallback((name) => {
+    try { localStorage.setItem('image_studio_project', name); } catch {}
+    setCurrentProject(name);
+  }, []);
+
+  const switchProject = useCallback(() => {
+    try { localStorage.removeItem('image_studio_project'); } catch {}
+    setCurrentProject(null);
+  }, []);
+
   // Toast 상태
   const [toasts, setToasts] = useState([]);
 
@@ -237,6 +739,9 @@ function App() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }
   }, []);
+
+  // 최상위 모듈 전환: AI 이미지(기존 스튜디오 전체) / 조감도 / 다이어그램 (2026-09-18)
+  const [appModule, setAppModule] = useState('image');
 
   // 좌측 탭: 대화형 / 프롬프트 직접 입력
   const [studioTab, setStudioTab] = useState('chat');
@@ -293,10 +798,12 @@ function App() {
   const promptFileInputRef = useRef(null);
 
   // ── "이미지 수정" 탭 전용 상태 ──
-  const [editMode, setEditMode] = useState('architecture'); // 'architecture' | 'inpaint' | 'outpaint' | 'nightBatch'
+  const [editMode, setEditMode] = useState('architecture'); // 'architecture' | 'inpaint' | 'outpaint' | 'nightBatch' | 'kontext'
   const [archImage, setArchImage] = useState(null);
   const [inpaintEditImage, setInpaintEditImage] = useState(null);
   const [outpaintEditImage, setOutpaintEditImage] = useState(null);
+  const [kontextEditImage, setKontextEditImage] = useState(null);
+  const [kontextInstruction, setKontextInstruction] = useState('');
   const [isArchPromptRefining, setIsArchPromptRefining] = useState(false);
 
   // ── "퇴근 모드"(야간 배치 생성) 전용 상태 ──
@@ -304,11 +811,24 @@ function App() {
   // 요청 — 시간은 상관없고(퇴근~다음날 출근 사이, 최대 12시간+) 다양성이 핵심이라, 스타일뿐
   // 아니라 재질/형태/조명 같은 디스크립터를 매 장마다 무작위로 조합해 프롬프트 자체를 바꾼다.
   const [nightBatchCount, setNightBatchCount] = useState(50);
-  const [nightBatchSelectedStyles, setNightBatchSelectedStyles] = useState(Object.keys(ARCH_STYLE_PRESETS));
+  const [nightBatchSelectedStyles, setNightBatchSelectedStyles] = useState([]);
+  // 2026-09-16: 스타일 풀이 6개→17개(건축양식 흡수)로 늘면서 체크박스가 쭉 펼쳐지면 부담스럽다는
+  // 피드백 — 어차피 아무것도 선택 안 해도 전체에서 무작위로 잘 뽑히니, 기본은 접어두고 필요할 때만
+  // 펼쳐서 직접 고르게 한다.
+  const [nightBatchStyleFilterExpanded, setNightBatchStyleFilterExpanded] = useState(false);
+  // 2026-09-15: 건축가스타일/건축양식/창호/지붕 등 10개 차원을 랜덤 조합에 추가로 포함할지
+  // 여부 — 기본 꺼짐(기존 3개 차원만 사용, 프롬프트가 산만해지지 않도록). 켜면 훨씬 다양한
+  // 외관이 나오지만 프롬프트가 길어져 일부 요소가 묻힐 수 있다.
+  const [nightBatchExtendedDiversity, setNightBatchExtendedDiversity] = useState(false);
   const [nightBatchPrompt, setNightBatchPrompt] = useState('');
   const [nightBatchKeepStructure, setNightBatchKeepStructure] = useState(60);
   const [nightBatchRunning, setNightBatchRunning] = useState(false);
   const [nightBatchProgress, setNightBatchProgress] = useState({ current: 0, total: 0, failed: 0 });
+  // 2026-09-15: "중단하기가 한 번에 안 먹힌다"는 피드백 — 실제로는 루프가 매 장 생성이 끝난
+  // 직후에만 중단 플래그를 확인하기 때문에(진행 중인 생성 자체를 끊지는 못함), 클릭 직후
+  // 아무 반응이 없어 보여서 안 눌린 것처럼 느껴졌다. 버튼을 즉시 "중단 중..."으로 바꿔서
+  // 클릭이 확실히 반영됐다는 걸 보여준다(실제 중단은 여전히 진행 중인 장이 끝나야 됨).
+  const [nightBatchStopping, setNightBatchStopping] = useState(false);
   const nightBatchStopRef = useRef(false);
 
   // ── "이미지 블렌딩" 탭 전용 상태 ──
@@ -459,10 +979,11 @@ function App() {
   };
 
   useEffect(() => {
+    if (!currentProject) return; // 프로젝트를 고르기 전에는 갤러리를 불러올 필요가 없다.
     loadImageOptions();
     loadStudioGallery();
     loadGalleryFolders();
-  }, []);
+  }, [currentProject]);
 
   // 퇴근 모드 실행 중 실수로 탭을 닫으면 순차 생성이 그대로 끊긴다 — 확인 없이 닫히지 않게 막는다.
   useEffect(() => {
@@ -544,7 +1065,7 @@ function App() {
 
   const loadStudioGallery = async () => {
     try {
-      const res = await fetch(API_BASE_URL + '/v1/image/history');
+      const res = await apiFetch(API_BASE_URL + '/v1/image/history');
       if (res.ok) {
         const data = await res.json();
         // beforeImageFilename(블렌딩 전 원본, 서버에 파일로 저장됨)이 있으면 라이트박스의
@@ -562,7 +1083,7 @@ function App() {
 
   const loadGalleryFolders = async () => {
     try {
-      const res = await fetch(API_BASE_URL + '/v1/image/folders');
+      const res = await apiFetch(API_BASE_URL + '/v1/image/folders');
       if (res.ok) {
         const data = await res.json();
         setGalleryFolders(data.folders || []);
@@ -576,7 +1097,7 @@ function App() {
     const name = newFolderName.trim();
     if (!name) return;
     try {
-      const res = await fetch(API_BASE_URL + '/v1/image/folders', {
+      const res = await apiFetch(API_BASE_URL + '/v1/image/folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
@@ -596,7 +1117,7 @@ function App() {
 
   const deleteGalleryFolder = async (folderId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/image/folders/${folderId}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/v1/image/folders/${folderId}`, { method: 'DELETE' });
       if (res.ok) {
         if (activeFolderId === folderId) setActiveFolderId(null);
         setGalleryFolders(prev => prev.filter(f => f.id !== folderId));
@@ -615,7 +1136,7 @@ function App() {
     setSelectedImage(prev => (prev && prev.id === item.id) ? { ...prev, folderId } : prev);
     setFolderMenuOpenFor(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/image/history/${item.id}/folder`, {
+      const res = await apiFetch(`${API_BASE_URL}/v1/image/history/${item.id}/folder`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_id: folderId })
@@ -635,7 +1156,7 @@ function App() {
     setStudioGallery(prev => prev.map(g => g.id === item.id ? { ...g, isFavorite: nextFavorite } : g));
     setSelectedImage(prev => (prev && prev.id === item.id) ? { ...prev, isFavorite: nextFavorite } : prev);
     try {
-      const res = await fetch(`/v1/image/history/${item.id}/favorite`, {
+      const res = await apiFetch(`/v1/image/history/${item.id}/favorite`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_favorite: nextFavorite })
@@ -651,7 +1172,7 @@ function App() {
 
   const deleteHistoryItem = async (id) => {
     try {
-      const res = await fetch(`/v1/image/history/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/v1/image/history/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setStudioGallery(prev => prev.filter(item => item.id !== id));
         if (selectedImage?.id === id) setSelectedImage(null);
@@ -722,15 +1243,19 @@ function App() {
     setSelectedImage(null);
   };
 
-  // 갤러리 이미지를 이미지 수정(img2img) 탭에 바로 로드한다.
+  // 갤러리 이미지를 "프롬프트 입력" 탭의 img2img 참고 이미지로 바로 로드한다.
+  // 2026-09-11 실측: 존재하지 않는 setPromptAttachedImage(단수)를 호출하고 studioTab을
+  // 'edit'(별도의 건축/인페인트 탭이라 이 state를 읽지도 않음)로 바꾸고 있었다 — 버튼이
+  // 아예 연결돼 있지 않아 지금까지 아무도 이 버그를 밟아본 적이 없었던 것으로 보인다.
+  // 실제 img2img는 promptAttachedImages(배열) + studioTab='prompt'로 동작한다.
   const attachGalleryImageToEdit = async (item) => {
     try {
       const res = await fetch(`/generated/${item.imageFilename}`);
       const blob = await res.blob();
       const reader = new FileReader();
       reader.onload = () => {
-        setPromptAttachedImage(reader.result);
-        setStudioTab('edit');
+        setPromptAttachedImages([reader.result]);
+        setStudioTab('prompt');
         setSelectedImage(null);
       };
       reader.readAsDataURL(blob);
@@ -745,10 +1270,10 @@ function App() {
     setIsUpscaling(true);
     addToast('info', '4K 업스케일 렌더링', '이미지를 4K 해상도로 선명하게 리터칭 및 확장하는 중...');
     try {
-      const res = await fetch(API_BASE_URL + '/v1/image/upscale', {
+      const res = await apiFetch(API_BASE_URL + '/v1/image/upscale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: item.imageFilename, image_filename: item.imageFilename, scale_by: 2.0 })
+        body: JSON.stringify({ filename: item.imageFilename })
       });
       if (res.ok) {
         addToast('success', '4K 업스케일 완료!', '4K 초고화질 이미지가 보관함에 추가되었습니다.');
@@ -1039,7 +1564,7 @@ function App() {
         body.expand_bottom = outpaintDirections.bottom ? outpaintAmount : 0;
       }
 
-      const res = await fetch(API_BASE_URL + '/v1/image/inpaint', {
+      const res = await apiFetch(API_BASE_URL + '/v1/image/inpaint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -1061,13 +1586,11 @@ function App() {
   };
 
 
-  // 편집 지시문 다듬기 — 프롬프트 탭의 "다듬기"와 시스템 프롬프트가 다르다. 여기선 전체 장면을
-  // 상세 묘사하면 안 된다(원본 구도를 낮은 denoise로 보존하는 img2img라 프롬프트가 길고 장황해지면
-  // 오히려 원본과 어긋난다) — "무엇을 바꿀지"만 짧고 명확한 영어로 다듬는다.
-  const suggestEditInstructionImprovement = async () => {
-    if (!editInstruction.trim() || isSuggestingEdit) return;
-    setIsSuggestingEdit(true);
-    setEditSuggestion('');
+  // 편집 지시문 번역/다듬기 — 프롬프트 탭의 "다듬기"와 시스템 프롬프트가 다르다. 여기선 전체 장면을
+  // 상세 묘사하면 안 된다(원본 구도를 낮은 denoise로 보존하는 img2img나, ReferenceLatent로 원본을
+  // 그대로 유지하는 Kontext 편집이나 프롬프트가 길고 장황해지면 오히려 원본과 어긋난다) —
+  // "무엇을 바꿀지"만 짧고 명확한 영어로 다듬는다. 실패 시 null을 반환해 호출부가 원문을 그대로 쓰게 한다.
+  const translateEditInstruction = async (text) => {
     try {
       const res = await fetch(API_BASE_URL + '/v1/chat/completions', {
         method: 'POST',
@@ -1085,23 +1608,30 @@ function App() {
                 + 'SHORT (under 15 words) and focused only on the change — do NOT describe the whole scene, do NOT add '
                 + 'unrelated details. Output ONLY the refined instruction text.'
             },
-            { role: 'user', content: editInstruction }
+            { role: 'user', content: text }
           ]
         })
       });
-      if (res.ok) {
-        const data = await res.json();
-        const suggestion = (data.choices?.[0]?.message?.content || '')
-          .replace(/```[\s\S]*?```/g, '')
-          .replace(/^["'`]+|["'`]+$/g, '')
-          .trim();
-        if (suggestion) setEditSuggestion(suggestion);
-      }
+      if (!res.ok) return null;
+      const data = await res.json();
+      const suggestion = (data.choices?.[0]?.message?.content || '')
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .trim();
+      return suggestion || null;
     } catch (e) {
-      console.error('편집 지시문 다듬기 실패:', e);
-    } finally {
-      setIsSuggestingEdit(false);
+      console.error('편집 지시문 번역 실패:', e);
+      return null;
     }
+  };
+
+  const suggestEditInstructionImprovement = async () => {
+    if (!editInstruction.trim() || isSuggestingEdit) return;
+    setIsSuggestingEdit(true);
+    setEditSuggestion('');
+    const suggestion = await translateEditInstruction(editInstruction);
+    if (suggestion) setEditSuggestion(suggestion);
+    setIsSuggestingEdit(false);
   };
 
   const suggestPromptImprovement = async () => {
@@ -1286,36 +1816,40 @@ function App() {
     let genLoras = [];
     let genNegativeExtra;
 
-    if (skipAutoTune || promptAttachedImages.length > 0) {
-      // "이 설정으로 다시 만들기"로 불러온 프롬프트는 이미 완성된 영문 프롬프트라 재해석하면 안 되고,
-      // img2img는 "비 오는 날로 바꿔줘"처럼 짧은 수정 지시문이 정상이라 자동 튜닝(전체 장면을 다시
-      // 상세 묘사하려는 소형 LLM)에 넣으면 스키마 예시 문구를 그대로 반복하는 등 엉뚱하게 망가진다.
-      // 두 경우 다 AI 재해석 없이 사용자가 쓴 문구를 그대로 CLIP에 넘긴다.
-      setIsAutoTuning(false);
-    } else {
-      try {
-        const tuneRes = await fetch(API_BASE_URL + '/v1/image/auto-tune', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: directPrompt })
-        });
-        if (tuneRes.ok) {
-          const tuneData = await tuneRes.json();
-          if (tuneData.status === 'success') {
+    // 프롬프트 문구(refined_prompt) 자체를 덮어써도 되는 경우만 true.
+    // - skipAutoTune: "이 설정으로 다시 만들기"/"이 대화로 생성 준비하기"로 불러온 프롬프트는
+    //   이미 완성된 영문 프롬프트라 재해석하면 대화에서 정리한 내용과 달라진다.
+    // - img2img(참고 이미지 첨부): "비 오는 날로 바꿔줘"처럼 짧은 수정 지시문이 정상이라, 전체
+    //   장면을 다시 상세 묘사하려는 소형 LLM에 넣으면 스키마 예시 문구를 그대로 반복하는 등
+    //   엉뚱하게 망가진다.
+    // 2026-09-10 실측: 두 경우 다 auto-tune 호출 자체를 건너뛰면 스타일/체크포인트 자동 추천까지
+    // 통째로 사라져서 "대화형 탭/참고 이미지 첨부로 만들면 항상 스타일이 NONE으로 저장되는" 문제가
+    // 있었다. 문구는 위 두 경우에 그대로 유지하되, 스타일/체크포인트/LoRA 추천은 항상 호출해서 반영한다.
+    const shouldRewritePrompt = !skipAutoTune && promptAttachedImages.length === 0;
+    try {
+      const tuneRes = await fetch(API_BASE_URL + '/v1/image/auto-tune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: directPrompt })
+      });
+      if (tuneRes.ok) {
+        const tuneData = await tuneRes.json();
+        if (tuneData.status === 'success') {
+          if (shouldRewritePrompt) {
             finalPrompt = tuneData.refined_prompt || directPrompt;
-            const opts = tuneData.recommended_options || {};
-            genStyle = styleOverride || opts.style || genStyle;
-            genCheckpoint = checkpointOverride || opts.checkpoint || undefined;
-            genLoras = opts.loras || [];
-            genNegativeExtra = opts.negative_extra || undefined;
-            setAutoTuneResult(tuneData);
           }
+          const opts = tuneData.recommended_options || {};
+          genStyle = styleOverride || opts.style || genStyle;
+          genCheckpoint = checkpointOverride || opts.checkpoint || undefined;
+          genLoras = opts.loras || [];
+          genNegativeExtra = opts.negative_extra || undefined;
+          setAutoTuneResult(tuneData);
         }
-      } catch (e) {
-        console.error('자동 튜닝 건너뜀:', e);
-      } finally {
-        setIsAutoTuning(false);
       }
+    } catch (e) {
+      console.error('자동 튜닝 건너뜀:', e);
+    } finally {
+      setIsAutoTuning(false);
     }
 
     const count = Number(imageBatchCount) || 1;
@@ -1349,7 +1883,7 @@ function App() {
               denoise: promptAttachedImages.length > 0 ? effectiveDenoise : undefined
             };
 
-        const res = await fetch(`${endpoint}`, {
+        const res = await apiFetch(`${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody)
@@ -1375,16 +1909,23 @@ function App() {
   // FLUX.1 Kontext로 "이 이미지에서 이 지시대로 바꿔줘"를 그대로 반영한 편집 이미지를 만든다.
   // 기존 img2img(handleGenerate의 denoise 재해석 경로)와 달리 프롬프트 재작성 없이
   // 지시문을 그대로 CLIP에 넘기고, 원본 구도/피사체는 ReferenceLatent로 유지된다.
-  const handleKontextEdit = async () => {
-    if (!editInstruction.trim() || promptAttachedImages.length === 0 || isKontextEditing) return;
+  // "프롬프트 입력" 탭과 "이미지 수정" 탭 양쪽에서 같은 기능을 호출할 수 있도록 핵심 로직을 분리했다.
+  const runKontextEdit = async (imageDataUrl, instructionText) => {
+    const instruction = (instructionText || '').trim();
+    if (!instruction || !imageDataUrl || isKontextEditing) return;
     setIsKontextEditing(true);
     try {
-      const res = await fetch(API_BASE_URL + '/v1/image/edit', {
+      // FLUX Kontext는 영어 위주로 학습돼 한글 지시문은 거의 반영되지 않는다(2026-09-14 실측:
+      // "빨간 산타 모자 씌워줘"는 무시됐지만 영어 "Add a red Santa hat..."은 정확히 반영됨) —
+      // 사용자가 매번 따로 다듬기 버튼을 누르지 않아도 되도록 전송 직전에 자동으로 번역한다.
+      const translated = await translateEditInstruction(instruction);
+      const finalInstruction = translated || instruction;
+      const res = await apiFetch(API_BASE_URL + '/v1/image/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image_base64: promptAttachedImages[0].split(',').pop(),
-          instruction: editInstruction,
+          image_base64: imageDataUrl.split(',').pop(),
+          instruction: finalInstruction,
         })
       });
       if (res.ok) {
@@ -1401,6 +1942,21 @@ function App() {
     } finally {
       setIsKontextEditing(false);
     }
+  };
+
+  // "프롬프트 입력" 탭: 첨부 이미지 + directPrompt(또는 editInstruction)를 사용
+  const handleKontextEdit = () => {
+    // 2026-09-11 실측: editInstruction 전용 입력창이 화면에 없어서(setEditInstruction을
+    // 부르는 곳이 어디에도 없음) 항상 빈 문자열이었다 — handleGenerate와 동일하게
+    // directPrompt를 지시문으로도 쓰도록 맞춘다("프롬프트 입력" 탭 텍스트란 하나를
+    // 상황에 따라 장면 설명/수정 지시문 둘 다로 쓰는 기존 패턴과 일치시킴).
+    const instruction = editInstruction.trim() || directPrompt;
+    runKontextEdit(promptAttachedImages[0], instruction);
+  };
+
+  // "이미지 수정" 탭의 "✨ AI 정밀 수정" 모드: 이 탭 전용 이미지/지시문 입력을 사용
+  const handleKontextEditFromEditTab = () => {
+    runKontextEdit(kontextEditImage, kontextInstruction);
   };
 
   // ── 건축 실사화(Arch-Viz) 전용 생성 처리 ──
@@ -1427,7 +1983,7 @@ function App() {
       ? `${archPrompt.trim()}, ${styleInfo.prompt}`
       : styleInfo.prompt;
 
-    const res = await fetch(API_BASE_URL + '/v1/image/generate', {
+    const res = await apiFetch(API_BASE_URL + '/v1/image/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1493,7 +2049,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(API_BASE_URL + '/v1/image/blend', {
+      const response = await apiFetch(API_BASE_URL + '/v1/image/blend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1570,26 +2126,98 @@ function App() {
       addToast('error', '생성 실패', lastError?.message || 'ComfyUI 상태를 확인해 주세요.');
     }
     setIsGenerating(false);
+    setArchBatchProgress({ current: 0, total: 0 });
   };
 
   // 매스 모델 하나 + 무작위로 뽑은 스타일/재질/형태/조명 조합으로 실사화 이미지 한 장을 만든다.
   // (야간 배치의 최소 단위 — handleNightBatchGenerate가 이걸 nightBatchCount번 반복 호출한다)
-  const generateOneNightBatchDesign = async () => {
-    const stylePool = nightBatchSelectedStyles.length > 0 ? nightBatchSelectedStyles : Object.keys(ARCH_STYLE_PRESETS);
+  // 2026-09-16: 퇴근 모드 "공통 조건"란이 한글을 그대로 SDXL CLIP 인코더에 넘기고 있었다
+  // (실측: "빨간 지붕, 파란 대문"이 번역 없이 그대로 저장됨) — SDXL 체크포인트는 영어 위주로
+  // 학습돼 한글이 거의 반영되지 않는다. editInstruction용 번역기와 달리 여기는 "무엇을 바꿀지"가
+  // 아니라 "모든 시안에 공통 반영할 조건"이라 15단어 제한을 걸면 정보가 잘릴 수 있어 별도
+  // 시스템 프롬프트를 쓴다.
+  const translateArchCondition = async (text) => {
+    try {
+      const res = await fetch(API_BASE_URL + '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemma4:e4b',
+          max_tokens: 300,
+          temperature: 0.2,
+          messages: [
+            {
+              role: 'system',
+              content: 'Translate the user\'s architectural design condition/requirement into a concise, comma-separated '
+                + 'English phrase suitable for an SDXL image generation prompt (building type, materials, features, etc). '
+                + 'Translate to English if needed. Keep it concise and only include what the user actually said — do not '
+                + 'invent additional details. Output ONLY the translated text.'
+            },
+            { role: 'user', content: text }
+          ]
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const translated = (data.choices?.[0]?.message?.content || '')
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .trim();
+      return translated || null;
+    } catch (e) {
+      console.error('공통 조건 번역 실패:', e);
+      return null;
+    }
+  };
+
+  const generateOneNightBatchDesign = async (commonCondition) => {
+    const stylePool = nightBatchSelectedStyles.length > 0 ? nightBatchSelectedStyles : Object.keys(NIGHT_BATCH_STYLE_PRESETS);
     const styleId = pickRandom(stylePool);
-    const styleInfo = ARCH_STYLE_PRESETS[styleId] || ARCH_STYLE_PRESETS.modern;
+    const styleInfo = NIGHT_BATCH_STYLE_PRESETS[styleId] || NIGHT_BATCH_STYLE_PRESETS.modern;
     const material = pickRandom(NIGHT_BATCH_MATERIALS);
     const form = pickRandom(NIGHT_BATCH_FORMS);
     const lighting = pickRandom(NIGHT_BATCH_LIGHTING);
 
-    const descriptorPrompt = `${form}, ${material}, ${lighting}`;
-    const combinedPrompt = nightBatchPrompt.trim()
-      ? `${nightBatchPrompt.trim()}, ${descriptorPrompt}, ${styleInfo.prompt}`
+    // 확장 다양성 모드: 건축가스타일/건축양식/창호/지붕/색채/구조표현/개구부비율/
+    // 파사드패턴/발코니/친환경 10개 차원에서 각각 하나씩 더 뽑아 조합에 얹는다.
+    const extendedDescriptors = nightBatchExtendedDiversity
+      ? NIGHT_BATCH_EXTENDED_DIMENSIONS.map(pool => pickRandom(pool)).join(", ")
+      : "";
+
+    const descriptorPrompt = extendedDescriptors
+      ? `${form}, ${material}, ${lighting}, ${extendedDescriptors}`
+      : `${form}, ${material}, ${lighting}`;
+    const combinedPrompt = commonCondition
+      ? `${commonCondition}, ${descriptorPrompt}, ${styleInfo.prompt}`
       : `${descriptorPrompt}, ${styleInfo.prompt}`;
 
-    const controlnetStrength = 0.5 + (nightBatchKeepStructure / 100) * 0.45;
+    // 2026-09-15: 기존엔 슬라이더를 0%까지 내려도 strength 하한이 0.5라 형태가 항상 강하게
+    // 고정돼서 다양성이 안 나온다는 피드백 — 0%일 땐 ControlNet을 아예 끌 수 있도록
+    // (comfyui_client.py의 controlnet_strength > 0 체크에 걸려 노드 자체가 안 붙음) 0까지
+    // 완전히 열어준다. 100%는 기존과 동일하게 0.95(강한 고정) 유지.
+    //
+    // 2026-09-15 추가 실측: 20%로 낮춰도 체감상 60% 수준으로 형태가 거의 그대로 나온다는
+    // 피드백 — Canny 엣지는 워낙 촘촘해서 strength가 선형으로 조금만 걸려도 이미 "거의 다
+    // 고정"된 것처럼 작동한다(절벽 현상). 두 가지로 완화한다:
+    //   ① strength를 제곱 곡선으로 — 중저 구간에서 훨씬 약하게 걸리도록(100%는 기존과 동일)
+    const keepRatio = nightBatchKeepStructure / 100;
+    const controlnetStrength = (keepRatio ** 2) * 0.95;
+    //   ② end_percent도 같이 낮춰서 — 낮은 보존율일수록 diffusion 초반 일부 스텝만 엣지를
+    //      참고하고 후반부는 ControlNet 없이 AI가 자유롭게 재해석하도록 개입 구간 자체를 줄인다
+    //      (100%는 기존과 동일하게 끝까지 개입).
+    // 2026-09-16 재조정: 하한을 0.3으로 뒀더니 strength까지 같이 약해지는 중저 구간에서 두
+    // 효과가 겹쳐서 "완전 다른 건물"처럼 과하게 풀렸다(호평받았던 예전 20%=strength 0.19,
+    // end_percent 사실상 1.0 지점을 지금 곡선으로는 재현할 수 없었음). 하한을 0.75로 올려서
+    // strength는 여전히 부드럽게 조절하되, ControlNet 자체는 diffusion 대부분 구간에서
+    // 계속 살아있게 한다 — "형태는 유지하면서 비례/디테일만 조금씩 달라지는" 쪽으로 재보정.
+    const controlnetEndPercent = 0.75 + keepRatio * 0.25;
+    // 2026-09-15 실측: ControlNet을 꺼도(0%) denoise가 0.75로 고정돼 있어 여전히 건물 레이아웃이
+    // 거의 안 바뀌었다 — latent img2img 특성상 denoise 0.75는 재질/색감은 크게 바꾸지만 큰 구조는
+    // 잘 살아남기 때문. 형태 보존율 슬라이더가 denoise도 같이 움직이게 해서, 100%일 땐 기존과
+    // 동일한 0.75(무난한 보존)로, 0%에 가까워질수록 0.95(사실상 새로 그림)까지 열어준다.
+    const denoise = 0.95 - keepRatio * 0.20;
 
-    const res = await fetch(API_BASE_URL + '/v1/image/generate', {
+    const res = await apiFetch(API_BASE_URL + '/v1/image/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1604,9 +2232,10 @@ function App() {
         // 매 장마다 완전히 다른 시드를 써야 같은 스타일/재질 조합이라도 다른 결과가 나온다.
         seed: undefined,
         input_image_base64: archImage ? archImage.split(',').pop() : (promptAttachedImages.length > 0 ? promptAttachedImages[0].split(',').pop() : undefined),
-        denoise: 0.75,
+        denoise: denoise,
         disable_face_detailer: true,
-        controlnet_strength: controlnetStrength
+        controlnet_strength: controlnetStrength,
+        controlnet_end_percent: controlnetEndPercent
       })
     });
     if (!res.ok) {
@@ -1626,15 +2255,24 @@ function App() {
 
     nightBatchStopRef.current = false;
     setNightBatchRunning(true);
+    setNightBatchStopping(false);
     setNightBatchProgress({ current: 0, total: nightBatchCount, failed: 0 });
     addToast('info', '퇴근 모드 시작', `${nightBatchCount}장의 디자인 시안을 순차적으로 생성합니다. 브라우저 탭을 닫지 마세요.`);
+
+    // 모든 장에 공통으로 쓰이는 조건이라 장마다 다시 번역할 필요 없이 배치 시작 시 한 번만
+    // 번역해서 재사용한다(500장이면 500번 호출하는 낭비를 막음).
+    let commonCondition = nightBatchPrompt.trim();
+    if (commonCondition) {
+      const translated = await translateArchCondition(commonCondition);
+      if (translated) commonCondition = translated;
+    }
 
     let successCount = 0;
     let failCount = 0;
     for (let i = 0; i < nightBatchCount; i++) {
       if (nightBatchStopRef.current) break;
       try {
-        const data = await generateOneNightBatchDesign();
+        const data = await generateOneNightBatchDesign(commonCondition);
         if (data.seed_used !== undefined) setLastSeedUsed(data.seed_used);
         successCount++;
         loadStudioGallery();
@@ -1652,10 +2290,13 @@ function App() {
       addToast('error', '퇴근 모드 실패', '한 장도 생성하지 못했습니다. ComfyUI 상태를 확인해 주세요.');
     }
     setNightBatchRunning(false);
+    setNightBatchStopping(false);
   };
 
   const stopNightBatchGenerate = () => {
     nightBatchStopRef.current = true;
+    setNightBatchStopping(true);
+    addToast('info', '중단 요청됨', '현재 생성 중인 이미지가 끝나는 대로 멈춥니다.');
   };
 
 
@@ -1687,6 +2328,11 @@ function App() {
     gap: '7px',
     transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease'
   });
+
+  // 프로젝트를 아직 고르지 않았으면(또는 로그아웃했으면) 본 화면 대신 선택/생성 화면을 띄운다.
+  if (!currentProject) {
+    return <ProjectGate onSelected={selectProject} />;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative', overflow: 'hidden' }}>
@@ -1726,7 +2372,48 @@ function App() {
             </p>
           </div>
         </div>
+
+        {/* 최상위 모듈 스위처: AI 이미지 / 조감도 / 다이어그램 (2026-09-18) */}
+        <div className="glass-card" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '12px' }}>
+          {[
+            { id: 'image', label: 'AI 이미지', emoji: '🖼️' },
+            { id: 'aerial', label: '조감도', emoji: '🏙️' },
+            { id: 'diagram', label: '다이어그램', emoji: '📊' },
+          ].map(m => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setAppModule(m.id);
+                if (m.id === 'aerial') { setStudioTab('edit'); setEditMode('architecture'); }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px',
+                border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap',
+                background: appModule === m.id ? 'linear-gradient(135deg, #333399, #4f46e5)' : 'transparent',
+                color: appModule === m.id ? '#fff' : 'var(--text-secondary)',
+                boxShadow: appModule === m.id ? '0 2px 8px rgba(51,51,153,0.3)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {m.emoji} {m.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* 현재 프로젝트 표시 + 전환 — 다른 프로젝트로 바꾸려면 비밀번호를 다시 입력해야 한다. */}
+          <button
+            onClick={switchProject}
+            title="다른 프로젝트로 전환합니다"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+              borderRadius: '999px', border: '1px solid rgba(51, 51, 153, 0.2)',
+              background: 'rgba(51, 51, 153, 0.08)', color: '#333399',
+              fontSize: '12.5px', fontWeight: 700, cursor: 'pointer'
+            }}
+          >
+            📁 {currentProject}
+          </button>
           {/* 이지 모드 / 프로 모드 토글 */}
           <div className="switch-container" onClick={() => setIsEasyMode(v => !v)} title="초보자를 위한 간편 설정 모드와 전문가용 정밀 설정 모드를 전환합니다">
             <span className={`switch-label ${isEasyMode ? 'active' : ''}`}>이지 모드</span>
@@ -1745,6 +2432,12 @@ function App() {
           </button>
         </div>
       </header>
+
+      {/* 다이어그램 모듈 — 바탕 도면 위에 주석(라벨/화살표/영역/아이콘)을 얹는 편집기.
+          기존 스튜디오 레이아웃 위에 덮어 보여주고, 탭을 오가도 작업이 사라지지 않게 항상 마운트해 둔 채 숨기기만 한다. */}
+      <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'diagram' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
+        <DiagramEditor active={appModule === 'diagram'} addToast={addToast} apiFetch={apiFetch} />
+      </div>
 
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', zIndex: 1 }}>
@@ -2367,6 +3060,22 @@ function App() {
                   <div><Sparkles size={17} style={{ marginRight: '8px', display: 'inline-block' }} /> 이미지 바로 생성하기 ({imageBatchCount}장)</div>
                 )}
               </button>
+              {promptAttachedImages.length > 0 && (
+                <button
+                  onClick={handleKontextEdit}
+                  disabled={!directPrompt.trim() || isKontextEditing}
+                  title="지시한 부분만 정밀하게 수정 (나머지는 원본 그대로 유지)"
+                  className="run-btn"
+                  style={{
+                    padding: '12px', fontSize: '13.5px', borderRadius: '10px', marginTop: '8px',
+                    background: 'transparent', border: '1px solid var(--accent-cyan)', color: 'var(--accent-cyan)'
+                  }}
+                >
+                  {isKontextEditing
+                    ? <div><RefreshCw className="animate-spin" size={16} style={{ marginRight: '8px', display: 'inline-block' }} /> AI 정밀 편집 중...</div>
+                    : <div><Wand2 size={16} style={{ marginRight: '8px', display: 'inline-block' }} /> AI 정밀 편집 (지시한 부분만 수정)</div>}
+                </button>
+              )}
             </div>
           ) : studioTab === 'edit' ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
@@ -2375,18 +3084,23 @@ function App() {
               </span>
 
               {/* 이미지 수정 기능 선택 탭 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                  🏗️ 건축물
-                </button>
-                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                  🎨 부분 수정
-                </button>
-                <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                  📐 영역 확장
-                </button>
-                <button onClick={() => setEditMode('nightBatch')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'nightBatch' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'nightBatch' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'nightBatch' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                  🌙 퇴근 모드
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                  <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    🏗️ 건축물
+                  </button>
+                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    🎨 부분 수정
+                  </button>
+                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    📐 영역 확장
+                  </button>
+                  <button onClick={() => setEditMode('kontext')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'kontext' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'kontext' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'kontext' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    ✨ AI 정밀 수정
+                  </button>
+                </div>
+                <button onClick={() => setEditMode('nightBatch')} style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'nightBatch' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'nightBatch' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'nightBatch' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                  🌙 퇴근 모드 (야간 대량 배치 생성)
                 </button>
               </div>
 
@@ -2406,6 +3120,7 @@ function App() {
                         if (editMode === 'architecture' || editMode === 'nightBatch') setArchImage(evt.target.result);
                         else if (editMode === 'inpaint') setInpaintEditImage(evt.target.result);
                         else if (editMode === 'outpaint') setOutpaintEditImage(evt.target.result);
+                        else if (editMode === 'kontext') setKontextEditImage(evt.target.result);
                       };
                       reader.readAsDataURL(e.dataTransfer.files[0]);
                     }
@@ -2417,11 +3132,11 @@ function App() {
                     alignItems: 'center', justifyContent: 'center', minHeight: '100px', cursor: 'pointer', transition: 'all 0.15s ease'
                   }}
                 >
-                  {(editMode === 'architecture' && archImage) || (editMode === 'nightBatch' && archImage) || (editMode === 'inpaint' && inpaintEditImage) || (editMode === 'outpaint' && outpaintEditImage) ? (
+                  {(editMode === 'architecture' && archImage) || (editMode === 'nightBatch' && archImage) || (editMode === 'inpaint' && inpaintEditImage) || (editMode === 'outpaint' && outpaintEditImage) || (editMode === 'kontext' && kontextEditImage) ? (
                     <>
                       <img
                         ref={inpaintImgElRef}
-                        src={editMode === 'architecture' || editMode === 'nightBatch' ? archImage : editMode === 'inpaint' ? inpaintEditImage : outpaintEditImage}
+                        src={editMode === 'architecture' || editMode === 'nightBatch' ? archImage : editMode === 'inpaint' ? inpaintEditImage : editMode === 'outpaint' ? outpaintEditImage : kontextEditImage}
                         alt="기존 이미지"
                         style={{ width: '100%', maxHeight: '100px', objectFit: 'contain', borderRadius: '6px' }}
                         onLoad={() => editMode === 'inpaint' && initInpaintMaskCanvas()}
@@ -2431,6 +3146,7 @@ function App() {
                           if (editMode === 'architecture' || editMode === 'nightBatch') setArchImage(null);
                           else if (editMode === 'inpaint') setInpaintEditImage(null);
                           else if (editMode === 'outpaint') setOutpaintEditImage(null);
+                          else if (editMode === 'kontext') setKontextEditImage(null);
                         }}
                         style={{ padding: '4px 8px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)' }}
                       >
@@ -2550,24 +3266,59 @@ function App() {
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>다양성 범위 (포함할 스타일)</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      {Object.entries(ARCH_STYLE_PRESETS).map(([key, { label, emoji }]) => (
-                        <button
-                          key={key}
-                          onClick={() => setNightBatchSelectedStyles(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key])}
-                          style={{
-                            padding: '8px', borderRadius: '8px', border: '2px solid' + (nightBatchSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
-                            background: nightBatchSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
-                            color: nightBatchSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                            cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
-                          }}
-                        >
-                          {emoji} {label}
-                        </button>
-                      ))}
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>아무것도 선택하지 않으면 전체 스타일에서 무작위로 뽑습니다.</span>
+                    <button
+                      onClick={() => setNightBatchStyleFilterExpanded(v => !v)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                    >
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        다양성 범위 (포함할 스타일, 17종){nightBatchSelectedStyles.length > 0 ? ` — ${nightBatchSelectedStyles.length}개 선택됨` : ''}
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--accent-cyan)', fontWeight: 600 }}>
+                        {nightBatchStyleFilterExpanded ? '접기 ▲' : '스타일 직접 고르기 ▼'}
+                      </span>
+                    </button>
+                    {nightBatchStyleFilterExpanded && (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          {Object.entries(NIGHT_BATCH_STYLE_PRESETS).map(([key, { label }]) => (
+                            <button
+                              key={key}
+                              onClick={() => setNightBatchSelectedStyles(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key])}
+                              style={{
+                                padding: '8px', borderRadius: '8px', border: '2px solid' + (nightBatchSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
+                                background: nightBatchSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                                color: nightBatchSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>아무것도 선택하지 않으면 17종 전체에서 무작위로 뽑습니다.</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 2026-09-15: 재질/형태/조명 3개 차원만으로는 "미세한 차이만 있다"는 피드백 —
+                      건축가스타일/건축양식/창호/지붕 등 10개 차원을 추가로 조합에 포함할지 여부.
+                      기본 꺼짐(프롬프트가 산만해지지 않도록), 켜면 훨씬 다양한 외관이 나온다. */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)' }}>
+                    <input
+                      type="checkbox"
+                      checked={nightBatchExtendedDiversity}
+                      onChange={(e) => setNightBatchExtendedDiversity(e.target.checked)}
+                      id="nightbatch-extended-diversity"
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', marginTop: '2px' }}
+                    />
+                    <label htmlFor="nightbatch-extended-diversity" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>✨ 확장 다양성 모드</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                        건축가 스타일·창호·지붕·색채·구조표현·개구부 비율·파사드 패턴·발코니·친환경 요소까지
+                        9개 차원을 추가로 무작위 조합합니다(건축 양식은 위 스타일 목록에 포함됨). 결과물이 훨씬
+                        다양해지지만 프롬프트가 길어집니다.
+                      </span>
+                    </label>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2575,8 +3326,8 @@ function App() {
                       <span>목표 장수</span>
                       <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{nightBatchCount}장 (예상 소요 약 {Math.round(nightBatchCount * 30 / 60)}분)</span>
                     </span>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-                      {[10, 20, 50, 100].map(num => (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                      {[50, 100, 200, 300, 500].map(num => (
                         <button
                           key={num}
                           onClick={() => setNightBatchCount(num)}
@@ -2594,11 +3345,12 @@ function App() {
                       ))}
                     </div>
                     <input
-                      type="number" min="1" max="300" value={nightBatchCount}
-                      onChange={(e) => setNightBatchCount(Math.max(1, Math.min(300, parseInt(e.target.value) || 1)))}
+                      type="number" min="1" max="500" value={nightBatchCount}
+                      onChange={(e) => setNightBatchCount(Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))}
                       disabled={nightBatchRunning}
                       style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px' }}
                     />
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>최대 500장까지 설정할 수 있습니다.</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2615,9 +3367,17 @@ function App() {
                       value={nightBatchPrompt}
                       onChange={(e) => setNightBatchPrompt(e.target.value)}
                       disabled={nightBatchRunning}
-                      placeholder="모든 시안에 공통으로 반영할 조건 (예: 주거용 단독주택, 친환경 소재 선호 등)..."
+                      placeholder="모든 시안에 공통으로 반영할 조건 (예: 4층 규모 복합 건물, 친환경 소재 선호 등)..."
                       style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
+                    {/* 2026-09-17: 스타일 풀 텍스트에서 층수/용도 단어를 일부러 뺐기 때문에(위
+                        NIGHT_BATCH_STYLE_PRESETS 주석 참고), 이걸 안 적어주면 AI가 임의로 추측해서
+                        원본과 다른 층수/용도로 나올 수 있다 — 특히 저층/고층처럼 스케일이 뚜렷한
+                        건물일수록 직접 적어주는 게 중요하다는 걸 알려준다. */}
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                      💡 건물 층수·용도(예: "3층 단독주택", "4층 복합 건물")를 적어주시면 원본과 다른
+                      스케일로 나오는 걸 방지할 수 있습니다.
+                    </span>
                   </div>
 
                   {nightBatchRunning ? (
@@ -2629,13 +3389,22 @@ function App() {
                         }} />
                       </div>
                       <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-                        {nightBatchProgress.current} / {nightBatchProgress.total}장 생성 중{nightBatchProgress.failed > 0 ? ` (실패 ${nightBatchProgress.failed}장)` : ''} — 이 탭을 닫지 마세요
+                        {nightBatchStopping
+                          ? '중단 처리 중... (진행 중인 이미지 완료 후 멈춥니다)'
+                          : `${nightBatchProgress.current} / ${nightBatchProgress.total}장 생성 중${nightBatchProgress.failed > 0 ? ` (실패 ${nightBatchProgress.failed}장)` : ''} — 이 탭을 닫지 마세요`}
                       </span>
                       <button
                         onClick={stopNightBatchGenerate}
-                        style={{ padding: '10px', borderRadius: '8px', background: 'transparent', border: '1px solid var(--accent-rose)', color: 'var(--accent-rose)', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
+                        disabled={nightBatchStopping}
+                        style={{
+                          padding: '10px', borderRadius: '8px',
+                          background: nightBatchStopping ? 'rgba(148, 163, 184, 0.15)' : 'transparent',
+                          border: '1px solid' + (nightBatchStopping ? ' var(--border-color)' : ' var(--accent-rose)'),
+                          color: nightBatchStopping ? 'var(--text-tertiary)' : 'var(--accent-rose)',
+                          cursor: nightBatchStopping ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '13px'
+                        }}
                       >
-                        중단하기
+                        {nightBatchStopping ? '중단 중...' : '중단하기'}
                       </button>
                     </>
                   ) : (
@@ -2881,6 +3650,41 @@ function App() {
                     }}
                   >
                     {isInpainting ? '확장 중...' : '영역 확장하기'}
+                  </button>
+                </div>
+              ) : editMode === 'kontext' ? (
+                // ═══════════════════════════════════════════════════════════
+                // ✨ AI 정밀 수정 (FLUX Kontext) 모드 — 위 "부분 수정"과 달리 브러시로
+                // 영역을 칠할 필요 없이, 문장으로 지시한 부분만 바뀌고 나머지 구도/인물/배경은
+                // ReferenceLatent로 그대로 유지된다. 한글로 입력해도 전송 직전 자동으로
+                // 영어로 번역돼 모델에 전달된다(runKontextEdit 참고).
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    브러시로 영역을 표시할 필요 없이, 무엇을 바꿀지 문장으로 지시하세요. 지시한 부분만 바뀌고
+                    나머지 구도·인물·배경은 원본 그대로 유지됩니다. (예: "빨간 목도리 씌워줘", "하늘을 노을로 바꿔줘")
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>수정 지시문</span>
+                    <textarea
+                      value={kontextInstruction}
+                      onChange={(e) => setKontextInstruction(e.target.value)}
+                      placeholder="무엇을 바꿀지만 짧게 입력 (한글 입력 시 자동 번역됩니다)..."
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleKontextEditFromEditTab}
+                    disabled={!kontextEditImage || !kontextInstruction.trim() || isKontextEditing}
+                    style={{
+                      padding: '10px', borderRadius: '8px',
+                      background: (!kontextEditImage || !kontextInstruction.trim()) ? 'var(--border-color)' : 'var(--accent-cyan)',
+                      color: 'white', border: 'none', cursor: (!kontextEditImage || !kontextInstruction.trim() || isKontextEditing) ? 'not-allowed' : 'pointer',
+                      fontWeight: 600, fontSize: '13px', opacity: (!kontextEditImage || !kontextInstruction.trim()) ? 0.5 : 1
+                    }}
+                  >
+                    {isKontextEditing ? '편집 중... (2~3분 소요)' : '✨ AI 정밀 수정 실행'}
                   </button>
                 </div>
               ) : null}
@@ -3389,7 +4193,7 @@ function App() {
               <span style={{ fontSize: '14px' }}>생성된 이미지가 없습니다</span>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '12px' }}>
               {studioGallery
                 .filter(item => !showFavoritesOnly || item.isFavorite)
                 .filter(item => activeFolderId === null || item.folderId === activeFolderId)
@@ -3406,17 +4210,26 @@ function App() {
                     borderRadius: '10px', cursor: 'grab',
                     border: '1px solid var(--border-color)',
                     background: 'var(--bg-elevated)', position: 'relative',
-                    boxShadow: 'var(--shadow-card)', transition: 'transform 0.15s ease, border-color 0.15s ease'
+                    boxShadow: 'var(--shadow-card)', transition: 'transform 0.15s ease, border-color 0.15s ease',
+                    // 2026-09-10 실측: 한 줄짜리 캡션에 white-space:nowrap을 쓰면, 그리드 아이템의
+                    // 기본 min-width(auto)가 "잘리기 전 원래 텍스트 전체 폭"을 최소 크기로 잡아버려서
+                    // 프롬프트가 긴 카드 하나가 그 컬럼 전체를 확 늘려버리는 CSS Grid 함정이 있다.
+                    // minWidth:0으로 그 자동 최소값을 꺼줘야 5개 칸이 항상 똑같이 나뉜다.
+                    minWidth: 0, overflow: 'hidden'
                   }}
                 >
                   {/* 정사각형 썸네일 영역만 overflow:hidden으로 잘라서 모서리를 둥글게 —
                       카드 전체에 걸면 폴더 팝오버(이 영역 밖으로 나감)까지 잘려버려서 분리했다. */}
-                  <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden', borderRadius: '10px 10px 0 0' }}>
+                  {/* CSS aspect-ratio 속성을 못 쓰는(구형) 브라우저에서도 정사각형이 확실히
+                      유지되도록, height:0 + paddingTop:100% 트릭으로 비율을 강제한다 — 실측
+                      결과 aspect-ratio만 믿으면 그 속성을 모르는 브라우저에서 img가 height:100%를
+                      해석 못 해 원본 비율 그대로(제각각 크기로) 렌더링되는 문제가 있었다(2026-09-10). */}
+                  <div style={{ position: 'relative', width: '100%', height: 0, paddingTop: '100%', overflow: 'hidden', borderRadius: '10px 10px 0 0', background: '#eef1f6' }}>
                     <img
                       src={`/generated/${item.imageFilename}`}
                       alt={item.prompt}
                       loading="lazy"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
@@ -3485,9 +4298,11 @@ function App() {
                       )}
                     </div>
                   )}
+                  {/* 한 줄만 짧게 보여주는 설명 — 항상 같은 높이(1줄 고정)라 카드 크기가
+                      캡션 유무·길이에 상관없이 일정하게 유지된다(2026-09-10). */}
                   <div style={{
-                    padding: '10px 12px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45,
-                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+                    padding: '8px 10px', fontSize: '12px', color: 'var(--text-secondary)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                   }}>
                     {item.prompt}
                   </div>
@@ -3502,9 +4317,18 @@ function App() {
       {selectedImage && (
         <div
           onClick={() => setSelectedImage(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,15,0.88)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(6,9,15,0.88)', backdropFilter: 'blur(2px)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '24px',
+            overflowY: 'auto'
+          }}
         >
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
+          {/* 2026-09-11 실측: 세로로 긴(포트레이트) 블렌딩 비교 이미지는 내용 전체 높이가 화면(90vh)을
+              넘는데, 이 배경(backdrop)에 스크롤이 없으면 즐겨찾기/다운로드/업스케일 버튼이 화면 밖으로
+              밀려나 아예 닿을 수 없었다 — overflowY:auto로 배경 자체를 스크롤 가능하게 해서 해결한다.
+              alignItems를 center→flex-start로 바꾼 것도 같은 이유(센터 정렬이면 위로도 넘쳐서 스크롤해도
+              상단이 잘린 채로 남는다). */}
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative', margin: 'auto' }}>
             <button
               onClick={() => setSelectedImage(null)}
               title="닫기"
@@ -3531,18 +4355,22 @@ function App() {
             <div className="surface-card" style={{ color: 'var(--text-primary)', fontSize: '14.5px', padding: '14px 16px', lineHeight: 1.5 }}>
               <div><strong style={{ color: 'var(--accent-cyan)' }}>프롬프트</strong> · {selectedImage.prompt}</div>
               <div style={{ fontSize: '12.5px', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-                파일명 {selectedImage.imageFilename} · 스타일 {selectedImage.style} · 화면비 {selectedImage.aspectRatio} · 시드 {selectedImage.seed}
+                모델 <strong style={{ color: 'var(--text-secondary)' }}>{selectedImage.checkpoint || '알 수 없음'}</strong> · 스타일 {selectedImage.style || '없음'} · 화면비 {selectedImage.aspectRatio || '-'} · 시드 {selectedImage.seed}
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '2px', opacity: 0.75 }}>
+                파일명 {selectedImage.imageFilename}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => toggleFavorite(selectedImage)}
                 title={selectedImage.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
                 style={{
                   padding: '10px 14px', borderRadius: 'var(--radius-sm)',
                   border: `1px solid ${selectedImage.isFavorite ? 'var(--accent-amber)' : 'var(--border-color)'}`,
-                  background: selectedImage.isFavorite ? 'rgba(251,191,36,0.14)' : 'transparent',
+                  background: selectedImage.isFavorite ? 'rgba(251,191,36,0.14)' : 'var(--bg-elevated)',
                   color: selectedImage.isFavorite ? 'var(--accent-amber)' : 'var(--text-primary)', cursor: 'pointer',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
                 }}
               >
@@ -3554,12 +4382,56 @@ function App() {
                 title="다운로드"
                 style={{
                   flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-color)', background: 'transparent',
-                  color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
+                  border: '1px solid var(--border-color)', background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
                 }}
               >
                 <Download size={18} style={{ marginRight: '6px' }} />
                 다운로드
+              </button>
+              <button
+                onClick={() => handle4KUpscale(selectedImage)}
+                disabled={isUpscaling}
+                title="4K 초고화질 업스케일"
+                style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  border: 'none', background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
+                  color: '#fff', fontWeight: 700, cursor: isUpscaling ? 'default' : 'pointer',
+                  opacity: isUpscaling ? 0.6 : 1, boxShadow: '0 2px 10px rgba(51,51,153,0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
+                }}
+              >
+                {isUpscaling
+                  ? <RefreshCw size={18} className="animate-spin" style={{ marginRight: '6px' }} />
+                  : <ZoomIn size={18} style={{ marginRight: '6px' }} />}
+                4K 업스케일
+              </button>
+              <button
+                onClick={() => reuseGenerationSettings(selectedImage)}
+                title="이 설정으로 다시 만들기"
+                style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-color)', background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
+                }}
+              >
+                <History size={18} style={{ marginRight: '6px' }} />
+                다시 만들기
+              </button>
+              <button
+                onClick={() => attachGalleryImageToEdit(selectedImage)}
+                title="이 이미지로 이어서 수정하기"
+                style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-color)', background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
+                }}
+              >
+                <Edit3 size={18} style={{ marginRight: '6px' }} />
+                이어서 수정
               </button>
             </div>
           </div>
