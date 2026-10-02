@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>drawio postMessage test</title></head>
+<body style="margin:0">
+<iframe id="f" src="/drawio/index.html?embed=1&proto=json&offline=1&ui=min&spin=1&libraries=0" style="width:100vw;height:100vh;border:0"></iframe>
+<script>
+const XML = '<mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">'
+  + '<root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+  + '<mxCell id="2" value="테스트 박스" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="120" y="120" width="160" height="60" as="geometry"/></mxCell>'
+  + '</root></mxGraphModel>';
+window.__events = [];
+window.addEventListener('message', (evt) => {
+  let msg; try { msg = JSON.parse(evt.data); } catch(e) { return; }
+  window.__events.push(msg.event || msg.action || 'unknown');
+  const iframe = document.getElementById('f');
+  if (msg.event === 'init') {
+    iframe.contentWindow.postMessage(JSON.stringify({ action: 'load', xml: XML }), '*');
+  }
+});
+</script>
+</body>
+</html>

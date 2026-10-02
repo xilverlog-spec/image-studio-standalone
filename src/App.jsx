@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import DiagramEditor from './DiagramEditor';
+import DrawioEditor from './DrawioEditor';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -2436,7 +2436,7 @@ function App() {
       {/* 다이어그램 모듈 — 바탕 도면 위에 주석(라벨/화살표/영역/아이콘)을 얹는 편집기.
           기존 스튜디오 레이아웃 위에 덮어 보여주고, 탭을 오가도 작업이 사라지지 않게 항상 마운트해 둔 채 숨기기만 한다. */}
       <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'diagram' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
-        <DiagramEditor active={appModule === 'diagram'} addToast={addToast} apiFetch={apiFetch} />
+        <DrawioEditor active={appModule === 'diagram'} addToast={addToast} apiFetch={apiFetch} />
       </div>
 
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}

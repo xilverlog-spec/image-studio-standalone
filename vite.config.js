@@ -18,6 +18,10 @@ export default defineConfig({
       '/generated': {
         target: 'http://localhost:5000',
         changeOrigin: true
+      },
+      '/drawio': {
+        target: 'http://localhost:5000',
+        changeOrigin: true
       }
     }
   }

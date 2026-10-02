@@ -46,6 +46,14 @@ OUTPUT_IMAGES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."
 os.makedirs(OUTPUT_IMAGES_DIR, exist_ok=True)
 app.mount("/generated", StaticFiles(directory=OUTPUT_IMAGES_DIR), name="generated")
 
+# 2026-10-02: 다이어그램 탭에 쓰는 draw.io(diagrams.net) 정적 웹앱. 공식 릴리스(draw.war)에서
+# 서버 전용 부분(WEB-INF/META-INF)만 빼고 그대로 옮겨왔다 — 완전히 정적 파일이라 외부
+# embed.diagrams.net 없이도 동작하고(민감한 설계 이미지가 외부로 안 나감), 프론트는
+# /drawio/index.html?embed=1&proto=json&offline=1 로 iframe에 띄운다.
+DRAWIO_STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "drawio_static"))
+if os.path.isdir(DRAWIO_STATIC_DIR):
+    app.mount("/drawio", StaticFiles(directory=DRAWIO_STATIC_DIR, html=True), name="drawio")
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": "image-studio-standalone"}
