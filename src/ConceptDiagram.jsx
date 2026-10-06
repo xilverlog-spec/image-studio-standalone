@@ -48,6 +48,27 @@ const readResizedPng = (file) => new Promise((resolve, reject) => {
   fr.readAsDataURL(file);
 });
 
+// 위치를 정확히 읽게 하려고 이미지 위에 10% 간격 붉은 눈금(0~100)을 그려서 AI에게 보낸다(화면에 보이는 이미지는 그대로)
+const withGrid = (dataUrl) => new Promise((resolve) => {
+  const img = new Image();
+  img.onerror = () => resolve(dataUrl);
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    const fs = Math.max(11, Math.round(Math.min(img.width, img.height) / 55));
+    ctx.font = `bold ${fs}px sans-serif`; ctx.lineWidth = Math.max(1, Math.round(fs / 12));
+    for (let i = 0; i <= 10; i++) {
+      const x = (img.width * i) / 10; const y = (img.height * i) / 10;
+      ctx.strokeStyle = 'rgba(220,38,38,0.55)'; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, img.height); ctx.moveTo(0, y); ctx.lineTo(img.width, y); ctx.stroke();
+      ctx.fillStyle = 'rgba(220,38,38,0.95)';
+      ctx.fillText(String(i * 10), Math.min(img.width - fs * 1.6, x + 2), fs + 1);
+      ctx.fillText(String(i * 10), 2, Math.min(img.height - 3, y + fs));
+    }
+    resolve(c.toDataURL('image/png'));
+  };
+  img.src = dataUrl;
+});
+
 export default function ConceptDiagram({ addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
   const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
@@ -105,7 +126,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!subjectImage || reading) return null;
     setReading(true);
     try {
-      const parsed = await callAI(buildReadPrompt(subjectKind), [subjectImage]);
+      const useGrid = subjectKind !== 'form';
+      const parsed = await callAI(buildReadPrompt(subjectKind, { grid: useGrid }), [useGrid ? await withGrid(subjectImage) : subjectImage]);
       const r = normalizeRead(parsed, subjectKind);
       setRead(r);
       const pv = readToPreview(r);

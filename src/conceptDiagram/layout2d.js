@@ -72,8 +72,10 @@ function heading(text, accent) {
 //  panel.rooms   : { <shapeId>: { abbr: 'L', fill: '#FCE9CF', text: '#555' } }  (없으면 기본 회색)
 //  panel.entries : [{ room: <shapeId>, side: 'top|bottom|left|right', color }]    (방 바깥쪽에서 안쪽으로 향하는 굵은 화살표)
 //  panel.paths   : [{ via: [<shapeId>, ...], color, dashed }]                       (방 중심을 이어 직각으로 꺾이는 점선 동선)
-const BLOCK_GRAY = '#E3E5E8';
-const BLOCK_TEXT = '#4a4f55';
+const BLOCK_GRAY = '#EFEFEF';
+const BLOCK_TEXT = '#3a3a3a';
+const BLOCK_OUTLINE = '#C4C7CC';
+const SECONDARY = /욕실|화장실|현관|팬트리|다용도|실외기|발코니|드레스|복도|홀|창고|보일러|계단|엘리베이터/;
 
 function renderBlocksPanel(shapes, panel, ox, oy, uid) {
   const accent = isHex(panel.accent) ? panel.accent : '#F28C28';
@@ -92,25 +94,34 @@ function renderBlocksPanel(shapes, panel, ox, oy, uid) {
   const rooms = panel.rooms && typeof panel.rooms === 'object' ? panel.rooms : {};
   const out = [];
 
-  // 바깥 윤곽(boundary/other 중 가장 큰 것) — 얇은 회색 선
-  shapes.filter((s) => s.kind === 'boundary').forEach((s) => {
-    out.push(`<polygon points="${polyStr(s.pts)}" fill="#fff" stroke="#B9BEC5" stroke-width="1.8" stroke-linejoin="round"/>`);
-  });
-  // 방 블록
-  shapes.filter((s) => s.kind !== 'boundary' && s.kind !== 'road').forEach((s) => {
+  // 바깥 윤곽: AI가 준 외곽선은 부정확하므로 쓰지 않는다. 모든 방 영역을 회색 테두리로 깔아 합쳐진 윤곽을 만든 뒤 흰색으로 덮어 얇은 선만 남긴다
+  const body = shapes.filter((s) => s.kind !== 'boundary' && s.kind !== 'road');
+  body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="${BLOCK_OUTLINE}" stroke="${BLOCK_OUTLINE}" stroke-width="5" stroke-linejoin="round"/>`));
+  body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>`));
+  // 주요 실만 색 블록으로: rooms 에 적힌 것 중 부속 공간(욕실·현관 등)은 뺀다. 블록은 외곽·이웃과 떨어지게 안쪽으로 줄여서 그린다
+  const wanted = Object.keys(rooms).length ? body.filter((s) => rooms[s.id]) : body;
+  const picked = panel.showAll ? wanted : wanted.filter((s) => !SECONDARY.test(s.name || ''));
+  const inset = (s) => {
+    const px = s.pts.map(T); const c = px.reduce((a, p) => [a[0] + p[0] / px.length, a[1] + p[1] / px.length], [0, 0]);
+    const xs = px.map((p) => p[0]); const ys = px.map((p) => p[1]);
+    const w = Math.max(...xs) - Math.min(...xs); const h = Math.max(...ys) - Math.min(...ys);
+    const gap = 10; const kx = Math.max(0.5, 1 - gap / (w || 1)); const ky = Math.max(0.5, 1 - gap / (h || 1));
+    return px.map((p) => [c[0] + (p[0] - c[0]) * kx, c[1] + (p[1] - c[1]) * ky]);
+  };
+  picked.forEach((s) => {
     const r = rooms[s.id] || {};
     const fill = isHex(r.fill) ? r.fill : BLOCK_GRAY;
-    out.push(`<polygon points="${polyStr(s.pts)}" fill="${fill}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>`);
+    out.push(`<polygon points="${inset(s).map((p) => p.map((v) => v.toFixed(1)).join(',')).join(' ')}" fill="${fill}" stroke="none"/>`);
   });
   const centerOf = (id) => { const s = byId[id]; if (!s) return null; const c = centroid(s.pts); return T(c); };
   const rbox = (id) => { const s = byId[id]; if (!s) return null; const [a, b, c, d] = bboxOf(s.pts); const p0 = T([a, b]); const p1 = T([c, d]); return [p0[0], p0[1], p1[0], p1[1]]; };
-  shapes.filter((s) => s.kind !== 'boundary' && s.kind !== 'road').forEach((s) => {
+  picked.forEach((s) => {
     const r = rooms[s.id] || {};
     const abbr = String(r.abbr ?? '').slice(0, 4);
     if (!abbr) return;
     const [cx, cy] = centerOf(s.id); const b = rbox(s.id);
     const fs = Math.max(11, Math.min(22, Math.min(b[2] - b[0], b[3] - b[1]) * 0.42));
-    out.push(`<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="800" fill="${isHex(r.text) ? r.text : BLOCK_TEXT}">${esc(abbr)}</text>`);
+    out.push(`<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="600" fill="${isHex(r.text) ? r.text : BLOCK_TEXT}">${esc(abbr)}</text>`);
   });
 
   // 동선(점선): 방 중심을 직각으로 이어 간다
@@ -150,9 +161,10 @@ function renderBlocksPanel(shapes, panel, ox, oy, uid) {
     let lx = BASE_X + 6; const ly = BASE_Y + BASE_H + 16;
     legend.forEach((l) => {
       const col = isHex(l.color) ? l.color : BLOCK_GRAY;
-      const label = String(l.label).slice(0, 14);
+      const label = String(l.label).slice(0, 24);
+      const tw = [...label].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 255 ? 13.5 : 7.4), 0);
       out.push(`<rect x="${lx}" y="${ly - 11}" width="16" height="16" rx="3" fill="${col}" stroke="#c9ced4" stroke-width="0.8"/><text x="${lx + 23}" y="${ly + 2}" font-family="${FONT}" font-size="13" font-weight="600" fill="#3a3f45">${esc(label)}</text>`);
-      lx += 40 + label.length * 13;
+      lx += 46 + tw;
     });
   }
 

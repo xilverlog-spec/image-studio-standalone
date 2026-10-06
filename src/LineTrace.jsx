@@ -1,4 +1,7 @@
 import React, { useState, useRef } from 'react';
+import { renderMassingLineGroup } from './conceptDiagram/massing';
+import { buildReadPrompt, normalizeRead } from './conceptDiagram/subject';
+import { parseJsonLoose } from './conceptDiagram/spec';
 
 // 이미지 → 정돈된 선(SVG) 추출. 선을 찾아 수직/±30° 세 방향으로 정렬하고, 외곽/안쪽/점선을 일정한 굵기로 다시 그린다.
 // 아이소메트릭 도식에 맞춰져 있다(곡선, 임의 각도의 선, 복잡한 조경 그림은 대상이 아니다). 기본은 완전히 로컬이다.
@@ -46,6 +49,7 @@ export default function LineTrace({ addToast, apiFetch }) {
   const [progress, setProgress] = useState({ stage: '', done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // { svg, stats, warning }
+  const [simplifying, setSimplifying] = useState(null); // 구조로 단순화하는 중인 칸 번호
   const fileRef = useRef(null);
 
   const pick = async (file) => {
@@ -85,6 +89,36 @@ export default function LineTrace({ addToast, apiFetch }) {
       addToast?.('error', '선 추출 실패', e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // 복잡한 칸(나무·사람·디테일이 많은 장면)을 AI가 건물 구조로 읽어 박스 단선으로 다시 그린다
+  const simplifyPanel = async (info) => {
+    if (!source || !result || simplifying !== null) return;
+    setSimplifying(info.i);
+    try {
+      const [x0, y0, x1, y1] = info.bbox;
+      const img = await new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('원본을 읽지 못했습니다.')); im.src = source.src; });
+      const c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0;
+      c.getContext('2d').drawImage(img, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+      const res = await apiFetch('/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gemini-3.5-flash', max_tokens: 6000, temperature: 0.2, messages: [{ role: 'user', content: buildReadPrompt('form'), images: [c.toDataURL('image/png').split(',').pop()] }] }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      const data = await res.json();
+      const read = normalizeRead(parseJsonLoose(data.choices?.[0]?.message?.content), 'form');
+      const inner = renderMassingLineGroup(read.form.boxes, read.form.ground, x1 - x0, y1 - y0, 2.4);
+      if (!inner) throw new Error('그릴 형태가 없습니다.');
+      const re = new RegExp('<g data-panel="' + info.i + '"[^>]*>[\\s\\S]*?</g>');
+      if (!re.test(result.svg)) throw new Error('이 칸을 결과에서 찾지 못했습니다.');
+      const svg = result.svg.replace(re, `<g data-panel="${info.i}" data-simplified="1" transform="translate(${x0} ${y0})">${inner}</g>`);
+      setResult({ ...result, svg, simplified: [...(result.simplified || []), info.i] });
+      addToast?.('success', `칸 ${info.i + 1}을 구조로 단순화했습니다`, read.summary || '박스 덩어리로 다시 그렸습니다.');
+    } catch (e) {
+      addToast?.('error', '구조 단순화 실패', e.message);
+    } finally {
+      setSimplifying(null);
     }
   };
 
@@ -191,6 +225,13 @@ export default function LineTrace({ addToast, apiFetch }) {
               {result.stats.redraw_used ? ` · AI 재생성 ${result.stats.ai_panels}칸 / 원본 직접 ${result.stats.fallback_panels}칸` : ' · AI 재생성 안 함'}
             </span>
           )}
+          {(result?.stats?.panel_info || []).filter((p) => p.complex && !(result.simplified || []).includes(p.i)).map((p) => (
+            <button key={p.i} style={{ ...btn(false, simplifying !== null), padding: '6px 10px', fontSize: 12 }} disabled={simplifying !== null}
+              title="나무·사람 같은 디테일이 많아 선이 불완전할 수 있는 칸입니다. AI가 건물 구조를 읽어 박스 단선으로 단순하게 다시 그립니다(Gemini로 이미지 전송)."
+              onClick={() => simplifyPanel(p)}>
+              {simplifying === p.i ? `칸 ${p.i + 1} 단순화 중…` : `🧱 칸 ${p.i + 1}: AI가 구조를 읽어 단순화`}
+            </button>
+          ))}
           {result?.warnings?.length > 0 && (
             <span title={result.warnings.join('\n')} style={{ fontSize: 11.5, color: '#C2410C', cursor: 'help' }}>⚠ 안내 {result.warnings.length}건(마우스를 올려보세요)</span>
           )}

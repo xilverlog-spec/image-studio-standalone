@@ -26,11 +26,13 @@ const READ_SCHEMA = `{
 const READ_RULES = `- 이미지의 종류를 먼저 판단한다: 건물의 입체 형태(외관/조감/스케치)=form, 실 구성이 보이는 평면도=plan, 대지·도로·건물 배치=site, 단면·입면·그 외=other.
 - form: 건물을 3~12개의 직육면체로 근사한다. x는 오른쪽-아래, y는 왼쪽-아래, z는 위쪽, 단위는 모듈(전체 길이가 대략 10 이하). 곡면은 가까운 직육면체로 단순화하고 summary에 단순화했다고 적는다. 바닥(ground)은 전체 발자국을 덮는 크기.
 - plan/site: 0~100 범위의 정규화 좌표(이미지 왼쪽 위가 [0,0], 오른쪽 아래가 [100,100])로 각 영역을 다각형(꼭짓점 4~8개)으로 적는다. 방/건물은 kind 를 room/building, 도로는 road, 녹지는 green, 수공간은 water, 대지 경계선은 boundary 로 한다. 영역이 3~30개가 되게 큰 것 위주로 적고 id 는 r1, r2…처럼 짧고 겹치지 않게 한다.
+- plan 은 건물 안쪽 바닥 전체를 빈틈없이 방(복도·홀·거실 포함)으로 채운다: 복도나 홀도 name "복도" 로 별도 영역으로 적고, 이웃한 방은 같은 변을 공유해서 사이에 틈이 없게 한다(좌표를 서로 일치시킨다).
 - 평면도는 가구·치수선·문 스윙·마감 패턴은 무시하고 '방(실)' 단위의 직사각/ㄱ자 영역으로 단순화한다. 건물 전체 바깥 윤곽도 kind "boundary" 다각형 하나로 함께 적는다(방과 겹쳐도 된다). 작은 실(욕실, 팬트리, 발코니, 드레스룸 포함)도 빠뜨리지 않는다.
 - 이미지에 글자가 있으면 name 에 그대로 옮기고, 없으면 용도를 짐작해 짧게 쓴다.
 - 이미지를 알아볼 수 없으면 kind 를 "other" 로 하고 summary 에 이유를 쓴다.`;
 
-export function buildReadPrompt(forcedKind) {
+export function buildReadPrompt(forcedKind, opts = {}) {
+  const gridNote = opts.grid ? '\n[눈금 안내] 이미지에는 위치를 재기 위한 붉은 눈금선이 10 단위(0~100)로 그려져 있고, 가장자리에 숫자가 적혀 있다. 모든 좌표는 이 눈금(이미지 전체 = 0~100)을 기준으로 읽는다. 눈금선과 숫자는 도면의 일부가 아니므로 방으로 읽지 않는다. 좌표는 눈금을 보고 가능한 한 5 단위 배수로 맞춘다.' : '';
   const hint = forcedKind && forcedKind !== 'auto' ? `\n이 이미지는 사용자가 "${SUBJECT_KINDS[forcedKind]}"로 지정했다. kind 를 "${forcedKind}" 로 하고 그에 맞게 읽는다.\n` : '';
   return `당신은 건축 도면과 이미지를 읽는 설계 보조자다. 첨부된 이미지를 읽어 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).${hint}
 
@@ -38,7 +40,7 @@ export function buildReadPrompt(forcedKind) {
 ${READ_SCHEMA}
 
 규칙:
-${READ_RULES}`;
+${READ_RULES}${gridNote}`;
 }
 
 const num = (v, d = 0, lo = -50, hi = 50) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
@@ -61,11 +63,30 @@ export function normalizeRead(parsed, forcedKind) {
     return { kind, summary, form: { ground, boxes } };
   }
   if (kind === 'plan' || kind === 'site') {
-    const shapes = normalizeShapes(parsed.shapes);
+    const shapes = snapShapes(normalizeShapes(parsed.shapes));
     if (shapes.length < 2) throw new Error('도면의 영역을 읽지 못했습니다. 종류를 바꾸거나 다시 읽어 보세요.');
     return { kind, summary, shapes };
   }
   throw new Error(summary || '이 이미지는 아직 지원하지 않는 종류입니다(평면·건물 형태·배치도만 가능).');
+}
+
+// 가장자리 정렬: 서로 가까운 x/y 좌표(눈대중 오차)를 하나로 모아 방들이 반듯하게 맞닿게 한다
+export function snapShapes(shapes, tol = 2.2) {
+  const cluster = (vals) => {
+    const sorted = [...new Set(vals.map((v) => Math.round(v * 10) / 10))].sort((p, q) => p - q);
+    const map = new Map(); let grp = [];
+    const flush = () => { if (!grp.length) return; const m = Math.round((grp.reduce((a, b) => a + b, 0) / grp.length) * 2) / 2; grp.forEach((g) => map.set(g, m)); grp = []; };
+    sorted.forEach((v) => { if (grp.length && v - grp[grp.length - 1] > tol) flush(); grp.push(v); });
+    flush();
+    return map;
+  };
+  const rd = (v) => Math.round(v * 10) / 10;
+  const xm = cluster(shapes.flatMap((s) => s.pts.map((p) => p[0])));
+  const ym = cluster(shapes.flatMap((s) => s.pts.map((p) => p[1])));
+  return shapes.map((s) => {
+    const pts = s.pts.map((p) => [xm.get(rd(p[0])) ?? p[0], ym.get(rd(p[1])) ?? p[1]]).filter((p, i, a) => i === 0 || p[0] !== a[i - 1][0] || p[1] !== a[i - 1][1]);
+    return { ...s, pts };
+  }).filter((s) => s.pts.length >= 3);
 }
 
 // 읽은 결과를 바탕만 그려서 보여 줄 스펙(확인용 미리보기)
@@ -87,7 +108,7 @@ const FORM_SCHEMA = `{
   ]
 }`;
 
-const BLOCKS_RULES = `[블록 스타일 — 평면을 단순한 색 블록으로 줄이는 표현]\n스타일 참고 이미지가 '방을 색 블록과 이니셜 글자로 단순화하고, 굵은 화살표(진입)와 점선(동선)을 얹은' 모양이거나, 요청이 그런 단순화 평면도를 원하면 패널에 "style":"blocks" 를 넣고 아래 필드를 쓴다.\n  "rooms": { "<영역 id>": {"abbr":"L", "fill":"#FCE9CF"} },   // 방마다 이니셜(1~3자)과 블록 색. 같은 성격의 방은 같은 색(예: 공용=연한 주황, 사적=회색)\n  "entries": [ {"room":"<영역 id>", "side":"top|bottom|left|right", "color":"#F28C28"} ],   // 현관 등 출입 지점. 방 바깥에서 안쪽으로 향하는 굵은 화살표\n  "paths": [ {"via":["<id>","<id>","<id>"], "color":"#F28C28", "dashed":true} ]            // 동선. 지나는 방 id 를 순서대로(점선이 방 중심을 직각으로 이어 간다)\n- 이니셜은 참고 이미지의 규칙을 따른다(예: L=거실, K=주방, D/K=식당·주방, R=방/침실, S=서재). 참고 이미지에 없는 방은 영문 첫 글자나 한글 한 글자로 정한다.\n  "legend": [ {"label":"공용 공간", "color":"#FCE9CF"}, {"label":"사적 공간", "color":"#D9DCE0"} ]   // 색의 뜻을 아래에 표시(구역을 나눌 때는 반드시 넣는다)\n- 요청에 '공용/사적 구분' 같은 구역 나누기가 있으면: 모든 방을 구역으로 분류해서 rooms 의 fill 을 구역별로 서로 뚜렷이 다른 색으로 칠하고(빠지는 방이 없게), legend 로 색의 뜻을 적는다. 공용=거실·주방·식당·현관·복도·발코니, 사적=침실·안방·서재·드레스룸·욕실·화장실 처럼 일반적인 기준을 따르되 요청의 기준이 있으면 그것을 따른다.\n- 요청에 없는 진입 화살표(entries)와 동선(paths)은 넣지 않는다. 요청이 동선·진입을 말했을 때만 쓴다. 영역 id 는 반드시 목록에 있는 것만 쓴다.`;
+const BLOCKS_RULES = `[블록 스타일 — 평면을 단순한 색 블록으로 줄이는 표현]\n스타일 참고 이미지가 '방을 색 블록과 이니셜 글자로 단순화하고, 굵은 화살표(진입)와 점선(동선)을 얹은' 모양이거나, 요청이 그런 단순화 평면도를 원하면 패널에 "style":"blocks" 를 넣고 아래 필드를 쓴다.\n  "rooms": { "<영역 id>": {"abbr":"L", "fill":"#FFEFD5"} },   // 방마다 이니셜(1~3자)과 블록 색. 같은 성격의 방은 같은 색(예: 공용=연한 주황, 사적=회색)\n  "entries": [ {"room":"<영역 id>", "side":"top|bottom|left|right", "color":"#F28C28"} ],   // 현관 등 출입 지점. 방 바깥에서 안쪽으로 향하는 굵은 화살표\n  "paths": [ {"via":["<id>","<id>","<id>"], "color":"#F28C28", "dashed":true} ]            // 동선. 지나는 방 id 를 순서대로(점선이 방 중심을 직각으로 이어 간다)\n- **rooms 에는 주요 실만 넣는다**(보통 3~8개: 거실, 주방/식당, 침실, 안방, 서재 등 생활의 중심이 되는 실). 욕실·화장실·현관·팬트리·다용도실·실외기실·발코니·드레스룸·복도 같은 부속 공간은 rooms 에 넣지 않는다 — 넣지 않은 방은 색 없이 비워 두고 건물 외곽선만 남는다(참고 이미지처럼). 요청이 모든 실을 표시하라고 하면 예외.\n- 이니셜은 참고 이미지의 규칙을 따른다(예: L=거실, K=주방, D/K=식당·주방, R=방/침실, S=서재). 참고 이미지에 없는 방은 영문 첫 글자나 한글 한 글자로 정한다.\n  "legend": [ {"label":"공용 공간", "color":"#FFEFD5"}, {"label":"사적 공간", "color":"#EFEFEF"} ]   // 색의 뜻을 아래에 표시(구역을 나눌 때는 반드시 넣는다)\n- 요청에 '공용/사적 구분' 같은 구역 나누기가 있으면: 모든 방을 구역으로 분류해서 rooms 의 fill 을 구역별로 서로 뚜렷이 다른 색으로 칠하고(빠지는 방이 없게), legend 로 색의 뜻을 적는다. 공용=거실·주방·식당·현관·복도·발코니, 사적=침실·안방·서재·드레스룸·욕실·화장실 처럼 일반적인 기준을 따르되 요청의 기준이 있으면 그것을 따른다.\n- 요청에 없는 진입 화살표(entries)와 동선(paths)은 넣지 않는다. 요청이 동선·진입을 말했을 때만 쓴다. 영역 id 는 반드시 목록에 있는 것만 쓴다.`;
 
 const LAYOUT_SCHEMA = `{
   "title": "전체 제목(없으면 빈 문자열)",

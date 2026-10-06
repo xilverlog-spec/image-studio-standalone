@@ -124,6 +124,7 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
 
             k_final = max(1.0, max(W, H) / 1200.0)
             parts, stats_acc = [], {"lines": 0, "arrows": 0, "ai_panels": 0, "fallback_panels": 0}
+            panel_info = []
             margin = int(0.012 * max(W, H))
             for idx, (x0, y0, x1, y1) in enumerate(objects):
                 bx0, by0 = max(0, x0 - margin), max(0, y0 - margin)
@@ -152,7 +153,8 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                 sw, sh = chosen["stats"]["size"]
                 sx, sy = cw / float(sw), ch / float(sh)
                 inner = _rescale_strokes(_svg_inner(chosen["svg"]), k_final / (chosen["stats"]["k_w"] * sx))
-                parts.append('<g transform="translate(%d %d) scale(%.5f %.5f)">%s</g>' % (bx0, by0, sx, sy, inner))
+                parts.append('<g data-panel="%d" transform="translate(%d %d) scale(%.5f %.5f)">%s</g>' % (idx, bx0, by0, sx, sy, inner))
+                panel_info.append({"i": idx, "bbox": [bx0, by0, bx1, by1], "complex": bool(chosen["stats"].get("complex")), "ai": used_ai})
                 stats_acc["lines"] += chosen["stats"]["lines"]
                 stats_acc["arrows"] += chosen["stats"]["arrows"]
                 stats_acc["ai_panels" if used_ai else "fallback_panels"] += 1
@@ -183,7 +185,7 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
             svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">'
                    '<rect width="100%%" height="100%%" fill="#fff"/>%s</svg>') % (W, H, W, H, "\n".join(parts))
             stats = {**stats_acc, "panels": len(objects), "text_lines": len(labels), "text_editable": text_editable, "size": [W, H],
-                     "redraw_used": use_ai}
+                     "redraw_used": use_ai, "panel_info": panel_info}
             _update(job, status="done", stage="완료", svg=svg, stats=stats, warnings=warnings, finished=time.time())
         except BaseException as e:
             if isinstance(e, (KeyboardInterrupt, SystemExit)):

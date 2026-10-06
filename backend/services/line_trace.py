@@ -43,7 +43,7 @@ def _seg_dist(p, a, b):
     return float(np.linalg.norm(p - (a + ab * t)))
 
 
-def _close_open_ends(lines, max_ext, free_tol, orphan_len=0.0, W_img=1000, H_img=1000):
+def _close_open_ends(lines, max_ext, free_tol, orphan_len=0.0, W_img=1000, H_img=1000, info=None):
     """어디에도 닿지 않은 선 끝(자유 끝)을 진행 방향으로 연장해 가까운 다른 선(또는 그 선의 연장)과 만나게 한다.
     점선·희미한 선이 끊긴 채 모서리에서 어긋나거나 벽에 못 닿는 부분을 이어 준다."""
     segs = [[np.array(L[0], float), np.array(L[1], float), L[2], L[3]] for L in lines]
@@ -60,6 +60,35 @@ def _close_open_ends(lines, max_ext, free_tol, orphan_len=0.0, W_img=1000, H_img
         segs = [sg for sg in segs if sg[2] == "dash" or float(np.linalg.norm(sg[1] - sg[0])) >= detail_len]
     keep_ = [i for i in range(len(segs)) if not _orphan(i)]
     segs = [segs[i] for i in keep_]
+
+    def _seg_seg(a0, a1, b0, b1):
+        # 두 선분이 교차하거나 가까우면 연결된 것으로 본다
+        def _cross(o, p_, q):
+            return (p_[0] - o[0]) * (q[1] - o[1]) - (p_[1] - o[1]) * (q[0] - o[0])
+        d1, d2 = _cross(b0, b1, a0), _cross(b0, b1, a1)
+        d3, d4 = _cross(a0, a1, b0), _cross(a0, a1, b1)
+        if d1 * d2 < 0 and d3 * d4 < 0:
+            return 0.0
+        return min(_seg_dist(a0, b0, b1), _seg_dist(a1, b0, b1), _seg_dist(b0, a0, a1), _seg_dist(b1, a0, a1))
+
+    complex_scene = len(segs) > 60
+    if info is not None:
+        info['complex'] = complex_scene
+    if complex_scene and len(segs) > 1:
+        par = list(range(len(segs)))
+        def _f(i):
+            while par[i] != i:
+                par[i] = par[par[i]]; i = par[i]
+            return i
+        for i in range(len(segs)):
+            for j in range(i + 1, len(segs)):
+                if _seg_seg(segs[i][0], segs[i][1], segs[j][0], segs[j][1]) <= free_tol:
+                    par[_f(i)] = _f(j)
+        tot = {}
+        for i, sg in enumerate(segs):
+            tot[_f(i)] = tot.get(_f(i), 0.0) + float(np.linalg.norm(sg[1] - sg[0]))
+        big = max(tot.values())
+        segs = [sg for i, sg in enumerate(segs) if tot[_f(i)] >= 0.2 * big or sg[2] == "dash"]
 
     def free(i, e):
         P = segs[i][e]
@@ -706,6 +735,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     if debug is not None:
         debug['silhouettes'] = [v.tolist() for v in silhouettes]
         debug['lines_after'] = [(L[0].tolist(), L[1].tolist(), L[2]) for L in lines]; debug['f'] = f
+    _trace_info = {}
     if line_art and lines:
         dt_thick = ndi.distance_transform_edt(gray < 140)
         thick = []
@@ -750,7 +780,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
                 n_ = np.array([-v_[1], v_[0]]) / (np.linalg.norm(v_) + 1e-9)
                 role_ = "outline" if _inside_sil(mid_ + n_ * off_) != _inside_sil(mid_ - n_ * off_) else "inner"
             new_lines.append((L_[0], L_[1], role_, L_[3]))
-        lines = _close_open_ends(new_lines, max_ext=0.04 * max(W, H), free_tol=max(8 * f, 0.008 * max(W, H)), orphan_len=0.06 * max(W, H), W_img=W, H_img=H)
+        lines = _close_open_ends(new_lines, max_ext=0.04 * max(W, H), free_tol=max(8 * f, 0.008 * max(W, H)), orphan_len=0.06 * max(W, H), W_img=W, H_img=H, info=_trace_info)
 
     # ── 면 채우기 ──
     out_parts = []
@@ -834,7 +864,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
         out_parts.append('<polygon points="%.1f,%.1f %.1f,%.1f %.1f,%.1f" fill="#1d1d1d"/>' % (
             hx0_ / s, yb_ / s, hx1_ / s, yb_ / s, xs_ / s, ytip_ / s))
     v_lines = [(float(-L[1]), float(L[2]), float(L[3])) for L in merged if L[0] == 'V']
-    for x0, y0, x1, y1, dr_ in arrows:
+    for x0, y0, x1, y1, dr_ in ([] if line_art else arrows):
         sz_ = max(x1 - x0, y1 - y0, 1)
         cx_ = (x0 + x1) / 2.0
         base_y = y0 if dr_ == 'down' else y1
@@ -888,6 +918,6 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     roles = {r: sum(1 for l in lines if l[2] == r) for r in ("outline", "inner", "dash")}
     return {
         "svg": "\n".join(svg),
-        "stats": {"lines": len(lines), "roles": roles, "arrows": len(arrows), "text_lines": len(clusters), "text_editable": texts_used,
+        "stats": {"complex": bool(_trace_info.get("complex")), "lines": len(lines), "roles": roles, "arrows": len(arrows), "text_lines": len(clusters), "text_editable": texts_used,
                   "size": [W0, H0], "enhanced": bool(enhance), "k_w": k_w},
     }

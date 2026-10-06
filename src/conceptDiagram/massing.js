@@ -117,3 +117,41 @@ export function renderMassing(spec) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${title}${panels}</svg>`;
   return { svg, width: W, height: H };
 }
+
+// ── 선 도식 스타일(채움 없음, 단선): '이미지 → 깔끔한 선'에서 복잡한 칸을 구조로 단순화해 다시 그릴 때 쓴다 ──
+// boxes: [{x,y,z,w,d,h}], ground: {x,y,w,d}. 반환: (w x h) 안에 맞춘 <g> 조각과 그 안에서 쓴 선 굵기.
+export function renderMassingLineGroup(boxes, ground, w, h, strokeUnit = 1.6) {
+  const bs = (Array.isArray(boxes) ? boxes : []).slice(0, 24).map(normBox);
+  const g = ground && typeof ground === 'object' ? { x: num(ground.x, 0), y: num(ground.y, 0), w: num(ground.w, 6, 1, 40), d: num(ground.d, 5, 1, 40) } : null;
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  const grow = (p) => { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]); };
+  bs.forEach((b) => [[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.d], [b.x + b.w, b.y + b.d]].forEach(([px, py]) => { grow(proj(px, py, b.z)); grow(proj(px, py, b.z + b.h)); }));
+  if (g) [[g.x, g.y], [g.x + g.w, g.y], [g.x, g.y + g.d], [g.x + g.w, g.y + g.d]].forEach(([px, py]) => grow(proj(px, py, 0)));
+  if (!Number.isFinite(minX)) return '';
+  const k = Math.min((w * 0.92) / (maxX - minX || 1), (h * 0.92) / (maxY - minY || 1));
+  const offX = (w - (maxX - minX) * k) / 2 - minX * k; const offY = (h - (maxY - minY) * k) / 2 - minY * k;
+  const sw = (strokeUnit / k).toFixed(3); const swThin = ((strokeUnit * 0.55) / k).toFixed(3);
+  const parts = [];
+  if (g) {
+    const pad = 0.5;
+    const pts = [proj(g.x - pad, g.y - pad, 0), proj(g.x + g.w + pad, g.y - pad, 0), proj(g.x + g.w + pad, g.y + g.d + pad, 0), proj(g.x - pad, g.y + g.d + pad, 0)];
+    parts.push(`<polygon points="${poly(pts)}" fill="#fff" stroke="#1d1d1d" stroke-width="${swThin}" stroke-linejoin="round"/>`);
+  }
+  bs.map((b, idx) => ({ b, idx })).sort((p, q) => {
+    const kp = p.b.x + p.b.w + p.b.y + p.b.d + p.b.z + p.b.h; const kq = q.b.x + q.b.w + q.b.y + q.b.d + q.b.z + q.b.h;
+    return kp - kq || p.b.z - q.b.z;
+  }).forEach(({ b }) => {
+    const x1 = b.x + b.w; const y1 = b.y + b.d; const z1 = b.z + b.h;
+    const top = [proj(b.x, b.y, z1), proj(x1, b.y, z1), proj(x1, y1, z1), proj(b.x, y1, z1)];
+    const left = [proj(b.x, y1, b.z), proj(x1, y1, b.z), proj(x1, y1, z1), proj(b.x, y1, z1)];
+    const right = [proj(x1, b.y, b.z), proj(x1, y1, b.z), proj(x1, y1, z1), proj(x1, b.y, z1)];
+    const st = `fill="#fff" stroke="#1d1d1d" stroke-width="${swThin}" stroke-linejoin="round"`;
+    parts.push(`<polygon points="${poly(left)}" ${st}/><polygon points="${poly(right)}" ${st}/><polygon points="${poly(top)}" ${st}/>`);
+    // 바깥 윤곽(위 마름모의 뒤쪽 두 변 + 양쪽 세로 모서리 + 아래 앞쪽 두 변)은 굵게
+    const bold = `fill="none" stroke="#1d1d1d" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"`;
+    const hex = [proj(b.x, b.y, z1), proj(x1, b.y, z1), proj(x1, b.y, b.z + 0), proj(x1, y1, b.z), proj(b.x, y1, b.z), proj(b.x, y1, z1)];
+    parts.push(`<polygon points="${poly([proj(b.x, y1, z1), proj(b.x, b.y, z1), proj(x1, b.y, z1), proj(x1, y1, z1), proj(x1, y1, b.z), proj(b.x, y1, b.z)])}" ${bold}/>`);
+    void hex;
+  });
+  return `<g transform="translate(${offX.toFixed(2)} ${offY.toFixed(2)}) scale(${k.toFixed(4)})">${parts.join('')}</g>`;
+}
