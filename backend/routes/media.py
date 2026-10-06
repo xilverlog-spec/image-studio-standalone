@@ -1287,3 +1287,113 @@ async def vectorize_image(request: VectorizeRequest):
 
     return {"status": "success", "svg": svg_text}
 
+
+# ── 2026-10-06: 이미지 → 정돈된 선(SVG) 추출 (선 검출 + 3방향 스냅, 완전 로컬) ──
+class LineTraceRequest(BaseModel):
+    image_base64: str
+    # True 면 글자 내용을 Gemini(외부)로 읽어 편집 가능한 <text>로 만든다. 기본(False)은 글자 모양 그대로 윤곽선으로 옮긴다.
+    read_text: bool = False
+    # True 면 단선 위에 면 색(주황 볼륨, 회색 음영)도 단색으로 얹는다. 기본(False)은 질감·면을 무시하고 외곽선 중심 단선만.
+    fills: bool = False
+
+
+def _ocr_labels_with_gemini(png_bytes: bytes, width: int, height: int) -> list:
+    from services.gemini_chat import gemini_chat_completion
+    prompt = (
+        "Read every piece of text in this image. Return JSON only (no markdown): "
+        '[{"text": "exact text", "box": [ymin, xmin, ymax, xmax]}] with box coordinates normalized to 0-1000 '
+        "relative to the image. Keep the original language and spelling exactly; one entry per line of text."
+    )
+    raw = gemini_chat_completion(
+        model="gemini-3.1-flash-lite",
+        messages=[{"role": "user", "content": prompt, "images": [base64.b64encode(png_bytes).decode()]}],
+        max_tokens=3000, temperature=0.0,
+    )
+    m = re.search(r"\[[\s\S]*\]", raw)
+    if not m:
+        return []
+    out = []
+    for item in json.loads(m.group(0)):
+        box = item.get("box") or []
+        if item.get("text") and len(box) == 4:
+            ymin, xmin, ymax, xmax = [float(v) for v in box]
+            out.append({"text": str(item["text"]), "box": [xmin / 1000 * width, ymin / 1000 * height, xmax / 1000 * width, ymax / 1000 * height]})
+    return out
+
+
+@router.post("/image/linetrace")
+async def linetrace_image(request: LineTraceRequest):
+    try:
+        from services import line_trace
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"선 추출에 필요한 라이브러리가 없습니다(scikit-image, scipy): {e}")
+    try:
+        raw = base64.b64decode(request.image_base64)
+        from PIL import Image as _I
+        with _I.open(io.BytesIO(raw)) as im:
+            w, h = im.size
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "PNG")
+        png = buf.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
+
+    warning = None
+    ocr = []
+    if request.read_text:
+        try:
+            ocr = await asyncio.to_thread(_ocr_labels_with_gemini, png, w, h)
+        except Exception as e:
+            warning = f"글자 인식에 실패해 글자는 모양 그대로 옮겼습니다: {e}"
+
+    try:
+        result = await asyncio.to_thread(lambda: line_trace.trace_lines(png, ocr, fills=request.fills))
+    except BaseException as e:
+        if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            raise
+        raise HTTPException(status_code=500, detail=f"선 추출 실패: {e}")
+    return {"status": "success", "svg": result["svg"], "stats": result["stats"], "warning": warning}
+
+
+class LineTraceStartRequest(BaseModel):
+    image_base64: str
+    read_text: bool = False
+    fills: bool = False
+    # 기본 True: 칸마다 AI(로컬 FLUX Kontext)로 깨끗한 선화로 다시 그린 뒤 선을 추출한다(형태가 바뀌면 그 칸만 원본에서 직접 추출).
+    redraw: bool = True
+
+
+@router.post("/image/linetrace/start")
+async def linetrace_start(request: LineTraceStartRequest):
+    try:
+        from services import line_pipeline
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"선 추출에 필요한 라이브러리가 없습니다: {e}")
+    try:
+        raw = base64.b64decode(request.image_base64)
+        from PIL import Image as _I
+        with _I.open(io.BytesIO(raw)) as im:
+            w, h = im.size
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "PNG")
+        png = buf.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
+    ocr = []
+    if request.read_text:
+        try:
+            ocr = await asyncio.to_thread(_ocr_labels_with_gemini, png, w, h)
+        except Exception as e:
+            print(f"[LINETRACE] OCR 실패(글자는 모양 그대로 옮김): {e}")
+    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr)
+    return {"status": "success", "job_id": job_id}
+
+
+@router.get("/image/linetrace/status/{job_id}")
+async def linetrace_status(job_id: str):
+    from services import line_pipeline
+    j = line_pipeline.get_job(job_id)
+    if not j:
+        raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다(서버가 재시작되었거나 만료됨).")
+    return {k: v for k, v in j.items() if k != "created"}
+
