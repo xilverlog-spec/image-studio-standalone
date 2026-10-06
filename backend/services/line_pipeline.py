@@ -135,7 +135,9 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                 _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 원본 분석")
                 direct = line_trace.trace_lines(_png_bytes(crop), fills=fills)
                 chosen, used_ai = direct, False
-                if use_ai:
+                if use_ai and direct["stats"].get("clean"):
+                    pass  # 이미 깨끗한 도식이면 AI 재생성이 모양을 바꿀 위험만 있어서 건너뛰고 원본에서 바로 추출한다(수 초)
+                elif use_ai:
                     _update(job, stage=f"칸 {idx + 1}/{len(objects)}: AI가 깨끗한 선화로 다시 그리는 중 (칸당 약 3분)")
                     redrawn, err = _redraw_panel(crop, seed=7 + idx, tag=str(idx))
                     if redrawn is None:

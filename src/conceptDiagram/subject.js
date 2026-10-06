@@ -144,9 +144,18 @@ export function mergePlanSegments(aiRead, seg) {
 }
 
 // 읽은 결과를 바탕만 그려서 보여 줄 스펙(확인용 미리보기)
-export function readToPreview(read) {
+// 박스 목록에서 바닥 판 크기를 계산한다(모든 박스를 덮는 발자국 + 여유)
+export function groundOf(boxes) {
+  const minX = Math.min(...boxes.map((b) => b.x)); const minY = Math.min(...boxes.map((b) => b.y));
+  const maxX = Math.max(...boxes.map((b) => b.x + b.w)); const maxY = Math.max(...boxes.map((b) => b.y + b.d));
+  return { x: minX, y: minY, w: Math.max(1, maxX - minX), d: Math.max(1, maxY - minY) };
+}
+
+export function readToPreview(read, selected = -1) {
   if (read.kind === 'form') {
-    return { type: 'massing', spec: { title: '', accent: '#C97B5A', steps: [{ label: '읽은 형태', ground: read.form.ground, boxes: read.form.boxes }] } };
+    // 선택한 박스는 강조색(mode: add)으로 보여 준다 — 편집할 때 어느 박스인지 알아보게
+    const boxes = read.form.boxes.map((b, i) => (i === selected ? { ...b, mode: 'add' } : b));
+    return { type: 'massing', spec: { title: '', accent: '#E8833A', steps: [{ label: '읽은 형태', ground: read.form.ground, boxes }] } };
   }
   if (read.kind === 'site') {
     return { type: 'site', spec: { title: '', siteBase: { shapes: read.shapes }, panels: [{ heading: '', siteShape: 'rect', overlays: [] }] } };

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf } from './conceptDiagram/subject';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -69,6 +69,65 @@ const withGrid = (dataUrl) => new Promise((resolve) => {
   img.src = dataUrl;
 });
 
+const BOX_FIELDS = [
+  ['x', '위치 X', '→ 방향(오른쪽 아래)으로 이동', 0.5, -50],
+  ['y', '위치 Y', '← 방향(왼쪽 아래)으로 이동', 0.5, -50],
+  ['z', '띄움 Z', '바닥에서 띄운 높이(0이면 바닥에 붙음)', 0.5, 0],
+  ['w', '길이 W', '→ 방향 길이', 0.5, 0.5],
+  ['d', '깊이 D', '← 방향 길이', 0.5, 0.5],
+  ['h', '높이 H', '위쪽 높이', 0.5, 0.5],
+];
+const round1 = (v) => Math.round(v * 10) / 10;
+
+// 읽은 건물 형태(박스)를 직접 고치는 편집기: 박스를 고르고 위치·크기를 바꾸거나, 박스를 추가·복제·삭제한다.
+function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
+  const sel = boxes[selected];
+  const setField = (k, v, min) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    onChange(boxes.map((b, i) => (i === selected ? { ...b, [k]: round1(Math.max(min, n)) } : b)));
+  };
+  const add = () => {
+    const last = boxes[boxes.length - 1] || { x: 0, y: 0, z: 0, w: 2, d: 2, h: 2 };
+    const nb = { x: round1(last.x + last.w + 0.5), y: last.y, z: 0, w: 2, d: 2, h: 2 };
+    onChange([...boxes, nb], boxes.length);
+  };
+  const dup = () => { if (sel) onChange([...boxes, { ...sel, x: round1(sel.x + 0.5), y: round1(sel.y + 0.5) }], boxes.length); };
+  const del = () => { if (sel && boxes.length > 1) onChange(boxes.filter((_, i) => i !== selected), Math.max(0, selected - 1)); };
+  const small = { ...btn(false, disabled), padding: '5px 8px', fontSize: 12 };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>✏️ 읽은 박스 고치기 (오른쪽 그림에 바로 반영)</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {boxes.map((_, i) => (
+          <button key={i} style={{ ...small, ...(i === selected ? { background: 'rgba(232,131,58,0.22)', borderColor: '#E8833A', color: '#B45309' } : {}) }} disabled={disabled} onClick={() => onSelect(i)}>{i + 1}번</button>
+        ))}
+        <button style={small} disabled={disabled} onClick={add} title="새 박스 추가">＋ 추가</button>
+      </div>
+      {sel && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {BOX_FIELDS.map(([k, label, tip, step, min]) => (
+              <label key={k} title={tip} style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>
+                {label}
+                <input type="number" step={step} min={min} value={sel[k]} disabled={disabled} onChange={(e) => setField(k, e.target.value, min)} style={{ ...inputBase, padding: '4px 6px' }} />
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button style={small} disabled={disabled} onClick={dup}>복제</button>
+            <button style={small} disabled={disabled || boxes.length < 2} onClick={del}>삭제</button>
+            <button style={{ ...small, marginLeft: 'auto' }} disabled={disabled} onClick={onReset} title="AI가 처음 읽은 값으로 되돌립니다">되돌리기</button>
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.45 }}>
+        단위는 칸(모듈)입니다. 숫자 칸의 ▲▼로 0.5씩 바꿀 수 있습니다. 고른 박스는 주황색으로 보입니다. 다 고치면 ② 다이어그램 만들기를 누르세요.
+      </p>
+    </div>
+  );
+}
+
 export default function ConceptDiagram({ addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
   const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
@@ -81,6 +140,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [subjectKind, setSubjectKind] = useState('auto');
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
   const [reading, setReading] = useState(false);
+  const [readOrig, setReadOrig] = useState(null); // AI 가 처음 읽은 값(편집 되돌리기용)
+  const [selBox, setSelBox] = useState(0);
   const subjectFileRef = useRef(null);
   const styleFileRef = useRef(null);
 
@@ -147,10 +208,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           if (cv && Array.isArray(cv.buildings) && cv.buildings.length >= 2) r = mergeSiteGeometry(r, cv);
         } catch { /* AI 읽기 결과 사용 */ }
       }
-      setRead(r);
-      const pv = readToPreview(r);
+      setRead(r); setReadOrig(r); setSelBox(0);
+      const pv = readToPreview(r, r.kind === 'form' ? 0 : -1);
       renderSpec(pv.type, pv.spec);
-      setResult(pv);
+      setResult({ ...pv, isReadPreview: true });
       addToast?.('success', '이미지를 읽었습니다', r.summary || SUBJECT_KINDS[r.kind]);
       return r;
     } catch (e) {
@@ -214,6 +275,21 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     }
   };
 
+  // 박스 편집: 읽은 값을 바꾸고, 지금 화면이 '읽은 모습 미리보기'면 바로 다시 그린다
+  const editBoxes = (boxes, nextSel) => {
+    if (!read || read.kind !== 'form') return;
+    const sel = nextSel ?? selBox;
+    const nr = { ...read, form: { ground: groundOf(boxes), boxes } };
+    setRead(nr); setSelBox(sel);
+    const pv = readToPreview(nr, sel);
+    try { renderSpec(pv.type, pv.spec); setResult({ ...pv, isReadPreview: true }); } catch { /* 그릴 수 없는 값은 무시 */ }
+  };
+  const pickBox = (i) => {
+    setSelBox(i);
+    if (read && read.kind === 'form') { const pv = readToPreview(read, i); setResult({ ...pv, isReadPreview: true }); }
+  };
+  const resetBoxes = () => { if (readOrig) { setRead(readOrig); setSelBox(0); const pv = readToPreview(readOrig, 0); setResult({ ...pv, isReadPreview: true }); } };
+
   const saveSvg = () => rendered?.svg && saveBlob(new Blob([rendered.svg], { type: 'image/svg+xml' }), `diagram_${stamp()}.svg`);
   const savePng = () => {
     if (!rendered?.svg) return;
@@ -273,8 +349,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   {read && (
                     <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
                       <b>{SUBJECT_KINDS[read.kind]}</b>로 읽었습니다.{read.summary ? ` ${read.summary}` : ''}<br />
-                      오른쪽 그림이 읽은 모습입니다. 다르면 종류를 바꿔 다시 읽으세요.
+                      오른쪽 그림이 읽은 모습입니다. 다르면 종류를 바꿔 다시 읽거나, 아래에서 직접 고치세요.
                     </p>
+                  )}
+                  {read && read.kind === 'form' && (
+                    <BoxEditor boxes={read.form.boxes} selected={Math.min(selBox, read.form.boxes.length - 1)} onSelect={pickBox} onChange={editBoxes} onReset={resetBoxes} disabled={reading || busy} />
                   )}
                   {!read && <p style={slotNote}>읽기는 ‘다이어그램 만들기’를 누르면 자동으로 먼저 실행됩니다. 읽은 결과를 먼저 확인하고 싶을 때만 위 버튼을 쓰세요.</p>}
                 </div>

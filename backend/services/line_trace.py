@@ -372,7 +372,27 @@ def enhance_image(im):
         out = out.resize((int(out.width * k), int(out.height * k)), Image.LANCZOS)
     return out
 
-def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, enhance=None, fills=False, line_art=False):
+def texture_noise(im):
+    """이미지가 '깨끗한 합성/AI 도식'인지 '캡처·사진·스캔'인지 가르는 값. 평평한 면(흰 바탕 제외) 안의 잔무늬(라플라시안 평균)를 잰다.
+    깨끗한 도식 0.05~0.14, 캡처/사진 2.2~4.9 (실측). 면이 거의 없는 순수 선화는 전체 잡음으로 본다. 반환: (면 잡음 또는 -1, 전체 잡음)"""
+    g0 = im.convert("RGB")
+    sc = 900.0 / max(g0.size)
+    if sc < 1:
+        g0 = g0.resize((max(1, int(g0.width * sc)), max(1, int(g0.height * sc))), Image.LANCZOS)
+    g = np.asarray(g0).astype(np.float32).mean(axis=2)
+    flat = (ndi.maximum_filter(g, size=5) - ndi.minimum_filter(g, size=5)) < 14
+    lap = np.abs(ndi.laplace(g))
+    face = flat & (g < 248)
+    n_all = float(lap[flat].mean()) if flat.any() else 0.0
+    return (float(lap[face].mean()) if face.sum() > 500 else -1.0), n_all
+
+
+def is_clean_diagram(im):
+    nf, n_all = texture_noise(im)
+    return (nf < 1.0) if nf >= 0 else (n_all < 0.15)
+
+
+def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, enhance=None, fills=False, line_art=False, auto_clean=True):
     im0 = Image.open(io.BytesIO(image_bytes))
     if im0.mode in ("RGBA", "LA", "P"):
         rgba = im0.convert("RGBA")
@@ -381,9 +401,13 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
         im0 = flat
     else:
         im0 = im0.convert("RGB")
+    clean_auto = False
+    if auto_clean and not line_art and is_clean_diagram(im0):
+        # 깨끗한 도식(합성·AI 도식)은 바깥 실루엣을 따로 만들면 이웃한 덩어리가 하나로 합쳐지므로, 검출한 선을 그대로 쓰는 방식으로 처리한다
+        line_art = True; clean_auto = True
     if enhance is None:  # 자동: 작은 이미지이거나 배경이 회색빛인 캡처/저화질 입력만 다듬는다(고화질에는 오히려 해롭다)
         g0 = np.asarray(im0.convert('L'))
-        enhance = max(im0.size) < 1100 or float(np.percentile(g0, 70)) < 238
+        enhance = (not clean_auto) and (max(im0.size) < 1100 or float(np.percentile(g0, 70)) < 238)
     orig_long = max(im0.size)
     if enhance:
         im0 = enhance_image(im0)
@@ -475,11 +499,28 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
 
     line_ink = ink & ~arrow_zone & ~text_zone
     line_ink = morphology.remove_small_objects(line_ink, max(20, int(40 * f * f)))
+    # 두꺼운 선: 가는 선 기준의 검출(black-tophat)은 굵은 선의 한가운데를 놓치고 양쪽 가장자리만 잡아서 선이 두 줄이 된다.
+    # 진한 획(굵기가 일정 이하인 어두운 덩어리)은 통째로 선으로 넣어서 중심선 하나로 만든다. 큰 면(화살촉·채운 면)은 제외한다.
+    dark_core = (gray < 115) & ~arrow_zone & ~text_zone
+    stroke_mask = np.zeros_like(dark_core)
+    if dark_core.any():
+        dt_dark = ndi.distance_transform_edt(dark_core)
+        lab_d, n_d = ndi.label(dark_core, structure=np.ones((3, 3)))
+        mx = ndi.maximum(dt_dark, lab_d, range(1, n_d + 1))
+        tmax = 0.0060 * long_edge        # 반굵기 상한(긴 변의 약 0.6%, 선 굵기로는 1.2%): 이보다 두꺼운 덩어리는 선이 아니라 면
+        okc = [i + 1 for i, v in enumerate(mx) if 2.4 <= v <= tmax]   # 반굵기 2.4px 이상 = 가는 선 검출이 놓치는 굵기
+        if okc:
+            stroke_mask = np.isin(lab_d, okc)
+            line_ink = line_ink | stroke_mask
+    if debug is not None:
+        debug['stroke_mask'] = stroke_mask; debug['dark_comps'] = (n_d if dark_core.any() else 0, len(okc) if dark_core.any() else 0, (sorted([round(float(v),1) for v in mx])[-8:] if dark_core.any() else []))
     # 선이 아니라 면의 명암 차이로만 그려진 모서리(흰 윗면/회색 옆면 경계)도 잡는다: 완만한 밝기 변화의 기울기 능선
     smooth = filters.gaussian(gray, sigma=max(1.5, 2.2 * f))
     grad = filters.sobel(smooth)
     orange_zone = ndi.binary_dilation((rgb[..., 0] - rgb[..., 2] > 38) & (rgb[..., 0] > 140), iterations=max(2, int(4 * f)))
     tonal = filters.apply_hysteresis_threshold(grad, TONAL_LOW, TONAL_HIGH) & ~arrow_zone & ~text_zone & ~orange_zone
+    if stroke_mask.any():   # 굵은 선의 양쪽 경계는 이미 중심선으로 잡았으니 명암 경계(tonal)로 한 번 더 잡지 않는다
+        tonal &= ~ndi.binary_dilation(stroke_mask, iterations=max(4, int(14 * f)))
     tonal = morphology.remove_small_objects(tonal, max(30, int(60 * f * f)))
     tonal = morphology.skeletonize(tonal)
     if debug is not None:
@@ -646,8 +687,8 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     merged_into_sil = set()
     # 실제로 어둡거나 색이 있는 픽셀(선·바닥판)만으로 영역을 만든다 — 선 근처의 흐린 잡음은 제외
     obj = ((gray < 215) | ((rgb[..., 0] - rgb[..., 2] > 38) & (rgb[..., 0] > 140))) & ~text_zone
-    if line_art:  # 이미 깨끗한 선화면 실루엣을 따로 만들지 않고 선 그대로 쓴다
-        obj[:] = False
+    if line_art:  # 깨끗한 선화는 건물 윤곽을 따로 만들지 않고 선 그대로 쓴다. 단, 점선으로 흐릿하게 그려지는 주황 바닥판은 색 영역에서 윤곽을 딴다
+        obj = (rgb[..., 0] - rgb[..., 2] > 38) & (rgb[..., 0] > 140) & ~text_zone
     obj = morphology.remove_small_objects(obj, int(60 * f * f))
     obj = ndi.binary_fill_holes(obj)
     obj = morphology.closing(obj, morphology.disk(max(3, int(7 * f))))
@@ -678,7 +719,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
         # 실루엣 변과 같은 방향·가까운 실제 선이 있으면, 변을 그 선의 중심에 맞추고 그 선은 합친다(이중선 방지)
         for a in range(n):
             el = edge_line[a]
-            if not el:
+            if not el or line_art:   # 선화 모드의 실루엣은 바닥판뿐이라, 건물 모서리 선을 실루엣 변에 합치지 않는다(지워지는 것을 막음)
                 continue
             k_, c_ = el
             p_, q_ = pts[a], pts[(a + 1) % n]
@@ -749,7 +790,8 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
                     vals.append(float(dt_thick[r0:r1, c0:c1].max()))
             thick.append(2.0 * float(np.percentile(vals, 70)) if vals else 0.0)
         med_t = float(np.median([x for x in thick if x > 0])) if any(x > 0 for x in thick) else 1.0
-        pos_ = [x for x in thick if x > 0] or [1.0]
+        tcap = 0.014 * long_edge   # 이보다 두꺼운 '선'은 이미지 가장자리의 어두운 테두리·채운 면이라 선이 아니다
+        pos_ = [x for x in thick if 0 < x <= tcap] or [1.0]
         hi_t, lo_t = float(np.percentile(pos_, 90)), float(np.percentile(pos_, 10))
         spread_ok = hi_t / max(lo_t, 1e-6) >= 1.5  # 굵기 차이가 뚜렷할 때만 위계를 둔다(전부 비슷하면 모두 같은 선)
         if debug is not None:
@@ -769,6 +811,13 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             return 0 <= x_ < W and 0 <= y_ < H and bool(sil_fill[y_, x_])
         new_lines = []
         for idx_, (L_, tk) in enumerate(zip(lines, thick)):
+            if tk > tcap:
+                continue
+            # 이미지 가장자리를 따라 길게 뻗은 선은 도식이 아니라 틀(스크린샷 테두리·시트 외곽)이다
+            _mx = 0.065 * max(W, H)
+            _xs = (L_[0][0], L_[1][0]); _ys = (L_[0][1], L_[1][1])
+            if (max(_xs) - min(_xs) < 4 and (max(_xs) < _mx or min(_xs) > W - _mx) and abs(_ys[1] - _ys[0]) > 0.4 * H) or                (max(_ys) - min(_ys) < 4 and (max(_ys) < _mx or min(_ys) > H - _mx) and abs(_xs[1] - _xs[0]) > 0.4 * W):
+                continue
             style_ = merged[idx_][4] if idx_ < len(merged) else "solid"
             if style_ == "dash":
                 role_ = "dash"
@@ -856,7 +905,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             p0[0] / s, p0[1] / s, p1[0] / s, p1[1] / s, col, w, d))
     for v in silhouettes:
         d_ = 'M' + ' L'.join('%.1f %.1f' % (p[0] / s, p[1] / s) for p in v) + ' Z'
-        out_parts.append('<path d="%s" fill="none" stroke="#1d1d1d" stroke-width="%.2f" stroke-linejoin="round" stroke-linecap="round"/>' % (d_, W_OUT))
+        out_parts.append('<path d="%s" fill="none" stroke="#1d1d1d" stroke-width="%.2f" stroke-linejoin="round" stroke-linecap="round"/>' % (d_, (1.4 * W_IN) if line_art else W_OUT))
     for xs_, yt_, yb_, hx0_, hx1_, ytip_ in v_arrows:  # 점선 세로 화살표: 대시 줄 + 채운 삼각 화살촉
         w_ = (W_IN if False else 1.4 * k_w)
         out_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#1d1d1d" stroke-width="%.2f" stroke-dasharray="%.1f %.1f"/>' % (
@@ -918,6 +967,6 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     roles = {r: sum(1 for l in lines if l[2] == r) for r in ("outline", "inner", "dash")}
     return {
         "svg": "\n".join(svg),
-        "stats": {"complex": bool(_trace_info.get("complex")), "lines": len(lines), "roles": roles, "arrows": len(arrows), "text_lines": len(clusters), "text_editable": texts_used,
+        "stats": {"clean": clean_auto, "complex": bool(_trace_info.get("complex")), "lines": len(lines), "roles": roles, "arrows": len(arrows), "text_lines": len(clusters), "text_editable": texts_used,
                   "size": [W0, H0], "enhanced": bool(enhance), "k_w": k_w},
     }
