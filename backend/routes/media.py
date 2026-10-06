@@ -16,6 +16,7 @@ import comfyui_client
 from services.simple_chat import chat_completion
 from services import image_history_store
 from services import content_safety
+from services import paid_image
 
 router = APIRouter(prefix="/v1")
 
@@ -99,6 +100,56 @@ class ImageGenerateRequest(BaseModel):
     # 살아 여전히 형태가 거의 고정되는 문제가 있었다. 이 값을 낮추면 초반 일부 스텝만 참고하고
     # 후반은 AI가 자유롭게 재해석하게 되어 훨씬 부드러운 형태 보존율 조절이 된다.
     controlnet_end_percent: float = 1.0
+    # 2026-10-06: "local"(ComfyUI, 기본) 또는 유료 API("openai"/"gemini"). 유료는 프롬프트와 참고 이미지가
+    # 외부 서버로 전송되며, 체크포인트/LoRA/샘플러 등 로컬 전용 옵션은 무시된다.
+    provider: str = "local"
+
+async def _generate_with_paid_provider(request: ImageGenerateRequest, output_path: str, filename: str):
+    input_image_bytes = None
+    if request.input_image_base64:
+        try:
+            input_image_bytes = base64.b64decode(request.input_image_base64)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"참고 이미지 디코딩 실패: {e}")
+
+    print(f"[PAID:{request.provider}] prompt '{request.prompt[:30]}...' -> {output_path} (ratio={request.aspect_ratio})")
+    try:
+        png = await asyncio.to_thread(
+            paid_image.generate_png, request.provider, request.prompt, request.aspect_ratio, input_image_bytes
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"유료 API 이미지 생성 실패: {e}")
+
+    with open(output_path, "wb") as f:
+        f.write(png)
+    from PIL import Image
+    with Image.open(io.BytesIO(png)) as im:
+        width, height = im.size
+
+    await _reject_if_unsafe_image(output_path, project=request.project)
+
+    status = {p["id"]: p for p in paid_image.provider_status()}[request.provider]
+    model_label = f"{request.provider}:{status['model']}"
+    try:
+        image_history_store.save_generation(
+            prompt=request.prompt, style=request.style, aspect_ratio=request.aspect_ratio,
+            sampler_name=None, scheduler=None, seed=0, loras=[], image_filename=filename,
+            checkpoint=model_label, project=request.project,
+        )
+    except Exception as e:
+        print(f"[WARNING] ImageHistory: 이력 저장 실패(생성 자체는 성공): {e}")
+
+    return {
+        "status": "success",
+        "message": "Image generated successfully.",
+        "filename": filename,
+        "file_path": output_path,
+        "seed_used": None,
+        "checkpoint_used": model_label,
+        "width": width,
+        "height": height,
+    }
+
 
 @router.post("/image/generate")
 async def image_generate(request: ImageGenerateRequest):
@@ -118,6 +169,9 @@ async def image_generate(request: ImageGenerateRequest):
     bare_filename = request.filename or f"gen_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
     output_path = os.path.join(output_dir, bare_filename)
     filename = f"{project_dir}/{bare_filename}"
+
+    if request.provider != "local":
+        return await _generate_with_paid_provider(request, output_path, filename)
 
     # 실제로 어떤 체크포인트가 쓰일지 먼저 확정한다 — 화면비→픽셀 변환이 여기에 따라 달라진다.
     # (SD1.5에 1024를 주거나 SDXL에 640을 주면 결과물이 망가진다 — resolve_dimensions 주석 참고)
@@ -864,6 +918,7 @@ async def image_options():
         "schedulers": comfyui_client.AVAILABLE_SCHEDULERS,
         "sampler_descriptions": comfyui_client.SAMPLER_DESCRIPTIONS,
         "scheduler_descriptions": comfyui_client.SCHEDULER_DESCRIPTIONS,
+        "paid_providers": paid_image.provider_status(),
     }
 
 

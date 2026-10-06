@@ -892,6 +892,7 @@ function App() {
   // 기본값을 정사각형(1:1)으로: 16:9처럼 옆으로 넓은 비율은 인물이 프레임에서 차지하는
   // 비중이 작아져 얼굴이 더 뭉개지기 쉽다 — 얼굴 품질 피드백으로 기본 비율을 변경.
   const [imageAspectRatio, setImageAspectRatio] = useState('1:1');
+  const [imageProvider, setImageProvider] = useState('local');
   const [imageBatchCount, setImageBatchCount] = useState(1);
   const [styleOverride, setStyleOverride] = useState(null);
   const [checkpointOverride, setCheckpointOverride] = useState(null);
@@ -1051,7 +1052,8 @@ function App() {
           aspect_ratios: { ...prev.aspect_ratios, ...backendOptions.aspect_ratios },
           styles: { ...prev.styles, ...backendOptions.styles },
           samplers: backendOptions.samplers || prev.samplers,
-          schedulers: backendOptions.schedulers || prev.schedulers
+          schedulers: backendOptions.schedulers || prev.schedulers,
+          paid_providers: backendOptions.paid_providers || []
         }));
       }
       if (ckptRes.ok) {
@@ -1827,12 +1829,13 @@ function App() {
     // 있었다. 문구는 위 두 경우에 그대로 유지하되, 스타일/체크포인트/LoRA 추천은 항상 호출해서 반영한다.
     const shouldRewritePrompt = !skipAutoTune && promptAttachedImages.length === 0;
     try {
-      const tuneRes = await fetch(API_BASE_URL + '/v1/image/auto-tune', {
+      // 유료 API는 프롬프트(특히 한글 라벨)를 그대로 보내야 하므로 로컬 LLM 자동 튜닝(영문 재작성)을 건너뛴다.
+      const tuneRes = imageProvider === 'local' ? await fetch(API_BASE_URL + '/v1/image/auto-tune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: directPrompt })
-      });
-      if (tuneRes.ok) {
+      }) : null;
+      if (tuneRes && tuneRes.ok) {
         const tuneData = await tuneRes.json();
         if (tuneData.status === 'success') {
           if (shouldRewritePrompt) {
@@ -1856,8 +1859,9 @@ function App() {
     for (let i = 0; i < count; i++) {
       try {
         // Fooocus Quality Mode와 Standard Mode로 다른 엔드포인트 사용
-        const endpoint = qualityMode === 'fooocus_quality' ? '/v1/image/generate-quality' : '/v1/image/generate';
-        const requestBody = qualityMode === 'fooocus_quality'
+        const useQualityMode = qualityMode === 'fooocus_quality' && imageProvider === 'local';
+        const endpoint = useQualityMode ? '/v1/image/generate-quality' : '/v1/image/generate';
+        const requestBody = useQualityMode
           ? {
               prompt: finalPrompt,
               style: genStyle || 'fooocus_enhance',
@@ -1880,7 +1884,8 @@ function App() {
               checkpoint: genCheckpoint,
               seed: seedOverride !== '' ? Number(seedOverride) : undefined,
               input_image_base64: promptAttachedImages.length > 0 ? promptAttachedImages[0].split(',').pop() : undefined,
-              denoise: promptAttachedImages.length > 0 ? effectiveDenoise : undefined
+              denoise: promptAttachedImages.length > 0 ? effectiveDenoise : undefined,
+              provider: imageProvider
             };
 
         const res = await apiFetch(`${endpoint}`, {
@@ -2808,6 +2813,30 @@ function App() {
               {/* 세부 생성 옵션 */}
               <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '18px' }}>
                 
+                {/* 0. 생성 엔진: 로컬(ComfyUI, 무료) / 유료 API(OpenAI, Google) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label className="field-label"><span>생성 엔진</span></label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[{ id: 'local', label: '로컬 (무료)', available: true }, ...(imageOptions.paid_providers || [])].map((p) => (
+                      <button
+                        key={p.id}
+                        disabled={!p.available}
+                        onClick={() => setImageProvider(p.id)}
+                        className={`aspect-ratio-btn ${imageProvider === p.id ? 'active' : ''}`}
+                        style={{ flex: '1 1 auto', padding: '8px 10px', opacity: p.available ? 1 : 0.45, cursor: p.available ? 'pointer' : 'not-allowed' }}
+                        title={p.available ? (p.model || '') : 'API 키가 설정되지 않았습니다 (backend/.env)'}
+                      >
+                        <span className="aspect-ratio-label">{p.id === 'local' ? p.label : `${p.label}${p.available ? '' : ' · 키 없음'}`}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {imageProvider !== 'local' && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      유료 API: 프롬프트와 참고 이미지가 외부 서버로 전송되고 사용량만큼 과금됩니다. 민감한 도면은 보내지 마세요. 스타일·체크포인트·LoRA 등 로컬 전용 옵션은 적용되지 않습니다.
+                    </div>
+                  )}
+                </div>
+
                 {/* 1. 화면 비율 (이지/프로 모두 필수 노출이나, 드롭다운 대신 비주얼 버튼 격자로 변경) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
