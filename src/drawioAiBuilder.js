@@ -154,7 +154,10 @@ export function buildSpecXml(spec) {
     const { x, y } = positions.get(node.id) || { x: 60, y: 100 };
     const shapeStyle = SHAPE_STYLE[node.shape] || SHAPE_STYLE.rounded;
     const color = /^#[0-9a-fA-F]{6}$/.test(node.color || '') ? node.color : '#3A8FB7';
-    const style = `${shapeStyle}fillColor=${color};strokeColor=#FFFFFF;strokeWidth=2;fontColor=#FFFFFF;fontStyle=1;fontSize=14;`;
+    // 밝은 채움색에 흰 글씨를 쓰면 글자가 안 보인다 — 밝기에 따라 글자색/테두리색을 고른다.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+    const light = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62;
+    const style = `${shapeStyle}fillColor=${color};strokeColor=${light ? '#9CA3AF' : '#FFFFFF'};strokeWidth=2;fontColor=${light ? '#1F2937' : '#FFFFFF'};fontStyle=1;fontSize=14;`;
     cells.push(`<mxCell id="${esc(node.id)}" value="${esc(node.label)}" style="${style}" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${NODE_W}" height="${NODE_H}" as="geometry"/></mxCell>`);
   });
 

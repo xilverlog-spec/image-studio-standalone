@@ -67,18 +67,37 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify(msg), '*');
   }, []);
 
-  // layout 을 주면 load 직후 draw.io 가 직접 그래프 레이아웃을 돌려 겹침 없이 재배치한다
-  // (§ AI 빌더가 좌표 없이 구조만 주는 경우 필수). 일반 고정 템플릿은 layout 없이 이미 배치된
-  // 좌표를 그대로 쓴다.
-  const loadXml = useCallback((xml, layout) => {
+  // 좌표는 항상 우리가 미리 계산해서 xml 에 넣는다(draw.io 의 layout 옵션은 허브형 구조에서 좌표를
+  // 0 으로 무너뜨리는 버그가 있어 쓰지 않는다 — drawioAiBuilder.js 참고).
+  const loadXml = useCallback((xml) => {
     xmlRef.current = xml;
     const msg = { action: 'load', xml, autosave: 1, fit: 1 };
-    if (layout) msg.layout = layout;
     if (!readyRef.current) { pendingLoadRef.current = msg; return; }
     // fit:1 이 없으면 도형은 정확히 로드되는데 화면 스크롤 위치가 그대로라 안 보이는 경우가
     // 있었다(§ 세션 기록 — load 이벤트의 modelBounds 는 맞는데 bounds 가 화면 밖이었음).
     postToFrame(msg);
+    // 그래도 load 직후 자동 맞춤은 왼쪽이 약간 잘리게 어긋나서, 툴바의 "Fit"을 한 번 더 눌러준다.
+    [350, 1000].forEach((ms) => setTimeout(() => {
+      iframeRef.current?.contentDocument?.querySelector('a.geButton[title^="Fit"]')?.click();
+    }, ms));
   }, [postToFrame]);
+
+  // draw.io 최소 UI 는 창 폭이 1000px 이상이면 도형/서식 패널을 캔버스 위에 둥둥 띄운 채로 시작해서
+  // 작업 영역을 가린다. 같은 도메인(/drawio)이라 툴바의 토글 버튼을 직접 눌러 열고 닫을 수 있다.
+  const isPanelOpen = useCallback((title) => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return false;
+    return [...doc.querySelectorAll('.mxWindow')].some((w) =>
+      w.querySelector('.mxWindowTitle')?.textContent === title && w.getBoundingClientRect().width > 0 && w.style.display !== 'none');
+  }, []);
+  const togglePanel = useCallback((title) => {
+    iframeRef.current?.contentDocument?.querySelector(`a.geButton[title^="${title}"]`)?.click();
+  }, []);
+  const closePanelsOnStart = useCallback(() => {
+    [300, 900, 1800].forEach((ms) => setTimeout(() => {
+      ['Shapes', 'Format'].forEach((t) => { if (isPanelOpen(t)) togglePanel(t); });
+    }, ms));
+  }, [isPanelOpen, togglePanel]);
 
   // ── draw.io(iframe) ↔ 우리 사이의 postMessage 수신 ──
   useEffect(() => {
@@ -90,6 +109,7 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
       if (msg.event === 'init') {
         readyRef.current = true;
         setLoaded(true);
+        closePanelsOnStart();
         const pending = pendingLoadRef.current;
         pendingLoadRef.current = null;
         if (pending) {
@@ -110,7 +130,7 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [postToFrame]);
+  }, [postToFrame, closePanelsOnStart]);
 
   // export 액션을 보내고, 그 결과를 Promise 로 돌려받는다(요청/응답을 짝지어 기다리는 헬퍼)
   const requestExport = useCallback((params) => new Promise((resolve) => {
@@ -234,9 +254,13 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 4 }}>다이어그램 (draw.io)</div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
-            오른쪽은 진짜 다이어그램 전문 프로그램(draw.io)입니다 — 이 PC 안에서만 돌아가고 외부로
-            아무것도 안 나갑니다. 도형을 끌어다 놓고, 더블클릭해서 글자를 넣고, 선으로 연결하세요.
+            오른쪽은 다이어그램 전문 편집기(draw.io)입니다. 도형을 끌어다 놓고, 더블클릭해서 글자를 넣고,
+            선으로 연결하세요. 직접 편집하는 내용은 외부로 전송되지 않습니다.
           </p>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button style={{ ...smallBtn(false), flex: 1, fontSize: 12 }} onClick={() => togglePanel('Shapes')} disabled={!loaded}>도형 패널 열기/닫기</button>
+            <button style={{ ...smallBtn(false), flex: 1, fontSize: 12 }} onClick={() => togglePanel('Format')} disabled={!loaded}>서식 패널 열기/닫기</button>
+          </div>
         </div>
 
         <details open style={{ borderTop: '1px solid var(--border-color)', paddingTop: 8 }}>
@@ -244,7 +268,7 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>
               무엇을 만들지 설명하거나 참고 이미지를 올리세요(둘 다 해도 됩니다). AI가 내용을 보고
-              도형·연결·레이아웃 구조를 직접 판단하고, 실제 배치(겹침 방지)는 draw.io 가 계산합니다.
+              도형·연결·색상·레이아웃 종류를 판단하고, 실제 좌표 배치는 프로그램이 계산합니다.
             </p>
             <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>
               ⚠️ 설명/이미지가 외부(Google Gemini)로 전송됩니다. 민감한 내용은 피하세요.

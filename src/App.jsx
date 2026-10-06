@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DrawioEditor from './DrawioEditor';
+import AerialStudio from './AerialStudio';
+import { ARCH_STYLE_PRESETS } from './archStyles';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -45,39 +47,6 @@ const DESIGNER_SYSTEM_PROMPT =
   '사용자 말을 반복하거나 요약하지 않고, 질문은 한 번에 하나만 한다. ' +
   '사용자가 참고 이미지를 첨부하면 실제로 보고 스타일/구도/분위기를 짧게 언급하며 반응한다. ' +
   '이미지는 직접 생성하지 않는다 — 사용자가 "이 대화로 생성 준비하기" 버튼을 눌러야 생성된다.';
-
-const ARCH_STYLE_PRESETS = {
-  modern: {
-    label: "모던 & 미니멀",
-    desc: "콘크리트, 글라스, 철골 조화",
-    prompt: "modern minimalist architecture, concrete and glass villa, black metal frames, neat grass garden, architectural photography, 8k resolution"
-  },
-  wood: {
-    label: "친환경 목조 & 석조",
-    desc: "석재 데크와 우디 외벽 마감",
-    prompt: "eco-friendly luxury residence, natural wooden panels, stone walls, warm integration with surrounding forest landscape, award-winning design, architectural photography"
-  },
-  night: {
-    label: "화려한 야경",
-    desc: "극적인 간접조명과 따뜻한 불빛",
-    prompt: "dramatic night view rendering of architectural villa, cozy interior lights glowing through big glass windows, modern exterior lighting, dark blue night sky, warm ambiance, architectural photography"
-  },
-  interior: {
-    label: "내추럴 실내 투시도",
-    desc: "자연광이 쏟아지는 아늑한 실내",
-    prompt: "modern interior design rendering, living room view, large floor-to-ceiling windows, natural sunlight casting soft shadows, minimal oak furniture, realistic indoor plants, 8k"
-  },
-  rainy: {
-    label: "비 오는 날 (시네마틱)",
-    desc: "차분하고 무드 있는 기후 효과",
-    prompt: "architectural rendering on a rainy day, wet dark asphalt reflection, misty moody atmosphere, raindrops, warm glowing windows, cinematic lighting, realistic texture"
-  },
-  sunny: {
-    label: "화창한 한낮",
-    desc: "선명한 그림자와 조경 디테일",
-    prompt: "architectural photography, bright sunny day, clear blue sky, crisp shadows, green trees landscape garden, commercial real estate shot, 8k resolution"
-  }
-};
 
 // ── "퇴근 모드"(야간 배치)에서 디자인 다양성을 만드는 재료 풀 ──
 // 같은 스타일 프리셋이라도 재질/파사드 형태/조명을 매번 무작위로 섞어 넣어야
@@ -892,7 +861,6 @@ function App() {
   // 기본값을 정사각형(1:1)으로: 16:9처럼 옆으로 넓은 비율은 인물이 프레임에서 차지하는
   // 비중이 작아져 얼굴이 더 뭉개지기 쉽다 — 얼굴 품질 피드백으로 기본 비율을 변경.
   const [imageAspectRatio, setImageAspectRatio] = useState('1:1');
-  const [imageProvider, setImageProvider] = useState('local');
   const [imageBatchCount, setImageBatchCount] = useState(1);
   const [styleOverride, setStyleOverride] = useState(null);
   const [checkpointOverride, setCheckpointOverride] = useState(null);
@@ -1829,13 +1797,12 @@ function App() {
     // 있었다. 문구는 위 두 경우에 그대로 유지하되, 스타일/체크포인트/LoRA 추천은 항상 호출해서 반영한다.
     const shouldRewritePrompt = !skipAutoTune && promptAttachedImages.length === 0;
     try {
-      // 유료 API는 프롬프트(특히 한글 라벨)를 그대로 보내야 하므로 로컬 LLM 자동 튜닝(영문 재작성)을 건너뛴다.
-      const tuneRes = imageProvider === 'local' ? await fetch(API_BASE_URL + '/v1/image/auto-tune', {
+      const tuneRes = await fetch(API_BASE_URL + '/v1/image/auto-tune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: directPrompt })
-      }) : null;
-      if (tuneRes && tuneRes.ok) {
+      });
+      if (tuneRes.ok) {
         const tuneData = await tuneRes.json();
         if (tuneData.status === 'success') {
           if (shouldRewritePrompt) {
@@ -1859,9 +1826,8 @@ function App() {
     for (let i = 0; i < count; i++) {
       try {
         // Fooocus Quality Mode와 Standard Mode로 다른 엔드포인트 사용
-        const useQualityMode = qualityMode === 'fooocus_quality' && imageProvider === 'local';
-        const endpoint = useQualityMode ? '/v1/image/generate-quality' : '/v1/image/generate';
-        const requestBody = useQualityMode
+        const endpoint = qualityMode === 'fooocus_quality' ? '/v1/image/generate-quality' : '/v1/image/generate';
+        const requestBody = qualityMode === 'fooocus_quality'
           ? {
               prompt: finalPrompt,
               style: genStyle || 'fooocus_enhance',
@@ -1884,8 +1850,7 @@ function App() {
               checkpoint: genCheckpoint,
               seed: seedOverride !== '' ? Number(seedOverride) : undefined,
               input_image_base64: promptAttachedImages.length > 0 ? promptAttachedImages[0].split(',').pop() : undefined,
-              denoise: promptAttachedImages.length > 0 ? effectiveDenoise : undefined,
-              provider: imageProvider
+              denoise: promptAttachedImages.length > 0 ? effectiveDenoise : undefined
             };
 
         const res = await apiFetch(`${endpoint}`, {
@@ -2387,10 +2352,7 @@ function App() {
           ].map(m => (
             <button
               key={m.id}
-              onClick={() => {
-                setAppModule(m.id);
-                if (m.id === 'aerial') { setStudioTab('edit'); setEditMode('architecture'); }
-              }}
+              onClick={() => setAppModule(m.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px',
                 border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap',
@@ -2442,6 +2404,11 @@ function App() {
           기존 스튜디오 레이아웃 위에 덮어 보여주고, 탭을 오가도 작업이 사라지지 않게 항상 마운트해 둔 채 숨기기만 한다. */}
       <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'diagram' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
         <DrawioEditor active={appModule === 'diagram'} addToast={addToast} apiFetch={apiFetch} />
+      </div>
+
+      {/* 조감도 모듈 — 유료 이미지 API 전용(AI 이미지 탭은 무료 로컬 전용). 탭을 오가도 입력이 유지되게 항상 마운트해 둔다. */}
+      <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'aerial' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
+        <AerialStudio addToast={addToast} apiFetch={apiFetch} providers={imageOptions.paid_providers || []} onGenerated={loadStudioGallery} />
       </div>
 
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}
@@ -2813,30 +2780,6 @@ function App() {
               {/* 세부 생성 옵션 */}
               <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '18px' }}>
                 
-                {/* 0. 생성 엔진: 로컬(ComfyUI, 무료) / 유료 API(OpenAI, Google) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label className="field-label"><span>생성 엔진</span></label>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {[{ id: 'local', label: '로컬 (무료)', available: true }, ...(imageOptions.paid_providers || [])].map((p) => (
-                      <button
-                        key={p.id}
-                        disabled={!p.available}
-                        onClick={() => setImageProvider(p.id)}
-                        className={`aspect-ratio-btn ${imageProvider === p.id ? 'active' : ''}`}
-                        style={{ flex: '1 1 auto', padding: '8px 10px', opacity: p.available ? 1 : 0.45, cursor: p.available ? 'pointer' : 'not-allowed' }}
-                        title={p.available ? (p.model || '') : 'API 키가 설정되지 않았습니다 (backend/.env)'}
-                      >
-                        <span className="aspect-ratio-label">{p.id === 'local' ? p.label : `${p.label}${p.available ? '' : ' · 키 없음'}`}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {imageProvider !== 'local' && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      유료 API: 프롬프트와 참고 이미지가 외부 서버로 전송되고 사용량만큼 과금됩니다. 민감한 도면은 보내지 마세요. 스타일·체크포인트·LoRA 등 로컬 전용 옵션은 적용되지 않습니다.
-                    </div>
-                  )}
-                </div>
-
                 {/* 1. 화면 비율 (이지/프로 모두 필수 노출이나, 드롭다운 대신 비주얼 버튼 격자로 변경) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
