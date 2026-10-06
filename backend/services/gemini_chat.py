@@ -20,7 +20,7 @@ from config import GEMINI_API_KEY, GEMINI_API_URL
 # (같은 요청을 6번 보냈더니 3번 503 — § 세션 기록). 로컬 Ollama는 이 문제가 없지만(내 GPU라
 # 남과 경쟁 안 함) 그 대신 느리고 GPU를 점유한다. 503은 보통 몇 초 뒤 재시도하면 풀리므로
 # 자동으로 짧게 재시도한다 — 사용자에게 "분석 실패"를 바로 보여주기 전에.
-_RETRY_STATUS = {503, 429}
+_RETRY_STATUS = {503}  # 429(한도 초과)는 같은 모델로 재시도해도 소용없으니 바로 다음 모델로 넘어간다
 _MAX_RETRIES = 2
 _RETRY_DELAY_SEC = 3
 
@@ -47,7 +47,28 @@ def _to_gemini_contents(messages: list) -> tuple[list, str | None]:
     return contents, system_text
 
 
+# 무료 키는 모델마다 하루/분당 한도가 따로라서, 한도(429)에 걸리면 다음 모델로 자동으로 넘어간다.
+_QUOTA_FALLBACKS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-3.1-flash-lite"]
+
+
 def gemini_chat_completion(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3) -> str:
+    chain = [model] + [m for m in _QUOTA_FALLBACKS if m != model]
+    last = None
+    for m in chain:
+        try:
+            # 3.x 모델은 '생각'에 쓴 토큰도 출력 한도에 들어가서, 한도가 작으면 답이 중간에 잘린다 — 최소 8000 을 보장한다.
+            return _gemini_chat_once(m, messages, max(max_tokens, 8000), temperature)
+        except Exception as e:  # noqa: BLE001 — 한도/혼잡/시간초과는 다음 모델로 넘기고, 그 밖의 오류(잘못된 요청 등)는 그대로 올린다
+            msg = str(e)
+            quota = isinstance(e, (TimeoutError, OSError)) or "(429)" in msg or "quota" in msg.lower() or "(503)" in msg or "timed out" in msg.lower()
+            if not quota:
+                raise
+            print(f"[GEMINI] {m} 한도/혼잡 → 다음 모델로 전환: {msg[:90]}")
+            last = e
+    raise last
+
+
+def _gemini_chat_once(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3) -> str:
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY가 설정되어 있지 않습니다 (backend/.env).")
 
@@ -68,7 +89,7 @@ def gemini_chat_completion(model: str, messages: list, max_tokens: int = 3000, t
             url, data=payload, headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=60) as res:
+            with urllib.request.urlopen(req, timeout=120) as res:
                 data = json.loads(res.read())
             break
         except urllib.error.HTTPError as e:

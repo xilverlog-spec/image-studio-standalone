@@ -64,7 +64,7 @@ export const EXAMPLE_SPECS = {
 };
 
 // ── AI에게 줄 프롬프트: 구조만 요청하고 좌표/픽셀은 요구하지 않는다 ──
-const SITE_SCHEMA = `{
+export const SITE_SCHEMA = `{
   "title": "전체 제목(없으면 빈 문자열)",
   "panels": [   // 1~3개 권장. 한 패널 = 한 가지 개념
     {
@@ -100,7 +100,7 @@ const MASSING_SCHEMA = `{
   ]
 }`;
 
-const SITE_RULES = `위치는 반드시 이 9개 앵커 중 하나로만 지정한다: ${ANCHORS.join(', ')} (center=대지 중앙, n=북쪽/위, e=동쪽/오른쪽 …).
+export const SITE_RULES = `위치는 반드시 이 9개 앵커 중 하나로만 지정한다: ${ANCHORS.join(', ')} (center=대지 중앙, n=북쪽/위, e=동쪽/오른쪽 …).
 icon은 반드시 다음 중 하나: ${ICON_NAMES.map((n) => `${n}(${ICON_LABEL[n]})`).join(', ')}.
 - 한 패널에는 개념 하나만 담는다(흐름이면 flow, 구역이면 zone+marker, 순환이면 cycle).
 - marker는 한 패널에 최대 6개. label 텍스트는 15자 이내. 모든 글자는 한국어 그대로 쓴다.
@@ -171,7 +171,12 @@ export function normalizeSpec(type, spec) {
     return spec;
   }
   if (!Array.isArray(spec.panels) || !spec.panels.length) throw new Error('panels 가 비어 있습니다.');
-  const fixAnchor = (a) => (ANCHORS.includes(a) ? a : 'center');
+  const baseIds = new Set(((spec.siteBase && spec.siteBase.shapes) || []).map((s) => String(s.id)));
+  const fixAnchor = (a) => {
+    if (Array.isArray(a) && a.length === 2 && a.every((n) => Number.isFinite(Number(n)))) return a.map(Number);
+    if (typeof a === 'string' && (ANCHORS.includes(a) || baseIds.has(a))) return a;
+    return 'center';
+  };
   return {
     ...spec,
     panels: spec.panels.slice(0, 6).map((p) => ({

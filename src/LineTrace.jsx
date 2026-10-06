@@ -45,6 +45,7 @@ export default function LineTrace({ addToast, apiFetch }) {
   const [source, setSource] = useState(null);
   const [readText, setReadText] = useState(false);
   const [withFills, setWithFills] = useState(false);
+  const [method, setMethod] = useState('auto'); // auto = 이미지를 보고 선 도식/색 면 도식을 자동 판별
   const [skipAi, setSkipAi] = useState(false); // 고급: 빠른 확인용으로 AI 재생성 단계를 건너뛴다(기본은 항상 AI로 깨끗하게 다시 그린 뒤 추출)
   const [progress, setProgress] = useState({ stage: '', done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
@@ -68,7 +69,7 @@ export default function LineTrace({ addToast, apiFetch }) {
       const res = await apiFetch('/v1/image/linetrace/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: source.src.split(',').pop(), read_text: readText, fills: withFills, redraw: !skipAi }),
+        body: JSON.stringify({ image_base64: source.src.split(',').pop(), read_text: readText, fills: withFills, redraw: !skipAi, method }),
       });
       const started = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof started.detail === 'string' ? started.detail : '작업을 시작하지 못했습니다.');
@@ -80,7 +81,7 @@ export default function LineTrace({ addToast, apiFetch }) {
         setProgress({ stage: st.stage, done: st.done || 0, total: st.total || 0 });
         if (st.status === 'done') {
           setResult({ svg: st.svg, stats: st.stats, warnings: st.warnings || [] });
-          addToast?.('success', '선 추출 완료', `${st.stats.panels}칸, 선 ${st.stats.lines}개를 정리했습니다.`);
+          addToast?.('success', st.stats.method === 'color' ? '색 면 도식으로 변환 완료' : '선 추출 완료', st.stats.method === 'color' ? '색 영역을 그대로 벡터로 변환했습니다.' : `${st.stats.panels}칸, 선 ${st.stats.lines}개를 정리했습니다.`);
           break;
         }
         if (st.status === 'error') throw new Error(st.error || '선 추출에 실패했습니다.');
@@ -103,7 +104,7 @@ export default function LineTrace({ addToast, apiFetch }) {
       c.getContext('2d').drawImage(img, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
       const res = await apiFetch('/v1/chat/completions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'gemini-3.5-flash', max_tokens: 6000, temperature: 0.2, messages: [{ role: 'user', content: buildReadPrompt('form'), images: [c.toDataURL('image/png').split(',').pop()] }] }),
+        body: JSON.stringify({ model: 'gemini-3.5-flash', max_tokens: 16000, temperature: 0.2, messages: [{ role: 'user', content: buildReadPrompt('form'), images: [c.toDataURL('image/png').split(',').pop()] }] }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
       const data = await res.json();
@@ -144,8 +145,7 @@ export default function LineTrace({ addToast, apiFetch }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>이미지 → 깔끔한 선</div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
-            아이소메트릭 도식 이미지에서 선을 찾아 수직·±30° 방향으로 정렬하고, 외곽선/안쪽선/점선을 일정한 굵기로 다시 그립니다.
-            일반 벡터 변환보다 선이 반듯하고 위계가 생깁니다.
+            이미지를 보고 알아서 방식을 고릅니다. <b>선으로 그린 도식</b>(아이소메트릭 등)은 선을 찾아 반듯한 단선으로, <b>색 면으로 칠한 도식</b>(블록 다이어그램 등)은 색 영역 그대로 벡터로 바꿉니다.
           </p>
         </div>
 
@@ -202,6 +202,14 @@ export default function LineTrace({ addToast, apiFetch }) {
         </p>
         <details>
           <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>고급</summary>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>
+            변환 방식
+            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputBase}>
+              <option value="auto">자동 (이미지를 보고 판단)</option>
+              <option value="lines">선 도식 — 선을 찾아 반듯한 단선으로</option>
+              <option value="color">색 면 도식 — 색 영역 그대로 벡터로</option>
+            </select>
+          </label>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, cursor: 'pointer' }}>
             <input type="checkbox" checked={skipAi} onChange={(e) => setSkipAi(e.target.checked)} style={{ marginTop: 2 }} />
             <span>AI 재생성 건너뛰기 (빠른 확인용, 결과 품질은 낮아질 수 있음)</span>
@@ -220,9 +228,13 @@ export default function LineTrace({ addToast, apiFetch }) {
           <button style={btn(false, !result)} disabled={!result} onClick={savePng}>PNG 저장</button>
           {result && (
             <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>
-              {result.stats.panels}칸 · 선 {result.stats.lines}개 · 화살촉 {result.stats.arrows} · 글자줄 {result.stats.text_lines}
-              {result.stats.text_editable ? ` (편집 가능 ${result.stats.text_editable})` : ''}
-              {result.stats.redraw_used ? ` · AI 재생성 ${result.stats.ai_panels}칸 / 원본 직접 ${result.stats.fallback_panels}칸` : ' · AI 재생성 안 함'}
+              {result.stats.method === 'color'
+                ? '🎨 색 면 도식으로 인식 → 색 영역 그대로 벡터 변환 (글자는 윤곽선 모양)'
+                : <>
+                  {'📐 선 도식으로 인식 · '}{result.stats.panels}칸 · 선 {result.stats.lines}개 · 화살촉 {result.stats.arrows} · 글자줄 {result.stats.text_lines}
+                  {result.stats.text_editable ? ` (편집 가능 ${result.stats.text_editable})` : ''}
+                  {result.stats.redraw_used ? ` · AI 재생성 ${result.stats.ai_panels}칸 / 원본 직접 ${result.stats.fallback_panels}칸` : ' · AI 재생성 안 함'}
+                </>}
             </span>
           )}
           {(result?.stats?.panel_info || []).filter((p) => p.complex && !(result.simplified || []).includes(p.i)).map((p) => (

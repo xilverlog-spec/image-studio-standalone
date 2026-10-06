@@ -1288,6 +1288,26 @@ async def vectorize_image(request: VectorizeRequest):
     return {"status": "success", "svg": svg_text}
 
 
+# ── CAD 배치도에서 건물 윤곽·대지 경계를 이미지 분석으로 직접 추출(AI 눈대중 없이 원본 모양 그대로, 완전 로컬) ──
+class SiteExtractRequest(BaseModel):
+    image_base64: str
+
+
+@router.post("/image/site-extract")
+async def site_extract(request: SiteExtractRequest):
+    try:
+        png = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+    try:
+        from services import site_extract as _se
+        return {"status": "success", **(await asyncio.to_thread(_se.extract_site, png))}
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:
+        raise HTTPException(status_code=500, detail=f"배치도 분석 실패: {e}")
+
+
 # ── 2026-10-06: 이미지 → 정돈된 선(SVG) 추출 (선 검출 + 3방향 스냅, 완전 로컬) ──
 class LineTraceRequest(BaseModel):
     image_base64: str
@@ -1362,6 +1382,8 @@ class LineTraceStartRequest(BaseModel):
     # 기본 True: 칸마다 AI(로컬 FLUX Kontext)로 깨끗한 선화로 다시 그린 뒤 선을 추출한다(형태가 바뀌면 그 칸만 원본에서 직접 추출).
     redraw: bool = True
     max_panels: Optional[int] = None  # 시험용: 앞의 N칸만 처리
+    # 'auto'(기본): 이미지를 보고 선 도식/색 면 도식을 자동 판별. 'lines': 선 추출 고정, 'color': 색 영역 그대로 벡터화 고정.
+    method: str = "auto"
 
 
 @router.post("/image/linetrace/start")
@@ -1386,7 +1408,7 @@ async def linetrace_start(request: LineTraceStartRequest):
             ocr = await asyncio.to_thread(_ocr_labels_with_gemini, png, w, h)
         except Exception as e:
             print(f"[LINETRACE] OCR 실패(글자는 모양 그대로 옮김): {e}")
-    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr, request.max_panels)
+    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr, request.max_panels, request.method)
     return {"status": "success", "job_id": job_id}
 
 

@@ -19,6 +19,7 @@ from PIL import Image
 
 import comfyui_client
 from services import line_trace
+from services import diagram_kind
 
 REDRAW_INSTRUCTION = (
     "Redraw this isometric architecture diagram as a clean, crisp, high-resolution black line drawing on a pure white background. "
@@ -193,13 +194,40 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
             _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
-def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None):
+def _run_color(job_id, png_bytes, kind_info):
+    """색 면(블록) 도식: 선 추출 대신 색 영역 그대로 벡터화한다(AI 재생성 없음, 수 초)."""
+    job = JOBS[job_id]
+    _update(job, status="running", stage="색 면 도식으로 판단 — 색 영역 그대로 벡터 변환 중")
+    try:
+        svg, (W, H) = diagram_kind.vectorize_color(png_bytes)
+        stats = {"method": "color", "kind": kind_info, "panels": 1, "lines": 0, "arrows": 0, "text_lines": 0, "text_editable": 0,
+                 "size": [W, H], "redraw_used": False, "ai_panels": 0, "fallback_panels": 0, "panel_info": []}
+        _update(job, status="done", stage="완료", svg=svg, stats=stats, warnings=[], finished=time.time(), done=1, total=1)
+    except BaseException as e:
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
+        _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
+
+
+def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None, method="auto"):
     now = time.time()
     with _JOBS_LOCK:
         for k in [k for k, v in JOBS.items() if now - v.get("created", now) > JOB_TTL]:
             JOBS.pop(k, None)
         job_id = uuid.uuid4().hex[:12]
         JOBS[job_id] = {"status": "queued", "stage": "대기 중(앞선 작업이 끝나면 시작)", "done": 0, "total": 0, "created": now}
+    kind_info = None
+    use_color = method == "color"
+    if method == "auto":
+        try:
+            kind_info = diagram_kind.classify_diagram(png_bytes)
+            use_color = kind_info["kind"] == "color"
+        except Exception:
+            use_color = False
+    if use_color:
+        JOBS[job_id]["stage"] = "색 면 도식으로 판단"
+        threading.Thread(target=_run_color, args=(job_id, png_bytes, kind_info), daemon=True).start()
+        return job_id
     threading.Thread(target=_run, args=(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels), daemon=True).start()
     return job_id
 

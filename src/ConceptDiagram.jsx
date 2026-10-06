@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry } from './conceptDiagram/subject';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -112,7 +112,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model, max_tokens: 6000, temperature: 0.35,
+        model, max_tokens: 16000, temperature: 0.35,
         messages: [{ role: 'user', content, ...(images.length ? { images: images.map(toB64) } : {}) }],
       }),
     });
@@ -127,8 +127,20 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     setReading(true);
     try {
       const useGrid = subjectKind !== 'form';
-      const parsed = await callAI(buildReadPrompt(subjectKind, { grid: useGrid }), [useGrid ? await withGrid(subjectImage) : subjectImage]);
-      const r = normalizeRead(parsed, subjectKind);
+      const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
+      let r = null; let lastErr = null;
+      for (let attempt = 0; attempt < 2 && !r; attempt++) { // 잘못 읽히면(뭉개짐 등) 한 번 더 읽는다
+        try { r = normalizeRead(await callAI(buildReadPrompt(subjectKind, { grid: useGrid }), [gridded]), subjectKind); }
+        catch (e) { lastErr = e; }
+      }
+      if (!r) throw lastErr;
+      if (r.kind === 'site') { // 배치도면 건물·대지 윤곽은 AI 눈대중 대신 이미지 분석으로 원본 모양 그대로 따온다(실패하면 AI가 읽은 모양을 그대로 씀)
+        try {
+          const res = await apiFetch('/v1/image/site-extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop() }) });
+          const cv = res.ok ? await res.json() : null;
+          if (cv && Array.isArray(cv.buildings) && cv.buildings.length >= 2) r = mergeSiteGeometry(r, cv);
+        } catch { /* AI 읽기 결과 사용 */ }
+      }
       setRead(r);
       const pv = readToPreview(r);
       renderSpec(pv.type, pv.spec);
@@ -156,6 +168,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       last.boxes = read.form.boxes.map((b) => ({ ...b }));
       steps.forEach((st) => { if (!st.ground) st.ground = read.form.ground; });
       return { type: 'massing', spec: { title: parsed.title || '', accent: parsed.accent, steps } };
+    }
+    if (read.kind === 'site') {
+      return { type: 'site', spec: { title: parsed.title || '', siteBase: { shapes: read.shapes }, panels: Array.isArray(parsed.panels) ? parsed.panels : [] } };
     }
     return { type: 'layout', spec: { title: parsed.title || '', shapes: read.shapes, panels: Array.isArray(parsed.panels) ? parsed.panels : [] } };
   };
