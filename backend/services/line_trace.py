@@ -37,6 +37,68 @@ def _classify(p0, p1):
     return min(DIRS.items(), key=lambda kv: min(abs(ang - kv[1]), 180 - abs(ang - kv[1])))[0]
 
 
+def _seg_dist(p, a, b):
+    ab = b - a
+    t = float(np.clip((p - a) @ ab / (ab @ ab + 1e-9), 0.0, 1.0))
+    return float(np.linalg.norm(p - (a + ab * t)))
+
+
+def _close_open_ends(lines, max_ext, free_tol):
+    """어디에도 닿지 않은 선 끝(자유 끝)을 진행 방향으로 연장해 가까운 다른 선(또는 그 선의 연장)과 만나게 한다.
+    점선·희미한 선이 끊긴 채 모서리에서 어긋나거나 벽에 못 닿는 부분을 이어 준다."""
+    segs = [[np.array(L[0], float), np.array(L[1], float), L[2], L[3]] for L in lines]
+
+    def free(i, e):
+        P = segs[i][e]
+        return all(_seg_dist(P, segs[j][0], segs[j][1]) > free_tol for j in range(len(segs)) if j != i)
+
+    for i in range(len(segs)):
+        for e in (0, 1):
+            P, Q = segs[i][e], segs[i][1 - e]
+            length = float(np.linalg.norm(P - Q))
+            if length < 1e-6:
+                continue
+            is_free = free(i, e)
+            d = (P - Q) / length
+            best = None
+            for j in range(len(segs)):
+                if j == i:
+                    continue
+                A, B = segs[j][0], segs[j][1]
+                lj = float(np.linalg.norm(B - A))
+                if lj < 1e-6:
+                    continue
+                dj = (B - A) / lj
+                cr = d[0] * dj[1] - d[1] * dj[0]
+                if abs(cr) < 0.3:
+                    continue
+                w = A - P
+                t = (w[0] * dj[1] - w[1] * dj[0]) / cr   # P + t·d
+                u = (w[0] * d[1] - w[1] * d[0]) / cr     # A + u·dj
+                if is_free:
+                    if t < 0 or t > min(max_ext, 0.6 * length):
+                        continue
+                    if u < -max_ext or u > lj + max_ext:
+                        continue
+                else:  # 이미 닿아 있는 끝은 살짝 어긋난 것만 교점으로 바로잡는다
+                    if abs(t) > 1.5 * free_tol or u < -1.5 * free_tol or u > lj + 1.5 * free_tol:
+                        continue
+                if is_free and (u < 0 or u > lj):  # 상대 선의 연장선에서 만나려면 그쪽 끝도 자유 끝이어야 한다
+                    if not free(j, 0 if u < 0 else 1):
+                        continue
+                if best is None or t < best[0]:
+                    best = (t, j, u, lj)
+            if best:
+                t, j, u, lj = best
+                X = P + d * t
+                segs[i][e] = X
+                if u < 0:
+                    segs[j][0] = X
+                elif u > lj:
+                    segs[j][1] = X
+    return [(s_[0], s_[1], s_[2], s_[3]) for s_ in segs]
+
+
 def _find_text_clusters(mask, long_edge):
     """작은 어두운 덩어리들이 가로로 늘어선 묶음 = 글자줄. 반환: [{'bbox':(x0,y0,x1,y1), 'pix': bool mask}]"""
     lab, n = ndi.label(mask, structure=np.ones((3, 3)))
@@ -343,7 +405,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             for a, b in ivs[1:]:
                 gap = a - res[-1][1]
                 long_pair = (res[-1][1] - res[-1][0]) >= 100 * f and (b - a) >= 100 * f
-                if gap <= 4 * f or (gap <= 60 * f and coverage(k, c, res[-1][1], a) >= 0.55) or (long_pair and gap <= 90 * f):
+                if gap <= 4 * f or (gap <= 60 * f and coverage(k, c, res[-1][1], a) >= 0.55) or (long_pair and gap <= 90 * f) or (line_art and k != 'V' and gap <= 45 * f):
                     res[-1][1] = max(res[-1][1], b)
                 else:
                     res.append([a, b])
@@ -360,7 +422,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
                     cover = sum(b - a for a, b in grp) / (span + 1e-6)
                     lens = [b - a for a, b in grp]
                     gaps = [grp[i + 1][0] - grp[i][1] for i in range(len(grp) - 1)]
-                    if np.median(lens) < 45 * f and cover < 0.8 and np.std(gaps) < 0.7 * np.mean(gaps) + 6 * f:
+                    if (not line_art or k == 'V') and np.median(lens) < 45 * f and cover < 0.8 and np.std(gaps) < 0.7 * np.mean(gaps) + 6 * f:
                         merged.append([k, c, grp[0][0], grp[-1][1], "dash"])
                         continue
                 for a, b in grp:
@@ -569,7 +631,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             style_ = merged[idx_][4] if idx_ < len(merged) else "solid"
             role_ = "dash" if style_ == "dash" else ("outline" if (spread_ok and tk >= 0.72 * hi_t) else "inner")
             new_lines.append((L_[0], L_[1], role_, L_[3]))
-        lines = new_lines
+        lines = _close_open_ends(new_lines, max_ext=0.04 * max(W, H), free_tol=max(8 * f, 0.008 * max(W, H)))
 
     # ── 면 채우기 ──
     out_parts = []
@@ -646,7 +708,13 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     for v in silhouettes:
         d_ = 'M' + ' L'.join('%.1f %.1f' % (p[0] / s, p[1] / s) for p in v) + ' Z'
         out_parts.append('<path d="%s" fill="none" stroke="#1d1d1d" stroke-width="%.2f" stroke-linejoin="round" stroke-linecap="round"/>' % (d_, W_OUT))
+    v_lines = [(float(-L[1]), float(L[2]), float(L[3])) for L in merged if L[0] == 'V']
     for x0, y0, x1, y1, dr_ in arrows:
+        sz_ = max(x1 - x0, y1 - y0, 1)
+        cx_ = (x0 + x1) / 2.0
+        base_y = y0 if dr_ == 'down' else y1
+        if not any(abs(lx - cx_) <= 1.4 * sz_ and (ya - 1.6 * sz_ <= base_y <= yb + 1.6 * sz_) for lx, ya, yb in v_lines):
+            continue  # 선에 붙어 있지 않은 작은 삼각형(모서리 점 등)은 화살촉이 아니다
         x0, y0, x1, y1 = x0 / s, y0 / s, x1 / s, y1 / s
         cx = (x0 + x1) / 2
         pts = ("%.1f,%.1f %.1f,%.1f %.1f,%.1f" % (x0, y0, x1, y0, cx, y1)) if dr_ == "down" else ("%.1f,%.1f %.1f,%.1f %.1f,%.1f" % (x0, y1, x1, y1, cx, y0))
