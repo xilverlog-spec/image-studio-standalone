@@ -1207,6 +1207,9 @@ async def process_mask(request: MaskProcessRequest):
 # ── 2026-09-18: 다이어그램 탭 - 래스터 PNG를 벡터 SVG로 변환 (vtracer, 완전 로컬/무료) ──
 class VectorizeRequest(BaseModel):
     image_base64: str
+    # "clean": 3배 확대 + 노이즈 제거 후 변환 — 모서리가 반듯하고 일러스트처럼 깔끔(기본, 2026-10-06 실측으로 채택).
+    # "faithful": 원본 해상도 그대로 변환 — 질감/잔무늬까지 따라가지만 모서리가 뭉개지고 경로가 많다.
+    mode: str = "clean"
 
 
 @router.post("/image/vectorize")
@@ -1230,21 +1233,49 @@ async def vectorize_image(request: VectorizeRequest):
     tmp_out = tmp_in.replace("_in_", "_out_").replace(".png", ".svg")
 
     try:
-        with open(tmp_in, "wb") as f:
-            f.write(image_bytes)
+        # vtracer 는 확장자로 형식을 판단해서, JPG/WebP 바이트를 .png 로 저장해 넘기면 "No image file found"로
+        # 죽는다 — 어떤 형식이 오든 PIL 로 읽어서 진짜 PNG(RGB, 투명은 흰 배경)로 다시 저장한다.
+        try:
+            from PIL import Image as _PILImage
+            src_img = _PILImage.open(io.BytesIO(image_bytes))
+            if src_img.mode in ("RGBA", "LA", "P"):
+                rgba = src_img.convert("RGBA")
+                flat = _PILImage.new("RGB", rgba.size, (255, 255, 255))
+                flat.paste(rgba, mask=rgba.split()[-1])
+                src_img = flat
+            else:
+                src_img = src_img.convert("RGB")
+            clean = request.mode != "faithful"
+            if clean:
+                from PIL import ImageFilter as _PILFilter
+                factor = min(3.0, max(1.0, 3600 / max(src_img.size)))
+                if factor > 1.0:
+                    src_img = src_img.resize((int(src_img.width * factor), int(src_img.height * factor)), _PILImage.LANCZOS)
+                src_img = src_img.filter(_PILFilter.MedianFilter(5))
+            src_img.save(tmp_in, "PNG")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"이미지 형식을 읽을 수 없습니다: {e}")
 
+        trace_params = (
+            dict(filter_speckle=12, color_precision=5, layer_difference=24, corner_threshold=75,
+                 length_threshold=6.0, splice_threshold=45, path_precision=2)
+            if clean else
+            dict(filter_speckle=4, color_precision=6, layer_difference=16, corner_threshold=60,
+                 length_threshold=4.0, splice_threshold=45, path_precision=3)
+        )
         await asyncio.to_thread(
             vtracer.convert_image_to_svg_py,
             tmp_in, tmp_out,
-            colormode="color", hierarchical="stacked", mode="spline",
-            filter_speckle=4, color_precision=6, layer_difference=16,
-            corner_threshold=60, length_threshold=4.0, max_iterations=10,
-            splice_threshold=45, path_precision=3,
+            colormode="color", hierarchical="stacked", mode="spline", max_iterations=10,
+            **trace_params,
         )
 
         with open(tmp_out, "r", encoding="utf-8") as f:
             svg_text = f.read()
-    except Exception as e:
+    except (HTTPException, asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:
+        # vtracer(Rust)의 패닉은 Exception 이 아니라 BaseException 계열이라 함께 잡는다.
         raise HTTPException(status_code=500, detail=f"벡터화 실패: {e}")
     finally:
         for p in (tmp_in, tmp_out):

@@ -44,7 +44,7 @@ const stamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
 };
 
-export default function DrawioEditor({ active = true, addToast, apiFetch }) {
+export default function DrawioEditor({ active = true, addToast, apiFetch, incomingSvg = null }) {
   const doFetch = apiFetch || fetch;
   const notify = useCallback((type, title, msg) => { if (addToast) addToast(type, title, msg); }, [addToast]);
 
@@ -60,6 +60,12 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
   // AI 다이어그램 생성 패널 상태
   const [refImage, setRefImage] = useState(null); // 참고 이미지(선택)
   const [refBusy, setRefBusy] = useState(false);
+
+  // 이미지 → 벡터(SVG) 변환(vtracer 트레이싱, 로컬/무료)
+  const [vecBusy, setVecBusy] = useState(false);
+  const [vec, setVec] = useState(null); // { svg, w, h, name, pathCount }
+  const vecFileRef = useRef(null);
+  const [vecMode, setVecMode] = useState('clean');
   const refFileRef = useRef(null);
   const projRef = useRef(null);
 
@@ -180,6 +186,50 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
   };
 
   // ── 빠른 시작(고정 틀) — AI 없이 그냥 틀만 빨리 넣고 싶을 때용 ──
+  const vectorizeFile = async (file) => {
+    if (!file || vecBusy) return;
+    setVecBusy(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
+        fr.readAsDataURL(file);
+      });
+      const res = await doFetch('/v1/image/vectorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: dataUrl.split(',').pop(), mode: vecMode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '변환에 실패했습니다.');
+      const m = data.svg.match(/<svg[^>]*width="(\d+)"[^>]*height="(\d+)"/);
+      setVec({ svg: data.svg, w: m ? Number(m[1]) : 1000, h: m ? Number(m[2]) : 700, name: file.name.replace(/\.[^.]+$/, ''), pathCount: (data.svg.match(/<path/g) || []).length });
+      notify('success', '벡터 변환 완료', '아래에서 SVG로 저장하거나 캔버스에 넣을 수 있습니다.');
+    } catch (e) {
+      notify('error', '벡터 변환 실패', e.message);
+    } finally {
+      setVecBusy(false);
+    }
+  };
+
+  const vecSave = () => vec && download(new Blob([vec.svg], { type: 'image/svg+xml' }), `${vec.name}_vector_${stamp()}.svg`);
+
+  const placeSvg = useCallback((svg, w, h) => {
+    const W = 900; const H = Math.round((h / w) * W);
+    const b64 = btoa(unescape(encodeURIComponent(svg)));
+    const xml = `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>` +
+      `<mxCell id="vec1" value="" style="shape=image;imageAspect=1;aspect=fixed;verticalLabelPosition=bottom;verticalAlign=top;image=data:image/svg+xml,${b64};" vertex="1" parent="1"><mxGeometry x="40" y="40" width="${W}" height="${H}" as="geometry"/></mxCell>` +
+      `</root></mxGraphModel>`;
+    loadXml(xml);
+  }, [loadXml]);
+  const vecToCanvas = () => { if (vec) placeSvg(vec.svg, vec.w, vec.h); };
+
+  // 개념도 탭에서 "draw.io로 보내기"를 누르면 그 SVG를 캔버스에 올린다.
+  useEffect(() => {
+    if (incomingSvg?.svg) placeSvg(incomingSvg.svg, incomingSvg.width, incomingSvg.height);
+  }, [incomingSvg]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const addTemplate = (kind) => {
     const builder = TEMPLATE_BUILDERS[kind];
     if (!builder) return;
@@ -302,6 +352,36 @@ export default function DrawioEditor({ active = true, addToast, apiFetch }) {
                 >
                   {Object.entries(LAYOUT_LABEL).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                 </select>
+              </div>
+            )}
+          </div>
+        </details>
+
+        <details style={{ borderTop: '1px solid var(--border-color)', paddingTop: 8 }}>
+          <summary style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: 6 }}>이미지 → 벡터(SVG) 변환</summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+              PNG/JPG 다이어그램 이미지를 올리면 이 PC 안에서 벡터(SVG)로 변환합니다(외부 전송 없음, 무료).
+              색과 모양은 따라오지만 글자는 모양으로 변환돼 수정할 수 없고, 평평한 색의 단순한 그림일수록 결과가 좋습니다.
+            </p>
+            <select value={vecMode} onChange={(e) => setVecMode(e.target.value)} style={inputBase} disabled={vecBusy}>
+              <option value="clean">깔끔하게 (일러스트처럼, 권장)</option>
+              <option value="faithful">원본에 가깝게 (질감 유지, 거침)</option>
+            </select>
+            <button style={smallBtn(false)} onClick={() => vecFileRef.current?.click()} disabled={vecBusy}>
+              {vecBusy ? '변환 중… (수십 초 걸릴 수 있음)' : '🖼️ 이미지 선택 후 변환'}
+            </button>
+            <input ref={vecFileRef} type="file" accept="image/*" hidden onChange={(e) => { vectorizeFile(e.target.files?.[0]); e.target.value = ''; }} />
+            {vec && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                  {vec.name} — 경로 {vec.pathCount.toLocaleString()}개, {(vec.svg.length / 1024).toFixed(0)}KB
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button style={{ ...smallBtn(true), flex: 1 }} onClick={vecSave}>SVG 저장</button>
+                  <button style={{ ...smallBtn(false), flex: 1 }} onClick={vecToCanvas} disabled={!loaded}>캔버스에 넣기</button>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>※ "캔버스에 넣기"는 현재 캔버스 내용을 대체합니다.</span>
               </div>
             )}
           </div>
