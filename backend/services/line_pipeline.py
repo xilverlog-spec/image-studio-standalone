@@ -100,7 +100,7 @@ def _update(job, **kw):
         job.update(kw)
 
 
-def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts):
+def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None):
     job = JOBS[job_id]
     with _RUN_LOCK:
         _update(job, status="running", stage="이미지 분석 중")
@@ -110,6 +110,12 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts):
             layout = line_trace.analyze_layout(img)
             objects = layout["objects"] or [(0, 0, W, H)]
             labels = layout["labels"]
+            if max_panels and len(objects) > max_panels:
+                all_objs, objects = objects, objects[:max_panels]
+                def _near(lb):
+                    cx, cy = (lb[0] + lb[2]) / 2, (lb[1] + lb[3]) / 2
+                    return min(range(len(all_objs)), key=lambda i: ((all_objs[i][0] + all_objs[i][2]) / 2 - cx) ** 2 + ((all_objs[i][1] + all_objs[i][3]) / 2 - cy) ** 2)
+                labels = [lb for lb in labels if _near(lb) < max_panels]
             use_ai = bool(redraw) and comfyui_client.is_flux_kontext_available()
             warnings = []
             if redraw and not use_ai:
@@ -185,14 +191,14 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts):
             _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
-def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None):
+def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None):
     now = time.time()
     with _JOBS_LOCK:
         for k in [k for k, v in JOBS.items() if now - v.get("created", now) > JOB_TTL]:
             JOBS.pop(k, None)
         job_id = uuid.uuid4().hex[:12]
         JOBS[job_id] = {"status": "queued", "stage": "대기 중(앞선 작업이 끝나면 시작)", "done": 0, "total": 0, "created": now}
-    threading.Thread(target=_run, args=(job_id, png_bytes, read_text, fills, redraw, ocr_texts), daemon=True).start()
+    threading.Thread(target=_run, args=(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels), daemon=True).start()
     return job_id
 
 

@@ -1361,6 +1361,7 @@ class LineTraceStartRequest(BaseModel):
     fills: bool = False
     # 기본 True: 칸마다 AI(로컬 FLUX Kontext)로 깨끗한 선화로 다시 그린 뒤 선을 추출한다(형태가 바뀌면 그 칸만 원본에서 직접 추출).
     redraw: bool = True
+    max_panels: Optional[int] = None  # 시험용: 앞의 N칸만 처리
 
 
 @router.post("/image/linetrace/start")
@@ -1385,7 +1386,7 @@ async def linetrace_start(request: LineTraceStartRequest):
             ocr = await asyncio.to_thread(_ocr_labels_with_gemini, png, w, h)
         except Exception as e:
             print(f"[LINETRACE] OCR 실패(글자는 모양 그대로 옮김): {e}")
-    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr)
+    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr, request.max_panels)
     return {"status": "success", "job_id": job_id}
 
 

@@ -1,11 +1,15 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt } from './conceptDiagram/subject';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
 // 유료 LLM을 붙이면 AI_MODELS 에 추가하면 된다.
 
-const AI_MODELS = [{ id: 'gemini-3.1-flash-lite', label: 'Gemini Flash-Lite (무료)' }];
+const AI_MODELS = [
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (무료 · 도면 읽기가 더 정확, 느림)' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini Flash-Lite (무료 · 빠름)' },
+];
 const MAX_REF_EDGE = 1600;
 
 const inputBase = {
@@ -46,53 +50,120 @@ const readResizedPng = (file) => new Promise((resolve, reject) => {
 
 export default function ConceptDiagram({ addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
-  const [refImage, setRefImage] = useState(null);
+  const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
+  const [subjectUse, setSubjectUse] = useState('read'); // 'read' = 형태를 읽어서 다시 그림 / 'asis' = 이미지를 그대로 바탕에 깔기
+  const [styleImage, setStyleImage] = useState(null); // 스타일 참고 이미지: 이런 느낌·구성으로
   const [forcedType, setForcedType] = useState('auto');
   const [model, setModel] = useState(AI_MODELS[0].id);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null); // { type, spec }
-  const fileRef = useRef(null);
+  const [result, setResult] = useState(null); // { type, spec, baseImage? }
+  const [subjectKind, setSubjectKind] = useState('auto');
+  const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
+  const [reading, setReading] = useState(false);
+  const subjectFileRef = useRef(null);
+  const styleFileRef = useRef(null);
 
   const rendered = useMemo(() => {
     if (!result) return null;
-    try { return { ...renderSpec(result.type, result.spec), error: null }; }
+    try { return { ...renderSpec(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined), error: null }; }
     catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
   }, [result]);
 
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
-  const canGenerate = (userText.trim() || refImage) && !busy;
+  const readMode = !!subjectImage && subjectUse === 'read';
+  const asisMode = !!subjectImage && subjectUse === 'asis';
+  const canGenerate = !busy && !reading && !!(userText.trim() || subjectImage || styleImage);
 
-  const pickRef = async (file) => {
+  const pickSubject = async (file) => {
     if (!file) return;
-    try { setRefImage(await readResizedPng(file)); }
+    try { setSubjectImage(await readResizedPng(file)); setRead(null); }
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
+  };
+  const pickStyle = async (file) => {
+    if (!file) return;
+    try { setStyleImage(await readResizedPng(file)); }
+    catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
+  };
+
+  const toB64 = (img) => img.split(',').pop();
+  const callAI = async (content, images = []) => {
+    const res = await apiFetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model, max_tokens: 6000, temperature: 0.35,
+        messages: [{ role: 'user', content, ...(images.length ? { images: images.map(toB64) } : {}) }],
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+    const data = await res.json();
+    return parseJsonLoose(data.choices?.[0]?.message?.content);
+  };
+
+  // 소재 이미지 읽기: 구조로 읽고, 읽은 모습을 바로 보여 준다
+  const readImage = async () => {
+    if (!subjectImage || reading) return null;
+    setReading(true);
+    try {
+      const parsed = await callAI(buildReadPrompt(subjectKind), [subjectImage]);
+      const r = normalizeRead(parsed, subjectKind);
+      setRead(r);
+      const pv = readToPreview(r);
+      renderSpec(pv.type, pv.spec);
+      setResult(pv);
+      addToast?.('success', '이미지를 읽었습니다', r.summary || SUBJECT_KINDS[r.kind]);
+      return r;
+    } catch (e) {
+      setRead(null);
+      addToast?.('error', '이미지 읽기 실패', e.message);
+      return null;
+    } finally {
+      setReading(false);
+    }
+  };
+
+  // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
+  const generateFromRead = async (read) => {
+    const parsed = await callAI(buildSubjectPrompt(read, userText.trim(), !!styleImage), styleImage ? [styleImage] : []);
+    if (read.kind === 'form') {
+      const steps = Array.isArray(parsed.steps) ? parsed.steps : [];
+      if (!steps.length) throw new Error('단계가 비어 있습니다.');
+      // 마지막 단계는 읽은 형태 그대로(AI가 형태를 바꾸지 못하게 고정)
+      const last = steps[steps.length - 1];
+      last.ground = read.form.ground;
+      last.boxes = read.form.boxes.map((b) => ({ ...b }));
+      steps.forEach((st) => { if (!st.ground) st.ground = read.form.ground; });
+      return { type: 'massing', spec: { title: parsed.title || '', accent: parsed.accent, steps } };
+    }
+    return { type: 'layout', spec: { title: parsed.title || '', shapes: read.shapes, panels: Array.isArray(parsed.panels) ? parsed.panels : [] } };
+  };
+
+  // 소재 이미지 없음(글/스타일 참고만) 또는 이미지 그대로 바탕
+  const generateFromText = async () => {
+    const type0 = asisMode ? 'site' : forcedType;
+    const images = [...(subjectImage && asisMode ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
+    const parsed = await callAI(buildConceptPrompt(type0, userText.trim(), { asis: asisMode, style: !!styleImage }), images);
+    const guessed = parsed.steps ? 'massing' : 'site';
+    const type = asisMode ? 'site' : forcedType !== 'auto' ? forcedType : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
+    const { type: _drop, ...spec } = parsed;
+    return { type, spec, ...(asisMode ? { baseImage: subjectImage } : {}) };
   };
 
   const generate = async () => {
     if (!canGenerate) return;
+    // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
+    let readNow = read;
+    if (readMode && !readNow) {
+      readNow = await readImage();
+      if (!readNow) return;
+    }
     setBusy(true);
     try {
-      const res = await apiFetch('/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model, max_tokens: 4000, temperature: 0.4,
-          messages: [{
-            role: 'user',
-            content: buildConceptPrompt(forcedType, userText.trim(), !!refImage),
-            ...(refImage ? { images: [refImage.split(',').pop()] } : {}),
-          }],
-        }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
-      const data = await res.json();
-      const parsed = parseJsonLoose(data.choices?.[0]?.message?.content);
-      const guessed = parsed.steps ? 'massing' : 'site';
-      const type = forcedType !== 'auto' ? forcedType : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
-      const { type: _drop, ...spec } = parsed;
-      renderSpec(type, spec); // 그릴 수 있는지 먼저 검증
-      setResult({ type, spec });
-      addToast?.('success', '다이어그램 생성 완료', `${DIAGRAM_TYPES[type].label.split(' (')[0]}로 만들었습니다.`);
+      const next = readMode ? await generateFromRead(readNow) : await generateFromText();
+      renderSpec(next.type, next.spec, next.baseImage ? { baseImage: next.baseImage } : undefined); // 그릴 수 있는지 먼저 검증
+      setResult(next);
+      const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : (DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램');
+      addToast?.('success', '다이어그램 생성 완료', `${what}${styleImage ? ' + 참고 이미지 스타일' : ''}로 만들었습니다.`);
     } catch (e) {
       addToast?.('error', '다이어그램 생성 실패', e.message);
     } finally {
@@ -115,6 +186,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
 
   const previewSrc = rendered?.svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rendered.svg)}` : '';
+  const slotTitle = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
+  const slotNote = { fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 };
+  const dropBtn = { ...btn(false), padding: '14px 10px', borderStyle: 'dashed' };
+  const thumb = { width: '100%', maxHeight: 150, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border-color)', background: '#fff' };
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
@@ -122,50 +197,90 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>다이어그램 만들기</div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
-            설명만 쓰거나, 참고 이미지와 설명을 함께 넣으세요. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.
+            설명만 써도 되고, <b>소재 이미지</b>(내 건물·도면)와 <b>스타일 참고 이미지</b>(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.
           </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>1. 설명</span>
-          <textarea value={userText} onChange={(e) => setUserText(e.target.value)} rows={6} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
-            placeholder={'예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 직육면체 매스에서 중앙부를 덜어내고 상부에 작은 볼륨을 더해 최종 형태가 되는 4단계'} />
+          <span style={slotTitle}>1. 설명</span>
+          <textarea value={userText} onChange={(e) => setUserText(e.target.value)} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
+            placeholder={'예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>2. 참고 이미지 (선택)</span>
-          {refImage ? (
+          <span style={slotTitle}>2. 소재 이미지 (선택) — 이 이미지를 다이어그램으로</span>
+          {subjectImage ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <img src={refImage} alt="참고 이미지" style={{ width: '100%', maxHeight: 170, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border-color)', background: '#fff' }} />
-              <button style={btn(false, busy)} disabled={busy} onClick={() => setRefImage(null)}>참고 이미지 제거</button>
+              <img src={subjectImage} alt="소재 이미지" style={thumb} />
+              <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => { setSubjectImage(null); setRead(null); }}>소재 이미지 제거</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[['read', '형태를 읽어서'], ['asis', '이미지 그대로 바탕']].map(([id, label]) => (
+                  <button key={id} style={{ ...btn(subjectUse === id, busy || reading), flex: 1, padding: '7px 6px', fontSize: 12 }} disabled={busy || reading} onClick={() => setSubjectUse(id)}>{label}</button>
+                ))}
+              </div>
+              {readMode && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
+                  <select value={subjectKind} onChange={(e) => { setSubjectKind(e.target.value); setRead(null); }} style={inputBase} disabled={reading || busy}>
+                    <option value="auto">이미지 종류: 자동 판단</option>
+                    {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                  </select>
+                  <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={readImage}>
+                    {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
+                  </button>
+                  {read && (
+                    <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
+                      <b>{SUBJECT_KINDS[read.kind]}</b>로 읽었습니다.{read.summary ? ` ${read.summary}` : ''}<br />
+                      오른쪽 그림이 읽은 모습입니다. 다르면 종류를 바꿔 다시 읽으세요.
+                    </p>
+                  )}
+                  {!read && <p style={slotNote}>읽기는 ‘다이어그램 만들기’를 누르면 자동으로 먼저 실행됩니다. 읽은 결과를 먼저 확인하고 싶을 때만 위 버튼을 쓰세요.</p>}
+                </div>
+              )}
+              <p style={slotNote}>
+                {readMode ? '형태(건물·평면·배치)를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다. 이미지는 바뀌지 않습니다.'}
+              </p>
             </div>
           ) : (
-            <button style={{ ...btn(false), padding: '16px 10px', borderStyle: 'dashed' }} onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickRef(e.dataTransfer.files?.[0]); }}>
+            <button style={dropBtn} onClick={() => subjectFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickSubject(e.dataTransfer.files?.[0]); }}>
+              🏢 내 건물·평면·배치도 올리기
+            </button>
+          )}
+          <input ref={subjectFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSubject(e.target.files?.[0]); e.target.value = ''; }} />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={slotTitle}>3. 스타일 참고 이미지 (선택) — 이런 느낌으로</span>
+          {styleImage ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <img src={styleImage} alt="스타일 참고 이미지" style={thumb} />
+              <button style={btn(false, busy)} disabled={busy} onClick={() => setStyleImage(null)}>참고 이미지 제거</button>
+            </div>
+          ) : (
+            <button style={dropBtn} onClick={() => styleFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickStyle(e.dataTransfer.files?.[0]); }}>
               🖼️ 비슷한 느낌의 이미지 올리기
             </button>
           )}
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickRef(e.target.files?.[0]); e.target.value = ''; }} />
-          <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>
-            이미지의 칸 구성과 요소를 보고 같은 형식으로 만들고, 내용은 위 설명을 따릅니다.
-          </p>
+          <input ref={styleFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickStyle(e.target.files?.[0]); e.target.value = ''; }} />
+          <p style={slotNote}>이미지의 칸 구성과 요소를 보고 비슷한 방식으로 표현합니다. 소재 이미지가 있으면 내용·형태는 소재를 따르고, 표현 방식만 참고합니다.</p>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>종류</span>
+        {!subjectImage && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ ...slotTitle, whiteSpace: 'nowrap' }}>종류</span>
           <select value={forcedType} onChange={(e) => setForcedType(e.target.value)} style={inputBase}>
             <option value="auto">자동 (내용 보고 AI가 선택)</option>
             {Object.entries(DIAGRAM_TYPES).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
-        </div>
+        </div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <select value={model} onChange={(e) => setModel(e.target.value)} style={inputBase} title="AI 모델">
             {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
-          <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 참고 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
+          <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={generate}>
-            {busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
+            {reading ? '이미지 읽는 중…' : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
         </div>
 
@@ -176,7 +291,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               {fields.map((f) => (
                 <label key={f.path.join('.')} style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>
                   {f.label}
-                  <input style={inputBase} value={f.value} onChange={(e) => setResult({ type: result.type, spec: setByPath(result.spec, f.path, e.target.value) })} />
+                  <input style={inputBase} value={f.value} onChange={(e) => setResult({ ...result, spec: setByPath(result.spec, f.path, e.target.value) })} />
                 </label>
               ))}
             </div>
@@ -193,7 +308,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff' }}>
           {!result && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-              <div>왼쪽에 설명(과 참고 이미지)을 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
+              <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
               <button style={{ ...btn(false), fontSize: 12 }} onClick={() => setResult({ type: 'site', spec: EXAMPLE_SPECS.site })}>예시 먼저 보기</button>
             </div>
           )}

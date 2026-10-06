@@ -1,5 +1,6 @@
 import { ANCHORS, SITE_SHAPES, renderSiteConcept } from './siteConcept';
 import { renderMassing } from './massing';
+import { renderLayout2d, normalizeLayoutPanels } from './layout2d';
 import { ICON_NAMES, ICON_LABEL } from './icons';
 
 export const DIAGRAM_TYPES = {
@@ -111,11 +112,18 @@ const MASSING_RULES = `- 이전 단계의 매스를 유지하면서 한 단계�
 
 const IMAGE_RULE = `참고 이미지가 첨부되어 있다. 이미지를 먼저 분석해서 칸(패널/단계) 수, 각 칸이 보여주는 개념, 사용된 요소(흐름선·구역·아이콘 칩·매스 변화)와 전체 구성을 파악하고, 같은 구성과 흐름으로 만들되 내용은 아래 요청 문장을 우선 반영한다. 이미지 안의 글자는 그대로 베끼지 말고 요청에 맞게 새로 쓴다.`;
 
+const ASIS_RULE = `첨부 이미지(조감도·배치도·항공사진 등)는 그림의 바탕으로 그대로 쓰인다. 프로그램이 모든 패널에 이 이미지를 깔고 그 위에 흐름선·구역·아이콘 칩을 얹는다.
+이미지를 보고 건물·도로·광장·녹지가 실제로 어느 쪽에 있는지 파악한 뒤, 9개 앵커(n=이미지 위쪽, s=아래쪽, e=오른쪽, w=왼쪽, center=가운데 …)를 그 위치에 맞춰 고른다. 이미지에 실제로 없는 곳에 표시를 두지 않는다. 한 패널에는 개념 하나만 얹고, 패널마다 다른 개념을 보여준다. siteShape 는 "rect" 로 한다.`;
+
 // type: 'auto' | 'site' | 'massing'. auto 면 AI가 내용을 보고 종류까지 고르고, 응답 최상위에 "type" 을 넣게 한다.
-export function buildConceptPrompt(type, userText, hasImage = false) {
+export function buildConceptPrompt(type, userText, imgs = {}) {
   const head = `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 요청을 보고 다이어그램의 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).
 좌표를 픽셀로 계산하지 말고 아래 스키마의 값만 채운다. 실제 그리기는 프로그램이 한다.`;
-  const image = hasImage ? `\n\n${IMAGE_RULE}` : '';
+  const hasAny = !!(imgs.asis || imgs.style);
+  const image = !hasAny ? '' : `\n\n${[
+    imgs.asis ? `[첫 번째 이미지 — 바탕으로 쓸 이미지]\n${ASIS_RULE}` : '',
+    imgs.style ? `[${imgs.asis ? '두 번째' : '첨부'} 이미지 — 스타일 참고]\n${IMAGE_RULE}${imgs.asis ? ' 단, 내용·위치는 첫 번째 이미지와 요청을 따르고 이 이미지는 칸 구성·요소·표현 방식만 참고한다.' : ''}` : '',
+  ].filter(Boolean).join('\n\n')}`;
   if (type === 'auto') {
     return `${head}
 
@@ -181,6 +189,7 @@ export function normalizeSpec(type, spec) {
 }
 
 export function renderSpec(type, spec, opts) {
+  if (type === 'layout') return renderLayout2d(normalizeLayoutPanels(spec));
   const n = normalizeSpec(type, spec);
   return type === 'massing' ? renderMassing(n) : renderSiteConcept(n, opts);
 }
@@ -192,6 +201,12 @@ export function getTextFields(type, spec) {
   if (spec.title !== undefined) out.push({ path: ['title'], label: '전체 제목', value: spec.title || '' });
   if (type === 'massing') {
     (spec.steps || []).forEach((s, i) => out.push({ path: ['steps', i, 'label'], label: `단계 ${i + 1} 이름`, value: s.label || '' }));
+  } else if (type === 'layout') {
+    (spec.panels || []).forEach((p, i) => {
+      out.push({ path: ['panels', i, 'heading'], label: `패널 ${i + 1} 제목 ({강조})`, value: p.heading || '' });
+      (p.zones || []).forEach((z, j) => { if (z.label !== undefined) out.push({ path: ['panels', i, 'zones', j, 'label'], label: `패널 ${i + 1} 구역 이름`, value: z.label || '' }); });
+      (p.notes || []).forEach((n, j) => out.push({ path: ['panels', i, 'notes', j, 'text'], label: `패널 ${i + 1} 주석`, value: n.text || '' }));
+    });
   } else {
     (spec.panels || []).forEach((p, i) => {
       out.push({ path: ['panels', i, 'heading'], label: `패널 ${i + 1} 제목 ({강조})`, value: p.heading || '' });

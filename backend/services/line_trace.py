@@ -43,10 +43,23 @@ def _seg_dist(p, a, b):
     return float(np.linalg.norm(p - (a + ab * t)))
 
 
-def _close_open_ends(lines, max_ext, free_tol):
+def _close_open_ends(lines, max_ext, free_tol, orphan_len=0.0, W_img=1000, H_img=1000):
     """어디에도 닿지 않은 선 끝(자유 끝)을 진행 방향으로 연장해 가까운 다른 선(또는 그 선의 연장)과 만나게 한다.
     점선·희미한 선이 끊긴 채 모서리에서 어긋나거나 벽에 못 닿는 부분을 이어 준다."""
     segs = [[np.array(L[0], float), np.array(L[1], float), L[2], L[3]] for L in lines]
+
+    # 어디에도 닿지 않은 짧은 토막(나무·사람 스케치 조각 등)은 도식의 선이 아니므로 버린다
+    def _orphan(i):
+        A, B = segs[i][0], segs[i][1]
+        if segs[i][2] == "dash" or float(np.linalg.norm(B - A)) >= orphan_len:
+            return False
+        return all(_seg_dist(A, segs[j][0], segs[j][1]) > free_tol and _seg_dist(B, segs[j][0], segs[j][1]) > free_tol for j in range(len(segs)) if j != i)
+    # 선이 아주 많은 복잡한 장면(나무·사람·루버·계단 같은 잔 디테일)은 짧은 선을 모두 버려 건물 구조 위주의 개념도로 단순화한다
+    if len(segs) > 60:
+        detail_len = 0.045 * max(W_img, H_img)
+        segs = [sg for sg in segs if sg[2] == "dash" or float(np.linalg.norm(sg[1] - sg[0])) >= detail_len]
+    keep_ = [i for i in range(len(segs)) if not _orphan(i)]
+    segs = [segs[i] for i in keep_]
 
     def free(i, e):
         P = segs[i][e]
@@ -97,6 +110,87 @@ def _close_open_ends(lines, max_ext, free_tol):
                 elif u > lj:
                     segs[j][1] = X
     return [(s_[0], s_[1], s_[2], s_[3]) for s_ in segs]
+
+
+def _find_vertical_arrows(gray, text_zone, u):
+    """AI가 그린 '점선 세로 화살표'(짧은 대시들이 세로로 늘어서고 끝에 채운 삼각 화살촉)를 한 묶음으로 찾는다.
+    u = 원본 1px 에 해당하는 작업 픽셀 수. 반환: [(x, y_tail, y_head_base, head_x0, head_x1, y_tip)], 지울 영역 마스크."""
+    dark = (gray < 125) & ~text_zone
+    lab, n = ndi.label(dark)
+    objs = ndi.find_objects(lab)
+    dashes, heads = [], []
+    for i, sl in enumerate(objs, start=1):
+        if sl is None:
+            continue
+        y0, y1, x0, x1 = sl[0].start, sl[0].stop, sl[1].start, sl[1].stop
+        w, h = x1 - x0, y1 - y0
+        area = int((lab[sl] == i).sum())
+        if area < 40:
+            continue
+        if w <= 7 * u and 5 * u <= h <= 20 * u and w / float(h) <= 0.7 and area / float(w * h) >= 0.6:
+            dashes.append((i, (x0 + x1) / 2.0, y0, y1))
+    # 화살촉: 선(굵기 ~4px)보다 훨씬 굵은 채운 삼각형만 남도록 큰 원으로 열기 연산 후, 원래 크기로 되살린다
+    op = morphology.opening(dark, morphology.disk(max(3, int(round(3.4 * u)))))
+    lab_h, n_h = ndi.label(op)
+    for j, sl in enumerate(ndi.find_objects(lab_h), start=1):
+        if sl is None:
+            continue
+        y0, y1, x0, x1 = sl[0].start, sl[0].stop, sl[1].start, sl[1].stop
+        w, h = x1 - x0, y1 - y0
+        area = int((lab_h[sl] == j).sum())
+        pad = int(round(1.6 * u))
+        if 8 * u <= w <= 40 * u and 8 * u <= h <= 70 * u and 0.3 <= area / float(w * h) <= 0.85 and w / float(h) <= 1.6 and h / float(w) <= 2.2:
+            heads.append((-j, x0 - pad, y0 - pad, x1 + pad, y1 + pad))
+    arrows, kill = [], np.zeros(gray.shape, bool)
+    for hid, hx0, hy0, hx1, hy1 in heads:
+        hcx = (hx0 + hx1) / 2.0
+        chain = sorted([d for d in dashes if abs(d[1] - hcx) <= 5 * u], key=lambda d: d[2])
+        above = [d for d in chain if d[3] <= hy0 + 2 * u]
+        below = [d for d in chain if d[2] >= hy1 - 2 * u]
+        for side, dl in (("up", below), ("down", above)):
+            if len(dl) < 2:
+                continue
+            ordered = sorted(dl, key=lambda d: d[2]) if side == "up" else sorted(dl, key=lambda d: -d[3])
+            near = [d for d in ordered]
+            # 머리에서 가까운 것부터 간격이 이어지는 것만
+            if side == "up":
+                near = sorted(dl, key=lambda d: d[2])
+                grp = [near[0]]
+                for d in near[1:]:
+                    if d[2] - grp[-1][3] <= 25 * u:
+                        grp.append(d)
+                    else:
+                        break
+                if hy1 - 0 > 0 and near[0][2] - hy1 > 30 * u:
+                    continue
+                tail = grp[-1][3]
+            else:
+                near = sorted(dl, key=lambda d: -d[3])
+                grp = [near[0]]
+                for d in near[1:]:
+                    if grp[-1][2] - d[3] <= 25 * u:
+                        grp.append(d)
+                    else:
+                        break
+                if hy0 - near[0][3] > 30 * u:
+                    continue
+                tail = grp[-1][2]
+            if len(grp) < 2:
+                continue
+            for d in grp:
+                kill |= (lab == d[0])
+            if hid > 0:
+                kill |= (lab == hid)
+            else:
+                kill |= ndi.binary_dilation(lab_h == -hid, iterations=max(2, int(2 * u)))  # 삼각형 본체만 지운다(그 뒤로 지나가는 선은 최대한 남긴다)
+            x_shaft = float(np.median([d[1] for d in grp]))
+            hh = min(hy1 - hy0, 1.6 * (hx1 - hx0))  # 머리 높이(블록에 붙은 대시 조각은 제외)
+            if side == "up":
+                arrows.append((x_shaft, float(tail), float(hy0 + hh), float(hx0), float(hx1), float(hy0)))
+            else:
+                arrows.append((x_shaft, float(tail), float(hy1 - hh), float(hx0), float(hx1), float(hy1)))
+            break
+    return arrows, ndi.binary_dilation(kill, iterations=max(2, int(2 * u)))
 
 
 def _find_text_clusters(mask, long_edge):
@@ -345,6 +439,10 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     for bm in arrow_blobs:
         arrow_only |= bm
     arrow_zone = morphology.dilation(arrow_only, morphology.disk(max(2, int(3 * f))))  # 화살촉만 선 검출에서 뺀다(굵은 선까지 지우지 않는다)
+    v_arrows = []
+    if line_art:  # AI 선화의 점선 세로 화살표(대시 + 채운 화살촉)는 한 묶음으로 따로 뽑는다
+        v_arrows, v_zone = _find_vertical_arrows(gray, text_zone, s)
+        arrow_zone = arrow_zone | v_zone
 
     line_ink = ink & ~arrow_zone & ~text_zone
     line_ink = morphology.remove_small_objects(line_ink, max(20, int(40 * f * f)))
@@ -405,7 +503,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             for a, b in ivs[1:]:
                 gap = a - res[-1][1]
                 long_pair = (res[-1][1] - res[-1][0]) >= 100 * f and (b - a) >= 100 * f
-                if gap <= 4 * f or (gap <= 60 * f and coverage(k, c, res[-1][1], a) >= 0.55) or (long_pair and gap <= 90 * f) or (line_art and k != 'V' and gap <= 45 * f):
+                if gap <= 4 * f or (gap <= 60 * f and coverage(k, c, res[-1][1], a) >= 0.55) or (long_pair and gap <= 90 * f and (not line_art or coverage(k, c, res[-1][1], a) >= 0.3)) or (line_art and k != 'V' and gap <= 45 * f):
                     res[-1][1] = max(res[-1][1], b)
                 else:
                     res.append([a, b])
@@ -471,7 +569,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
                     xx, yy = int(round(pp[0])), int(round(pp[1]))
                     if not (0 <= xx < W and 0 <= yy < H) or background[yy, xx]:
                         inside = False
-                if inside or coverage(k_, c_, A[3], B[2]) >= 0.3:
+                if (inside and not line_art) or coverage(k_, c_, A[3], B[2]) >= 0.3:
                     A[3] = max(A[3], B[3]); A[1] = c_
                     merged.remove(B); changed = True
                     break
@@ -626,12 +724,33 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
         spread_ok = hi_t / max(lo_t, 1e-6) >= 1.5  # 굵기 차이가 뚜렷할 때만 위계를 둔다(전부 비슷하면 모두 같은 선)
         if debug is not None:
             debug['thick'] = [round(x, 1) for x in thick]; debug['med_t'] = med_t
+        sil_fill = None
+        if not spread_ok:  # 굵기 차이가 없으면 선으로 둘러싸인 전체 모양을 채워서 바깥 경계 여부로 위계를 정한다
+            m_img = Image.new("L", (W, H), 0)
+            dm = ImageDraw.Draw(m_img)
+            for L_ in lines:
+                dm.line([tuple(L_[0]), tuple(L_[1])], fill=255, width=max(15, int(0.012 * max(W, H))))
+            sil_fill = ndi.binary_fill_holes(np.asarray(m_img) > 0)
+            if debug is not None: debug['sil_fill'] = sil_fill
+        off_ = max(10.0, 0.012 * max(W, H))
+
+        def _inside_sil(pt):
+            x_, y_ = int(round(pt[0])), int(round(pt[1]))
+            return 0 <= x_ < W and 0 <= y_ < H and bool(sil_fill[y_, x_])
         new_lines = []
         for idx_, (L_, tk) in enumerate(zip(lines, thick)):
             style_ = merged[idx_][4] if idx_ < len(merged) else "solid"
-            role_ = "dash" if style_ == "dash" else ("outline" if (spread_ok and tk >= 0.72 * hi_t) else "inner")
+            if style_ == "dash":
+                role_ = "dash"
+            elif spread_ok:
+                role_ = "outline" if tk >= 0.72 * hi_t else "inner"
+            else:  # AI가 굵기 차이를 안 줬으면 배경과 맞닿는 바깥 경계를 외곽선으로(칸마다 위계가 같게)
+                mid_ = (L_[0] + L_[1]) / 2
+                v_ = L_[1] - L_[0]
+                n_ = np.array([-v_[1], v_[0]]) / (np.linalg.norm(v_) + 1e-9)
+                role_ = "outline" if _inside_sil(mid_ + n_ * off_) != _inside_sil(mid_ - n_ * off_) else "inner"
             new_lines.append((L_[0], L_[1], role_, L_[3]))
-        lines = _close_open_ends(new_lines, max_ext=0.04 * max(W, H), free_tol=max(8 * f, 0.008 * max(W, H)))
+        lines = _close_open_ends(new_lines, max_ext=0.04 * max(W, H), free_tol=max(8 * f, 0.008 * max(W, H)), orphan_len=0.06 * max(W, H), W_img=W, H_img=H)
 
     # ── 면 채우기 ──
     out_parts = []
@@ -708,6 +827,12 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     for v in silhouettes:
         d_ = 'M' + ' L'.join('%.1f %.1f' % (p[0] / s, p[1] / s) for p in v) + ' Z'
         out_parts.append('<path d="%s" fill="none" stroke="#1d1d1d" stroke-width="%.2f" stroke-linejoin="round" stroke-linecap="round"/>' % (d_, W_OUT))
+    for xs_, yt_, yb_, hx0_, hx1_, ytip_ in v_arrows:  # 점선 세로 화살표: 대시 줄 + 채운 삼각 화살촉
+        w_ = (W_IN if False else 1.4 * k_w)
+        out_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#1d1d1d" stroke-width="%.2f" stroke-dasharray="%.1f %.1f"/>' % (
+            xs_ / s, yt_ / s, xs_ / s, yb_ / s, w_, 3.2 * k_w, 2.6 * k_w))
+        out_parts.append('<polygon points="%.1f,%.1f %.1f,%.1f %.1f,%.1f" fill="#1d1d1d"/>' % (
+            hx0_ / s, yb_ / s, hx1_ / s, yb_ / s, xs_ / s, ytip_ / s))
     v_lines = [(float(-L[1]), float(L[2]), float(L[3])) for L in merged if L[0] == 'V']
     for x0, y0, x1, y1, dr_ in arrows:
         sz_ = max(x1 - x0, y1 - y0, 1)

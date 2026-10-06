@@ -1,0 +1,143 @@
+// "대상 이미지" 모드: 올린 이미지(평면·건물 형태·배치도)를 AI가 먼저 구조로 읽고,
+// 그 구조를 고정한 채 글의 지시대로 다이어그램을 만든다. 형태는 AI가 새로 만들지 않는다.
+import { normalizeShapes, SHAPE_KINDS } from './layout2d';
+
+export const SUBJECT_KINDS = {
+  form: '건물 형태(외관·조감·매스)',
+  plan: '평면도',
+  site: '배치도·대지',
+  other: '그 외(지원 안 함)',
+};
+
+const READ_SCHEMA = `{
+  "kind": "form" | "plan" | "site" | "other",
+  "summary": "이미지가 무엇이고 어떻게 읽었는지 한국어 한두 문장(예: 평면도로 판단. 방 7개, 중앙 복도형)",
+  // kind 가 "form" 일 때만 — 건물을 직육면체 덩어리들의 합으로 단순화
+  "form": {
+    "ground": {"x":0,"y":0,"w":6,"d":5},
+    "boxes": [ {"x":0,"y":0,"z":0,"w":6,"d":2,"h":3} ]
+  },
+  // kind 가 "plan" 또는 "site" 일 때만 — 보이는 영역을 다각형으로
+  "shapes": [
+    {"id":"r1", "name":"거실", "kind":"room|building|road|green|water|boundary|other", "pts":[[0,0],[40,0],[40,30],[0,30]]}
+  ]
+}`;
+
+const READ_RULES = `- 이미지의 종류를 먼저 판단한다: 건물의 입체 형태(외관/조감/스케치)=form, 실 구성이 보이는 평면도=plan, 대지·도로·건물 배치=site, 단면·입면·그 외=other.
+- form: 건물을 3~12개의 직육면체로 근사한다. x는 오른쪽-아래, y는 왼쪽-아래, z는 위쪽, 단위는 모듈(전체 길이가 대략 10 이하). 곡면은 가까운 직육면체로 단순화하고 summary에 단순화했다고 적는다. 바닥(ground)은 전체 발자국을 덮는 크기.
+- plan/site: 0~100 범위의 정규화 좌표(이미지 왼쪽 위가 [0,0], 오른쪽 아래가 [100,100])로 각 영역을 다각형(꼭짓점 4~8개)으로 적는다. 방/건물은 kind 를 room/building, 도로는 road, 녹지는 green, 수공간은 water, 대지 경계선은 boundary 로 한다. 영역이 3~30개가 되게 큰 것 위주로 적고 id 는 r1, r2…처럼 짧고 겹치지 않게 한다.
+- 평면도는 가구·치수선·문 스윙·마감 패턴은 무시하고 '방(실)' 단위의 직사각/ㄱ자 영역으로 단순화한다. 건물 전체 바깥 윤곽도 kind "boundary" 다각형 하나로 함께 적는다(방과 겹쳐도 된다). 작은 실(욕실, 팬트리, 발코니, 드레스룸 포함)도 빠뜨리지 않는다.
+- 이미지에 글자가 있으면 name 에 그대로 옮기고, 없으면 용도를 짐작해 짧게 쓴다.
+- 이미지를 알아볼 수 없으면 kind 를 "other" 로 하고 summary 에 이유를 쓴다.`;
+
+export function buildReadPrompt(forcedKind) {
+  const hint = forcedKind && forcedKind !== 'auto' ? `\n이 이미지는 사용자가 "${SUBJECT_KINDS[forcedKind]}"로 지정했다. kind 를 "${forcedKind}" 로 하고 그에 맞게 읽는다.\n` : '';
+  return `당신은 건축 도면과 이미지를 읽는 설계 보조자다. 첨부된 이미지를 읽어 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).${hint}
+
+스키마:
+${READ_SCHEMA}
+
+규칙:
+${READ_RULES}`;
+}
+
+const num = (v, d = 0, lo = -50, hi = 50) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+
+// AI 응답 → 검증된 읽기 결과. 못 읽었으면 Error.
+export function normalizeRead(parsed, forcedKind) {
+  if (!parsed || typeof parsed !== 'object') throw new Error('이미지를 읽은 결과가 비어 있습니다.');
+  let kind = forcedKind && forcedKind !== 'auto' ? forcedKind : parsed.kind;
+  if (!SUBJECT_KINDS[kind]) kind = parsed.form ? 'form' : (parsed.shapes ? 'plan' : 'other');
+  const summary = String(parsed.summary || '');
+  if (kind === 'form') {
+    const boxes = (Array.isArray(parsed.form?.boxes) ? parsed.form.boxes : []).slice(0, 16).map((b) => ({
+      x: num(b.x), y: num(b.y), z: num(b.z, 0, 0, 30), w: Math.max(0.3, num(b.w, 1, 0, 30)), d: Math.max(0.3, num(b.d, 1, 0, 30)), h: Math.max(0.2, num(b.h, 1, 0, 30)),
+    }));
+    if (!boxes.length) throw new Error('건물 형태를 읽지 못했습니다. 종류를 바꾸거나 다시 읽어 보세요.');
+    const g = parsed.form?.ground;
+    const minX = Math.min(...boxes.map((b) => b.x)); const minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.w)); const maxY = Math.max(...boxes.map((b) => b.y + b.d));
+    const ground = g && typeof g === 'object' ? { x: num(g.x, minX), y: num(g.y, minY), w: num(g.w, maxX - minX, 1, 40), d: num(g.d, maxY - minY, 1, 40) } : { x: minX, y: minY, w: maxX - minX, d: maxY - minY };
+    return { kind, summary, form: { ground, boxes } };
+  }
+  if (kind === 'plan' || kind === 'site') {
+    const shapes = normalizeShapes(parsed.shapes);
+    if (shapes.length < 2) throw new Error('도면의 영역을 읽지 못했습니다. 종류를 바꾸거나 다시 읽어 보세요.');
+    return { kind, summary, shapes };
+  }
+  throw new Error(summary || '이 이미지는 아직 지원하지 않는 종류입니다(평면·건물 형태·배치도만 가능).');
+}
+
+// 읽은 결과를 바탕만 그려서 보여 줄 스펙(확인용 미리보기)
+export function readToPreview(read) {
+  if (read.kind === 'form') {
+    return { type: 'massing', spec: { title: '', accent: '#C97B5A', steps: [{ label: '읽은 형태', ground: read.form.ground, boxes: read.form.boxes }] } };
+  }
+  return { type: 'layout', spec: { title: '', shapes: read.shapes, panels: [{}] } };
+}
+
+const FORM_SCHEMA = `{
+  "title": "전체 제목(없으면 빈 문자열)",
+  "accent": "#C97B5A",
+  "steps": [
+    {"label":"EXTRUSION", "ground":{"x":0,"y":0,"w":5,"d":4},
+     "boxes":[ {"x":0,"y":0,"z":0,"w":5,"d":4,"h":2},
+               {"x":0,"y":1.7,"z":2.4,"w":5,"d":0.6,"h":1.6,"mode":"subtract","move":"up","len":1.4},
+               {"x":1.8,"y":1.5,"z":3.2,"w":1.4,"d":0.9,"h":1.8,"mode":"add","move":"down","len":1.2} ]}
+  ]
+}`;
+
+const BLOCKS_RULES = `[블록 스타일 — 평면을 단순한 색 블록으로 줄이는 표현]\n스타일 참고 이미지가 '방을 색 블록과 이니셜 글자로 단순화하고, 굵은 화살표(진입)와 점선(동선)을 얹은' 모양이거나, 요청이 그런 단순화 평면도를 원하면 패널에 "style":"blocks" 를 넣고 아래 필드를 쓴다.\n  "rooms": { "<영역 id>": {"abbr":"L", "fill":"#FCE9CF"} },   // 방마다 이니셜(1~3자)과 블록 색. 같은 성격의 방은 같은 색(예: 공용=연한 주황, 사적=회색)\n  "entries": [ {"room":"<영역 id>", "side":"top|bottom|left|right", "color":"#F28C28"} ],   // 현관 등 출입 지점. 방 바깥에서 안쪽으로 향하는 굵은 화살표\n  "paths": [ {"via":["<id>","<id>","<id>"], "color":"#F28C28", "dashed":true} ]            // 동선. 지나는 방 id 를 순서대로(점선이 방 중심을 직각으로 이어 간다)\n- 이니셜은 참고 이미지의 규칙을 따른다(예: L=거실, K=주방, D/K=식당·주방, R=방/침실, S=서재). 참고 이미지에 없는 방은 영문 첫 글자나 한글 한 글자로 정한다.\n  "legend": [ {"label":"공용 공간", "color":"#FCE9CF"}, {"label":"사적 공간", "color":"#D9DCE0"} ]   // 색의 뜻을 아래에 표시(구역을 나눌 때는 반드시 넣는다)\n- 요청에 '공용/사적 구분' 같은 구역 나누기가 있으면: 모든 방을 구역으로 분류해서 rooms 의 fill 을 구역별로 서로 뚜렷이 다른 색으로 칠하고(빠지는 방이 없게), legend 로 색의 뜻을 적는다. 공용=거실·주방·식당·현관·복도·발코니, 사적=침실·안방·서재·드레스룸·욕실·화장실 처럼 일반적인 기준을 따르되 요청의 기준이 있으면 그것을 따른다.\n- 요청에 없는 진입 화살표(entries)와 동선(paths)은 넣지 않는다. 요청이 동선·진입을 말했을 때만 쓴다. 영역 id 는 반드시 목록에 있는 것만 쓴다.`;
+
+const LAYOUT_SCHEMA = `{
+  "title": "전체 제목(없으면 빈 문자열)",
+  "panels": [   // 1~4개. 한 패널 = 한 가지 개념(같은 바탕 도면 위에 다른 내용을 얹는다)
+    {
+      "heading": "패널 제목. 강조할 핵심어는 {중괄호}. 예: 공용공간을 중심으로 {열린 동선}",
+      "accent": "#RRGGBB",
+      "flows": [ {"from":"r1", "to":"r3", "color":"#RRGGBB", "dashed":false} ],      // 사람/동선의 흐름. 영역 id 사이를 잇는다
+      "zones": [ {"ids":["r2","r4"], "color":"#RRGGBB", "pattern":"hatch|fill", "label":"공용 영역"} ], // 같은 성격의 영역 강조
+      "notes": [ {"target":"r5", "text":"짧은 설명(15자 이내)"} ]
+    }
+  ]
+}`;
+
+export function buildSubjectPrompt(read, userText, hasStyle = false) {
+  const styleNote = hasStyle ? '\n\n[스타일 참고 이미지 첨부됨] 첨부 이미지는 "이런 느낌으로" 만들라는 견본이다. 칸(단계/패널) 구성, 단계 수, 사용된 요소(화살표·구역 해칭·주석 등)와 표현 방식을 참고하되, 형태와 내용은 위 대상 도면/형태를 그대로 따른다. 이미지 안의 글자는 베끼지 않는다.' : '';
+  if (read.kind === 'form') {
+    return `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 "대상 건물 형태"를 소재로, 요청에 맞는 매스 과정도를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).
+
+[대상 건물 형태 — 마지막 단계의 형태는 반드시 이것과 같아야 한다]
+${JSON.stringify(read.form)}
+
+스키마:
+${FORM_SCHEMA}
+
+규칙:
+- 마지막 단계는 위 대상 형태 그대로(boxes 값을 그대로 복사, mode 표시 없음)로 둔다.
+- 앞 단계들은 최종 형태에서 거꾸로 분해해서 만든다: 처음엔 단순한 덩어리(EXTRUSION), 이어서 덜어내기(mode:"subtract")·더하기(mode:"add")로 최종 형태에 이르게 한다. 새로운 덩어리를 최종 형태 밖에 임의로 만들지 않는다.
+- 모든 단계의 ground 는 동일하게 둔다. 박스끼리 겹치지 않게 한다. label 은 영문 대문자 권장.
+- 요청의 단계 수·표현 지시가 있으면 우선한다.
+
+요청: ${userText || '(요청 없음 — 최종 형태가 만들어지는 과정을 4단계로 보여준다)'}${styleNote}`;
+  }
+  return `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 "대상 도면"의 영역들을 소재로, 요청에 맞는 개념 다이어그램을 JSON으로만 출력한다(설명/마크다운/코드펜스 금지). 도면의 모양은 고정이고, 당신은 그 위에 얹을 흐름·구역·주석만 정한다.
+
+[대상 도면(${read.kind === 'plan' ? '평면' : '배치'}) 영역 — id 와 이름만]
+${JSON.stringify(read.shapes.map((s) => ({ id: s.id, name: s.name, kind: s.kind })))}
+
+스키마:
+${LAYOUT_SCHEMA}
+
+규칙:
+- flows/zones/notes 에는 위 목록에 있는 id 만 쓴다. 없는 id 를 만들지 않는다.
+- flows 는 패널당 최대 8개, zones 는 최대 4개, notes 는 최대 5개. 모든 글자는 한국어. 색은 패널마다 조화로운 계열로 한다.
+- road/boundary 는 흐름의 출발·도착이나 구역으로 쓰지 않아도 된다(필요하면 road 는 출입 흐름의 시작점으로 써도 된다).
+- 요청의 내용(어떤 동선·구역·개념을 보여줄지)을 패널로 나누어 반영한다.
+
+${BLOCKS_RULES}
+
+요청: ${userText || '(요청 없음 — 주요 동선과 공용/사적 영역을 보여준다)'}${styleNote}`;
+}
+
+export { SHAPE_KINDS };
