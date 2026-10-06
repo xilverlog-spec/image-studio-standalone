@@ -117,6 +117,32 @@ export function mergeSiteGeometry(aiRead, cv) {
   return { ...aiRead, kind: 'site', shapes, summary: `${aiRead.summary || ''} (건물 ${buildings.length}동의 윤곽은 이미지 분석으로 원본 모양 그대로 추출)`.trim() };
 }
 
+// AI는 좌표를 가로 0~100, 세로 0~100 으로 따로 정규화해서 주기 때문에, 가로세로 비율이 다른 이미지에서는 모양이 찌그러진다.
+// 이미지 크기(w,h)를 알면 긴 변 = 100 인 같은 비율 좌표로 바로잡는다.
+export function aspectFixShapes(shapes, w, h) {
+  const long = Math.max(w, h);
+  return shapes.map((s) => ({ ...s, pts: s.pts.map((p) => [(p[0] * w) / long, (p[1] * h) / long]) }));
+}
+
+// 평면도: AI 가 짚은 방 위치(씨앗)로 이미지 분석이 벽을 따라 나눈 방 경계로 교체한다. 분할되지 않은 방은 AI 가 읽은 모양을 그대로 둔다.
+export function planSeeds(shapes) {
+  return shapes.filter((s) => s.kind !== 'boundary' && s.kind !== 'road').map((s) => ({
+    id: s.id, x: s.pts.reduce((a2, p) => a2 + p[0], 0) / s.pts.length / 100, y: s.pts.reduce((a2, p) => a2 + p[1], 0) / s.pts.length / 100,
+  }));
+}
+export function mergePlanSegments(aiRead, seg) {
+  // 방은 벽 안쪽의 가장 큰 직사각형(깔끔한 블록)으로, 바깥 윤곽은 방들을 합쳐 다듬은 모양으로 쓴다
+  let n = 0;
+  const rects = seg.rects || {};
+  const shapes = aiRead.shapes.filter((s) => s.kind !== 'boundary').map((s) => {
+    const pts = rects[s.id] || (seg.rooms && seg.rooms[s.id]);
+    if (Array.isArray(pts) && pts.length >= 3) { n += 1; return { ...s, pts }; }
+    return s;
+  });
+  if (Array.isArray(seg.outline) && seg.outline.length >= 3) shapes.unshift({ id: 'boundary', name: '외곽', kind: 'boundary', exact: true, pts: seg.outline });
+  return { ...aiRead, shapes, summary: `${aiRead.summary || ''} (방 ${n}개의 위치·크기는 이미지 분석으로 벽을 따라 정함)`.trim() };
+}
+
 // 읽은 결과를 바탕만 그려서 보여 줄 스펙(확인용 미리보기)
 export function readToPreview(read) {
   if (read.kind === 'form') {

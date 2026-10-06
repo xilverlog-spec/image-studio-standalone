@@ -127,8 +127,8 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
       const from = P(o.from || 'center');
       const targets = (Array.isArray(o.to) ? o.to : [o.to]).filter(Boolean);
       const gid = `${uid}g${gi++}`;
-      defs.push(`<radialGradient id="${gid}"><stop offset="0%" stop-color="${color}" stop-opacity="0.55"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></radialGradient>`);
-      parts.push(`<circle cx="${from[0].toFixed(1)}" cy="${from[1].toFixed(1)}" r="62" fill="url(#${gid})"/>`);
+      defs.push(`<radialGradient id="${gid}"><stop offset="0%" stop-color="${color}" stop-opacity="0.62"/><stop offset="55%" stop-color="${color}" stop-opacity="0.22"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></radialGradient>`);
+      parts.push(`<circle cx="${from[0].toFixed(1)}" cy="${from[1].toFixed(1)}" r="78" fill="url(#${gid})"/>`);
       targets.forEach((tname, i) => {
         const p1 = P(tname);
         const dx = p1[0] - from[0]; const dy = p1[1] - from[1]; const len = Math.hypot(dx, dy) || 1;
@@ -136,12 +136,16 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
         const c1 = [from[0] + dx * 0.33 + nx * off, from[1] + dy * 0.33 + ny * off];
         const c2 = [from[0] + dx * 0.66 - nx * off, from[1] + dy * 0.66 - ny * off];
         const d = `M${from[0].toFixed(1)} ${from[1].toFixed(1)} C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p1[0].toFixed(1)} ${p1[1].toFixed(1)}`;
-        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-opacity="0.22" stroke-width="11" stroke-linecap="round"/>`);
-        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-opacity="0.55" stroke-width="5" stroke-linecap="round"/>`);
-        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round"/>`);
-        [0.3, 0.55, 0.8].forEach((t, k) => {
-          const [px, py] = bez(from, c1, c2, p1, t + (i % 3) * 0.03);
-          parts.push(`<circle cx="${(px + (k - 1) * 3).toFixed(1)}" cy="${(py + (k % 2 ? 4 : -4)).toFixed(1)}" r="2.6" fill="#6B3B1A"/>`);
+        // 번지는 굵은 띠: 바깥(넓고 옅음) → 안(좁고 진함), 가운데에 가는 진한 선
+        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-opacity="0.14" stroke-width="30" stroke-linecap="round"/>`);
+        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-opacity="0.30" stroke-width="17" stroke-linecap="round"/>`);
+        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-opacity="0.75" stroke-width="7" stroke-linecap="round"/>`);
+        parts.push(`<path d="${d}" fill="none" stroke="#FFE2B8" stroke-opacity="0.55" stroke-width="2.2" stroke-linecap="round"/>`);
+        // 길을 걷는 사람들(머리 + 몸)
+        [0.2, 0.42, 0.62, 0.84].forEach((t, k) => {
+          const [px, py] = bez(from, c1, c2, p1, t + (i % 3) * 0.02);
+          const sx = (k % 2 ? 6 : -6); const sy = (k % 2 ? -3 : 3);
+          parts.push(`<g transform="translate(${(px + sx).toFixed(1)} ${(py + sy).toFixed(1)})"><circle cx="0" cy="-8.5" r="2.4" fill="#4a3426"/><path d="M-3.4 -5.6 Q0 -7 3.4 -5.6 L2.6 2.6 L0.9 2.6 L0 -1 L-0.9 2.6 L-2.6 2.6 Z" fill="#4a3426"/></g>`);
         });
       });
     } else if (o.kind === 'zone') {
@@ -158,17 +162,21 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
     } else if (o.kind === 'cycle') {
       const [x, y] = P(o.anchor || 'center');
       const aid = `${uid}a${gi++}`;
-      defs.push(`<marker id="${aid}" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="${color}"/></marker>`);
-      const ring = (r, w, op, sweep) => {
-        const a0 = -0.6; const a1 = a0 + sweep;
-        const sx = x + r * Math.cos(a0); const sy = y + r * Math.sin(a0);
-        const ex = x + r * Math.cos(a1); const ey = y + r * Math.sin(a1);
-        return `<path d="M${sx.toFixed(1)} ${sy.toFixed(1)} A${r} ${r} 0 1 1 ${ex.toFixed(1)} ${ey.toFixed(1)}" fill="none" stroke="${color}" stroke-opacity="${op}" stroke-width="${w}" stroke-linecap="round" marker-end="url(#${aid})"/>`;
+      defs.push(`<marker id="${aid}" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="${color}"/></marker>`);
+      // 소용돌이: 반지름이 커지며 도는 나선 3겹(굵기·투명도를 달리해 번지는 느낌) + 가운데 점과 작은 거품
+      const spiral = (r0, r1, turns, rot, w, op, arrow) => {
+        const n = 60; const pts = [];
+        for (let k = 0; k <= n; k++) { const t = k / n; const r = r0 + (r1 - r0) * t; const a = rot + t * turns * 2 * Math.PI; pts.push([x + r * Math.cos(a), y + r * Math.sin(a) * 0.82]); }
+        return `<path d="M${pts.map((q) => `${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' L')}" fill="none" stroke="${color}" stroke-opacity="${op}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${arrow ? ` marker-end="url(#${aid})"` : ''}/>`;
       };
-      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="34" fill="${color}" fill-opacity="0.10"/>`);
-      parts.push(ring(26, 5, 0.75, 4.7));
-      parts.push(ring(15, 3.5, 0.95, 4.4));
-      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#fff" stroke="${color}" stroke-width="2.2"/>`);
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="46" fill="${color}" fill-opacity="0.10"/>`);
+      parts.push(spiral(6, 40, 2.1, 0.2, 12, 0.18, false));
+      parts.push(spiral(6, 40, 2.1, 0.2, 6.5, 0.45, false));
+      parts.push(spiral(6, 38, 2.1, 0.2, 2.6, 0.95, true));
+      parts.push(spiral(9, 30, 1.6, 2.6, 3.4, 0.7, false));
+      [[-30, -14, 3], [26, -22, 2.2], [32, 14, 2.6], [-12, 30, 2]].forEach(([dx2, dy2, rr]) => parts.push(`<circle cx="${(x + dx2).toFixed(1)}" cy="${(y + dy2).toFixed(1)}" r="${rr}" fill="${color}" fill-opacity="0.45"/>`));
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#fff" stroke="${color}" stroke-width="2.6"/>`);
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}"/>`);
     } else if (o.kind === 'arrow') {
       const a = P(o.from || 'w'); const b = P(o.to || 'e');
       const aid = `${uid}r${gi++}`;
@@ -183,29 +191,30 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
     }
   });
 
-  // 마커 → 좌/우 칩 열(자동 정렬) + 직각 지시선
+  // 마커 → 좌/우 열(자동 정렬): 큰 아이콘 타일 + 밑줄 친 라벨 + 대상 지점까지 직각 지시선
   const sides = { left: [], right: [] };
   markers.forEach((m) => {
     const side = m.side === 'left' || m.side === 'right' ? m.side : (m.xy[0] < SITE.x + SITE.w / 2 ? 'left' : 'right');
     sides[side].push(m);
   });
-  const chipH = 34;
+  const itemH = 66;
   Object.entries(sides).forEach(([side, list]) => {
     list.sort((a, b) => a.xy[1] - b.xy[1]);
-    const top = SITE.y + 6; const bottom = SITE.y + SITE.h - 6 - chipH;
+    const top = SITE.y - 6; const bottom = SITE.y + SITE.h - itemH + 14;
     list.forEach((m, i) => {
-      const chipW = Math.max(84, Math.round(44 + String(m.label || '').length * 13.2));
-      const cy = list.length === 1 ? Math.min(Math.max(m.xy[1] - chipH / 2, top), bottom) : top + (i * (bottom - top)) / (list.length - 1);
-      const cx = side === 'left' ? 8 : PANEL_W - chipW - 8;
-      const edgeX = side === 'left' ? cx + chipW : cx;
-      const midY = cy + chipH / 2;
-      parts.push(`<path d="M${m.xy[0].toFixed(1)} ${m.xy[1].toFixed(1)} V${midY.toFixed(1)} H${edgeX}" fill="none" stroke="#2b2f36" stroke-width="1.1"/>`);
-      parts.push(`<circle cx="${m.xy[0].toFixed(1)}" cy="${m.xy[1].toFixed(1)}" r="9.5" fill="#fff" fill-opacity="0.55" stroke="${m.color}" stroke-width="2.2" stroke-dasharray="2.4 2.4"/>`);
-      parts.push(`<circle cx="${m.xy[0].toFixed(1)}" cy="${m.xy[1].toFixed(1)}" r="3.6" fill="${m.color}"/>`);
-      parts.push(`<rect x="${cx}" y="${cy.toFixed(1)}" width="${chipW}" height="${chipH}" rx="9" fill="#fff" stroke="${m.color}" stroke-width="1.6"/>`);
-      parts.push(`<rect x="${cx + 5}" y="${(cy + 5).toFixed(1)}" width="24" height="24" rx="6" fill="${m.color}"/>`);
-      parts.push(`<g transform="translate(${cx + 7} ${(cy + 7).toFixed(1)}) scale(0.9)">${iconGlyph(m.icon, '#fff')}</g>`);
-      parts.push(`<text x="${cx + 34}" y="${(cy + 22).toFixed(1)}" font-family="${FONT}" font-size="12.5" font-weight="700" fill="#2b2f36">${esc(m.label)}</text>`);
+      const labelW = Math.max(78, Math.round(String(m.label || '').length * 15.5 + 8));
+      const cy = list.length === 1 ? Math.min(Math.max(m.xy[1] - itemH / 2, top), bottom) : top + (i * (bottom - top)) / (list.length - 1);
+      const cx = side === 'left' ? 10 : PANEL_W - labelW - 10;
+      const lineY = cy + itemH - 6;
+      const edgeX = side === 'left' ? cx + labelW : cx;
+      parts.push(`<path d="M${edgeX} ${lineY.toFixed(1)} H${m.xy[0].toFixed(1)} V${m.xy[1].toFixed(1)}" fill="none" stroke="#1f2328" stroke-width="1.3"/>`);
+      parts.push(`<circle cx="${m.xy[0].toFixed(1)}" cy="${m.xy[1].toFixed(1)}" r="10" fill="#fff" fill-opacity="0.6" stroke="${m.color}" stroke-width="2.4" stroke-dasharray="2.6 2.6"/>`);
+      parts.push(`<circle cx="${m.xy[0].toFixed(1)}" cy="${m.xy[1].toFixed(1)}" r="3.8" fill="${m.color}"/>`);
+      const tx = side === 'left' ? cx : cx + labelW - 38;
+      parts.push(`<rect x="${tx}" y="${cy.toFixed(1)}" width="38" height="38" rx="7" fill="${m.color}"/>`);
+      parts.push(`<g transform="translate(${tx + 4} ${(cy + 4).toFixed(1)}) scale(1.3)">${iconGlyph(m.icon, '#fff')}</g>`);
+      parts.push(`<text x="${side === 'left' ? cx : cx + labelW}" y="${(lineY - 7).toFixed(1)}" text-anchor="${side === 'left' ? 'start' : 'end'}" font-family="${FONT}" font-size="15" font-weight="700" fill="#1f2328">${esc(m.label)}</text>`);
+      parts.push(`<line x1="${cx}" y1="${lineY.toFixed(1)}" x2="${cx + labelW}" y2="${lineY.toFixed(1)}" stroke="#1f2328" stroke-width="2.6"/>`);
     });
   });
 

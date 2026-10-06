@@ -39,7 +39,7 @@ export function normalizeShapes(raw) {
     let id = String(s.id ?? `s${i + 1}`);
     while (seen.has(id)) id += '_';
     seen.add(id);
-    return { id, name: String(s.name ?? ''), kind: SHAPE_KINDS.includes(s.kind) ? s.kind : 'other', pts };
+    return { id, name: String(s.name ?? ''), kind: SHAPE_KINDS.includes(s.kind) ? s.kind : 'other', pts, ...(s.exact ? { exact: true } : {}) };
   }).filter((s) => s.pts.length >= 3);
 }
 
@@ -96,8 +96,13 @@ function renderBlocksPanel(shapes, panel, ox, oy, uid) {
 
   // 바깥 윤곽: AI가 준 외곽선은 부정확하므로 쓰지 않는다. 모든 방 영역을 회색 테두리로 깔아 합쳐진 윤곽을 만든 뒤 흰색으로 덮어 얇은 선만 남긴다
   const body = shapes.filter((s) => s.kind !== 'boundary' && s.kind !== 'road');
-  body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="${BLOCK_OUTLINE}" stroke="${BLOCK_OUTLINE}" stroke-width="5" stroke-linejoin="round"/>`));
-  body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>`));
+  const exact = shapes.find((s) => s.kind === 'boundary' && s.exact);
+  if (exact) { // 이미지 분석으로 딴 정확한 바깥 윤곽
+    out.push(`<polygon points="${polyStr(exact.pts)}" fill="#fff" stroke="${BLOCK_OUTLINE}" stroke-width="2.4" stroke-linejoin="round"/>`);
+  } else {
+    body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="${BLOCK_OUTLINE}" stroke="${BLOCK_OUTLINE}" stroke-width="5" stroke-linejoin="round"/>`));
+    body.forEach((s) => out.push(`<polygon points="${polyStr(s.pts)}" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>`));
+  }
   // 주요 실만 색 블록으로: rooms 에 적힌 것 중 부속 공간(욕실·현관 등)은 뺀다. 블록은 외곽·이웃과 떨어지게 안쪽으로 줄여서 그린다
   const wanted = Object.keys(rooms).length ? body.filter((s) => rooms[s.id]) : body;
   const picked = panel.showAll ? wanted : wanted.filter((s) => !SECONDARY.test(s.name || ''));

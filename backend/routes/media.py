@@ -1308,6 +1308,28 @@ async def site_extract(request: SiteExtractRequest):
         raise HTTPException(status_code=500, detail=f"배치도 분석 실패: {e}")
 
 
+class PlanSegmentRequest(BaseModel):
+    image_base64: str
+    seeds: list  # [{id, x, y}] — x,y 는 이미지 가로·세로에 대한 0~1 비율
+
+
+@router.post("/image/plan-segment")
+async def plan_segment(request: PlanSegmentRequest):
+    """평면도: AI 가 짚은 방 위치(씨앗)에서 시작해 벽선을 따라 방 경계를 나눈다(완전 로컬)."""
+    try:
+        png = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+    seeds = [s for s in request.seeds if isinstance(s, dict) and "id" in s and "x" in s and "y" in s][:60]
+    try:
+        from services import plan_segment as _ps
+        return {"status": "success", **(await asyncio.to_thread(_ps.segment_rooms, png, seeds))}
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:
+        raise HTTPException(status_code=500, detail=f"평면 분할 실패: {e}")
+
+
 # ── 2026-10-06: 이미지 → 정돈된 선(SVG) 추출 (선 검출 + 3방향 스냅, 완전 로컬) ──
 class LineTraceRequest(BaseModel):
     image_base64: str

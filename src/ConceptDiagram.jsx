@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes } from './conceptDiagram/subject';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -134,6 +134,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         catch (e) { lastErr = e; }
       }
       if (!r) throw lastErr;
+      if (r.kind === 'plan') { // 평면도: AI 좌표는 가로·세로를 따로 0~100 으로 주므로 가로세로 비율만 바로잡는다(방 모양은 AI 가 읽은 직사각형 그대로)
+        try {
+          const dim = await new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = reject; im.src = subjectImage; });
+          r = { ...r, shapes: aspectFixShapes(r.shapes, dim[0], dim[1]) };
+        } catch { /* 비율 보정 없이 사용 */ }
+      }
       if (r.kind === 'site') { // 배치도면 건물·대지 윤곽은 AI 눈대중 대신 이미지 분석으로 원본 모양 그대로 따온다(실패하면 AI가 읽은 모양을 그대로 씀)
         try {
           const res = await apiFetch('/v1/image/site-extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop() }) });
