@@ -30,6 +30,8 @@ REDRAW_INSTRUCTION = (
 REDRAW_LONG_EDGE = 1100
 SHAPE_IOU_MIN = 0.72     # 이 이상이면 안심하고 쓴다
 SHAPE_IOU_FLOOR = 0.62   # 이 미만이면 AI가 형태를 많이 바꾼 것이라 버린다(그 사이는 경고를 붙여 쓴다)
+LINE_QUALITY_OK = 0.62   # AI 재생성본의 선이 반듯한 정도(0~1). 이 미만이면 흔들린 결과로 보고 다시 그려 본다
+REDRAW_PREP = False      # True 면 AI 에 넣기 전에 입력의 질감·얼룩을 정리한다(_prep_for_redraw). 시험으로 효과를 확인한 뒤 켠다
 JOB_TTL = 3600
 
 JOBS = {}
@@ -74,10 +76,38 @@ def _shape_iou(original, redrawn):
     return float(inter) / float(union) if union else 0.0
 
 
-def _redraw_panel(crop, seed, tag):
-    """칸 하나를 Kontext로 선화로 재생성. 성공하면 PIL 이미지, 아니면 (None, 사유)."""
+def _line_quality(img):
+    """AI 가 다시 그린 선화가 '반듯한 선'인지 0~1로 잰다: 뼈대(골격) 선의 방향이 아이소·세로 3방향에 맞는 비율.
+    깨끗한 결과는 0.69~0.82, 손으로 그린 듯 흔들리고 끊긴 결과는 0.54 안팎(실측). 복잡한 장면은 본래 낮다."""
+    from scipy import ndimage as ndi
+    from skimage import morphology
+    g0 = img.convert("L")
+    k = 900.0 / max(g0.size)
+    g = np.asarray(g0.resize((max(1, int(g0.width * k)), max(1, int(g0.height * k))), Image.LANCZOS)).astype(np.float32)
+    ink = morphology.remove_small_objects(g < 140, max_size=30)
+    sk = morphology.skeletonize(ink)
+    if sk.sum() < 50:
+        return 0.0
+    sm = ndi.gaussian_filter(g, 1.2)
+    gx, gy = ndi.sobel(sm, axis=1), ndi.sobel(sm, axis=0)
+    ang = (np.degrees(np.arctan2(gy[sk], gx[sk])) + 90.0) % 180.0
+    d = lambda a: np.minimum(np.abs(ang - a), 180 - np.abs(ang - a))
+    return float(((d(30) < 8) | (d(90) < 8) | (d(150) < 8)).mean())
+
+
+def _prep_for_redraw(img):
+    """질감·얼룩·잔노이즈를 줄여 AI 가 선을 흔들어 그리지 않게 한다(색과 윤곽은 유지): 중간값 필터 + 색 수 줄이기(디더 없음)."""
+    from PIL import ImageFilter
+    im = img.convert("RGB").filter(ImageFilter.MedianFilter(5))
+    return im.quantize(colors=10, method=Image.MEDIANCUT, dither=Image.NONE).convert("RGB")
+
+
+def _redraw_panel(crop, seed, tag, prep=None):
+    """칸 하나를 Kontext로 선화로 재생성. 성공하면 PIL 이미지, 아니면 (None, 사유). prep=True 면 입력을 먼저 정리한다(기본은 REDRAW_PREP)."""
     k = REDRAW_LONG_EDGE / float(max(crop.size))
     sized = crop.resize((max(64, int(crop.width * k)), max(64, int(crop.height * k))), Image.LANCZOS)
+    if REDRAW_PREP if prep is None else prep:
+        sized = _prep_for_redraw(sized)
     out_path = os.path.join(_tmp_dir(), f"redraw_{tag}_{uuid.uuid4().hex[:6]}.png")
     try:
         comfyui_client.edit_image_with_kontext_or_raise(_png_bytes(sized), REDRAW_INSTRUCTION, out_path, seed=seed)
@@ -148,16 +178,21 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                     if redrawn is None:
                         warnings.append(f"칸 {idx + 1}: AI 재생성 실패 → 원본에서 직접 추출 ({err})")
                     else:
-                        iou = _shape_iou(crop, redrawn)
-                        if iou < SHAPE_IOU_MIN:
-                            # 합격선에 가깝게 못 미쳤으면 다른 시드로 한 번 더 그려 보고 더 일치하는 쪽을 쓴다(질감 있는 이미지는 직접 추출이 훨씬 지저분하다)
-                            _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 형태가 달라져 다시 그리는 중")
-                            again, _err2 = _redraw_panel(crop, seed=207 + idx, tag=str(idx))
-                            if again is not None:
-                                iou2 = _shape_iou(crop, again)
-                                # 차이가 작으면 첫 번째를 쓴다(두 번째가 손으로 그린 듯 선이 끊기고 흔들리는 경우가 있어 일치도가 확실히 높을 때만 바꾼다)
-                                if iou2 > iou + 0.03:
-                                    redrawn, iou = again, iou2
+                        iou, qual = _shape_iou(crop, redrawn), _line_quality(redrawn)
+                        # 형태 일치도와 선이 반듯한 정도가 둘 다 합격이면 바로 쓰고, 아니면 다른 시드로 최대 2번 더 그려서 가장 나은 것을 쓴다
+                        # (AI 가 선을 흔들어 그리거나 형태를 조금 바꾸는 일이 시드마다 달라서, 질감 있는 이미지는 직접 추출보다 훨씬 낫다)
+                        best = (iou + 0.5 * qual, iou, qual, redrawn)
+                        for extra_seed in (207 + idx, 307 + idx):
+                            if best[1] >= SHAPE_IOU_MIN and best[2] >= LINE_QUALITY_OK:
+                                break
+                            _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 더 깨끗한 결과를 위해 다시 그리는 중")
+                            again, _err2 = _redraw_panel(crop, seed=extra_seed, tag=str(idx))
+                            if again is None:
+                                continue
+                            i2, q2 = _shape_iou(crop, again), _line_quality(again)
+                            if i2 + 0.5 * q2 > best[0] + 0.03:   # 차이가 작으면 먼저 그린 것을 유지한다
+                                best = (i2 + 0.5 * q2, i2, q2, again)
+                        _, iou, qual, redrawn = best
                         if iou < SHAPE_IOU_FLOOR:
                             warnings.append(f"칸 {idx + 1}: AI가 형태를 바꿔서(일치도 {iou:.0%}) 원본에서 직접 추출")
                         else:

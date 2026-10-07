@@ -291,6 +291,8 @@ def _find_vertical_arrows(gray, text_zone, u):
         ys, xs = np.nonzero(lab_h == -hid)
         if len(ys) < 100 * u * u:   # 실제 화살촉은 원본 기준 수백 px² 이상, 모서리 얼룩 같은 작은 덩어리는 제외
             continue
+        if (hx1 - hx0) < 14 * u or (hy1 - hy0) < 16 * u:   # 선이 만나는 지점의 굵은 점·얼룩은 화살촉보다 작다
+            continue
         ymid = (ys.min() + ys.max()) / 2.0
         n_top, n_bot = int((ys < ymid).sum()), int((ys >= ymid).sum())
         if max(n_top, n_bot) < 1.25 * max(1, min(n_top, n_bot)):
