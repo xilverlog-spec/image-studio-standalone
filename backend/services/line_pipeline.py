@@ -140,6 +140,9 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                 elif use_ai:
                     _update(job, stage=f"칸 {idx + 1}/{len(objects)}: AI가 깨끗한 선화로 다시 그리는 중 (칸당 약 3분)")
                     redrawn, err = _redraw_panel(crop, seed=7 + idx, tag=str(idx))
+                    if redrawn is None:  # 일시적인 지연·멈춤으로 실패했을 수 있어서 한 번 더(다른 시드로) 시도한다
+                        _update(job, stage=f"칸 {idx + 1}/{len(objects)}: AI 재생성 재시도 중")
+                        redrawn, err = _redraw_panel(crop, seed=107 + idx, tag=str(idx))
                     if redrawn is None:
                         warnings.append(f"칸 {idx + 1}: AI 재생성 실패 → 원본에서 직접 추출 ({err})")
                     else:

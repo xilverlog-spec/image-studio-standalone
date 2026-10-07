@@ -43,6 +43,68 @@ def _seg_dist(p, a, b):
     return float(np.linalg.norm(p - (a + ab * t)))
 
 
+def _find_dashed_chains(line_ink, f):
+    """점선·일점쇄선(바닥판 테두리 등)을 찾는다. 같은 아이소 가로 방향(A/B)의 한 줄에 일정 간격으로 늘어선 작은 조각들을
+    한 줄의 점선으로 본다. 반환: [(방향, 줄 위치 c, t 시작, t 끝, [조각 번호들])], 조각 라벨 배열.
+    조각이 선 방향으로 길쭉하거나 아주 작은 점일 때만 쓴다(선 방향에 직각으로 늘어선 줄눈·살대는 제외)."""
+    lab, n = ndi.label(line_ink, structure=np.ones((3, 3)))
+    if n == 0:
+        return [], lab
+    objs = ndi.find_objects(lab)
+    pieces = []
+    for i, sl in enumerate(objs, 1):
+        if sl is None:
+            continue
+        h, w = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        if max(h, w) > 130 * f:
+            continue
+        ys, xs = np.nonzero(lab[sl] == i)
+        pieces.append((i, xs.astype(np.float64) + sl[1].start, ys.astype(np.float64) + sl[0].start))
+    chains = []
+    for k in ("A", "B"):
+        u, nr = UNIT[k], NORM[k]
+        info = []
+        for i, xs, ys in pieces:
+            t = xs * u[0] + ys * u[1]
+            c = xs * nr[0] + ys * nr[1]
+            ln, th = float(t.max() - t.min()), float(c.max() - c.min())
+            if max(ln, th) > 30 * f and ln < 1.1 * th:
+                continue   # 이 방향으로 길쭉하지 않은 조각(다른 방향 선의 일부·살대)
+            if max(ln, th) > 30 * f and len(xs) > 40 * f * f and ln > 60 * f:
+                continue   # 점·짧은 획이 아니라 긴 선 조각
+            info.append((float(c.mean()), float(t.min()), float(t.max()), i))
+        info.sort()
+        groups, cur = [], []
+        for it in info:
+            if cur and (it[0] - cur[-1][0] > 4 * f or it[0] - cur[0][0] > 24 * f):   # 선이 방향에서 조금 틀어져 있어도 이어서 본다
+                groups.append(cur); cur = []
+            cur.append(it)
+        if cur:
+            groups.append(cur)
+        for g in groups:
+            if len(g) < 4:
+                continue
+            g.sort(key=lambda x: x[1])
+            runs, run = [], [g[0]]
+            for it in g[1:]:
+                if it[1] - run[-1][2] > 160 * f:
+                    runs.append(run); run = []
+                run.append(it)
+            runs.append(run)
+            for run in runs:
+                if len(run) < 4:
+                    continue
+                span = run[-1][2] - run[0][1]
+                if span < 200 * f:
+                    continue
+                cover = sum(it[2] - it[1] for it in run) / (span + 1e-6)
+                gaps = [run[i + 1][1] - run[i][2] for i in range(len(run) - 1)]
+                if cover > 0.9 or float(np.median(gaps)) < 5 * f:   # 끊김 없이 이어진 실선 조각은 점선이 아니다
+                    continue
+                chains.append((k, float(np.mean([it[0] for it in run])), run[0][1], run[-1][2], [it[3] for it in run]))
+    return chains, lab
+
+
 def _close_open_ends(lines, max_ext, free_tol, orphan_len=0.0, W_img=1000, H_img=1000, info=None):
     """어디에도 닿지 않은 선 끝(자유 끝)을 진행 방향으로 연장해 가까운 다른 선(또는 그 선의 연장)과 만나게 한다.
     점선·희미한 선이 끊긴 채 모서리에서 어긋나거나 벽에 못 닿는 부분을 이어 준다."""
@@ -526,6 +588,13 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     if debug is not None:
         debug['tonal'] = tonal; debug['grad_p'] = [float(np.percentile(grad, p)) for p in (50, 90, 99)]
     line_ink = line_ink | tonal
+    dash_chains = []
+    if line_art:   # 깨끗한 선화: 바닥판 테두리 같은 점선은 짧은 조각으로 흩어지므로 한 줄로 묶어 따로 둔다
+        dash_chains, dash_lab = _find_dashed_chains(line_ink, f)
+        if debug is not None:
+            debug['ink_before_dash'] = line_ink.copy(); debug['dash_chains'] = [(c[0], c[1], c[2], c[3], len(c[4])) for c in dash_chains]
+        for ch in dash_chains:
+            line_ink[np.isin(dash_lab, ch[4])] = False
     line_dil = ndi.binary_dilation(line_ink, iterations=max(1, int(2 * f)))
 
     # ── 배경(바깥 흰 바탕): 선으로 막힌 면은 배경이 아니다 ──
@@ -645,6 +714,8 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
                     break
             if changed:
                 break
+    for k_, c_, t0_, t1_, _ids in dash_chains:
+        merged.append([k_, c_, t0_, t1_, "dash"])
     merged = [L for L in merged if L[3] - L[2] >= 55 * f or L[4] == 'dash']
     if debug is not None:
         debug['line_ink'] = line_ink; debug['merged'] = [list(m) for m in merged]; debug['scale'] = s
