@@ -9,7 +9,7 @@ import io
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
-from skimage import feature, morphology
+from skimage import exposure, feature, morphology
 
 _LONG = 360
 # 입력과 결과의 가로세로비가 이 이상 다르면 구도가 달라진 것이라 점수를 매기지 않는다(잘림·여백 때문에 억울하게 낮아진다)
@@ -18,7 +18,9 @@ _MAX_ASPECT_DIFF = 0.10
 
 def _edges(img, size):
     g = np.asarray(img.convert("L").resize(size, Image.LANCZOS)).astype(np.float32) / 255.0
-    e = feature.canny(g, sigma=1.5, low_threshold=0.02, high_threshold=0.06)
+    # 국소 대비 보정: 해질녘·야경처럼 어두워진 결과도 같은 기준으로 윤곽이 잡히게 한다(실측: 보정 전 해질녘 31 → 47, 형태가 무너진 SDXL 결과는 33 그대로)
+    g = exposure.equalize_adapthist(g, clip_limit=0.02)
+    e = feature.canny(g, sigma=1.5, low_threshold=0.04, high_threshold=0.12)
     return morphology.remove_small_objects(e, max_size=24)
 
 

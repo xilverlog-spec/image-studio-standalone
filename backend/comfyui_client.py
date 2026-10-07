@@ -1088,7 +1088,7 @@ def is_flux_kontext_available() -> bool:
 
 def build_flux_kontext_workflow(instruction: str, image_name: str, seed: int = None,
                                  guidance: float = FLUX_KONTEXT_DEFAULT_GUIDANCE,
-                                 steps: int = FLUX_KONTEXT_DEFAULT_STEPS):
+                                 steps: int = FLUX_KONTEXT_DEFAULT_STEPS, ref_image_names: list = None):
     """업로드된 참고 이미지를 instruction 지시문대로 편집하는 FLUX Kontext 워크플로를 빌드한다.
 
     일반 img2img(denoise<1.0으로 노이즈만 살짝 얹는 방식)와 달리, Kontext는 ReferenceLatent로
@@ -1109,13 +1109,24 @@ def build_flux_kontext_workflow(instruction: str, image_name: str, seed: int = N
     workflow["16"]["inputs"]["steps"] = steps
     workflow["25"]["inputs"]["noise_seed"] = seed if seed is not None else int.from_bytes(os.urandom(4), "big")
 
+    # 참조 이미지(재질·분위기 사진 등): ReferenceLatent 를 이어 붙이면 모델이 "첫 이미지 = 편집 대상, 이후 = 참고"로 함께 본다.
+    # 참조는 0.5메가픽셀로 줄여 넣는다(원본 크기 그대로면 메모리·시간이 크게 늘어난다).
+    link = ["43", 0]
+    for i, name in enumerate(ref_image_names or []):
+        workflow[f"r{i}_load"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        workflow[f"r{i}_scale"] = {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": [f"r{i}_load", 0], "upscale_method": "lanczos", "megapixels": 0.5, "resolution_steps": 16}}
+        workflow[f"r{i}_enc"] = {"class_type": "VAEEncode", "inputs": {"pixels": [f"r{i}_scale", 0], "vae": ["10", 0]}}
+        workflow[f"r{i}_ref"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": link, "latent": [f"r{i}_enc", 0]}}
+        link = [f"r{i}_ref", 0]
+    workflow["44"]["inputs"]["conditioning"] = link
+
     return workflow
 
 
 def edit_image_with_kontext_or_raise(image_bytes: bytes, instruction: str, output_path: str,
                                       seed: int = None, guidance: float = FLUX_KONTEXT_DEFAULT_GUIDANCE,
-                                      steps: int = FLUX_KONTEXT_DEFAULT_STEPS) -> str:
-    """캡처/업로드된 이미지를 instruction 지시문대로 편집해 output_path에 저장하고 경로를 반환한다."""
+                                      steps: int = FLUX_KONTEXT_DEFAULT_STEPS, ref_images: list = None) -> str:
+    """캡처/업로드된 이미지를 instruction 지시문대로 편집해 output_path에 저장하고 경로를 반환한다. ref_images=[PNG 바이트...] 는 참고용 추가 이미지."""
     if not is_flux_kontext_available():
         raise RuntimeError(
             f"FLUX Kontext 모델({FLUX_KONTEXT_GGUF_UNET})이 ComfyUI에 설치돼 있지 않습니다. "
@@ -1123,7 +1134,8 @@ def edit_image_with_kontext_or_raise(image_bytes: bytes, instruction: str, outpu
         )
 
     uploaded_name = _upload_image_bytes_to_comfyui(image_bytes, "kontext_input.png")
-    workflow = build_flux_kontext_workflow(instruction, uploaded_name, seed=seed, guidance=guidance, steps=steps)
+    ref_names = [_upload_image_bytes_to_comfyui(b, f"kontext_ref_{i}.png") for i, b in enumerate(ref_images or [])]
+    workflow = build_flux_kontext_workflow(instruction, uploaded_name, seed=seed, guidance=guidance, steps=steps, ref_image_names=ref_names)
 
     queue_response = queue_prompt(workflow)
     prompt_id = queue_response["prompt_id"]

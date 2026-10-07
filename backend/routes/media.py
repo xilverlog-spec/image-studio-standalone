@@ -17,6 +17,8 @@ from services.simple_chat import chat_completion
 from services import image_history_store
 from services import content_safety
 from services import paid_image
+from services import aerial_modes
+from services import aerial_local
 
 router = APIRouter(prefix="/v1")
 
@@ -955,44 +957,36 @@ async def image_options():
 
 class AerialPromptRequest(BaseModel):
     extra: str = ""                       # 사용자가 쓴 추가 요구사항(한글 가능)
-    ref_roles: List[str] = []             # 참조 이미지 역할 순서: 'material' | 'mood' | 'site'
+    ref_roles: List[str] = []             # 참조 이미지 역할 순서: 'facade' | 'material' | 'mood' | 'site'
+    mode: str = "render"                  # 'render' | 'facade' | 'reference'
 
 
-_ROLE_SENTENCES = {
-    "material": "is a MATERIAL reference: take the facade materials, colors and textures from it, never its shape",
-    "mood": "is a MOOD reference: take the lighting, atmosphere, weather and color grading from it, never its shape",
-    "site": "is a SITE reference: take the surrounding context (terrain, roads, neighboring buildings, landscaping) from it, never the main building shape",
-}
+@router.get("/image/aerial-options")
+async def aerial_options():
+    """조감도 탭 선택지(작업 방식·입면 후보·분위기·참조 역할)와 엔진 목록. 문구는 aerial_modes 한 곳에서만 관리한다."""
+    return {"status": "success", **aerial_modes.options(), "providers": await asyncio.to_thread(_aerial_provider_list)}
 
 
-def _aerial_common_prompt(extra_en: str, ref_roles: list) -> str:
-    parts = [
-        "Transform image 1, an architectural massing / 3D model / sketch capture, into a photorealistic architectural rendering.",
-        "Keep the building massing, proportions, number of floors, window layout, roof lines and camera angle exactly as in image 1; "
-        "do not add, remove, merge or restyle floors, volumes or openings. Keep the surrounding site, roads and neighboring buildings as drawn unless asked otherwise.",
-    ]
-    for i, role in enumerate(ref_roles):
-        sent = _ROLE_SENTENCES.get(role)
-        if sent:
-            parts.append(f"Image {i + 2} {sent}.")
-    parts.append("Add realistic materials, lighting, landscaping and sky.")
-    if extra_en.strip():
-        parts.append(f"Additional requirements: {extra_en.strip()}")
-    return " ".join(parts)
+def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render") -> str:
+    return aerial_modes.common_prompt(mode, extra_en, ref_roles)
 
 
-def _expand_extra_to_english(extra: str) -> str:
-    """한글 요청을 건축 렌더링 지시용 영어로 옮긴다(무료 Gemini 텍스트). 키가 없거나 실패하면 원문 그대로 쓴다."""
+def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
+    """한글 요청을 건축 렌더링 지시용 영어로 옮긴다(무료 Gemini 텍스트). 키가 없거나 실패하면 원문 그대로 쓴다. kind='edit' 은 결과 이미지 부분 수정 지시용."""
     if not extra.strip():
         return ""
+    if kind == "edit":
+        ask = ("Rewrite the following request as one concise English instruction for editing an existing architectural rendering "
+               "(what to change, where). Do not add other changes. Under 40 words, plain text only, no preface.\n\nRequest: ")
+    else:
+        ask = ("Rewrite the following request as concise English directions for an architectural photorealistic rendering "
+               "(materials, time of day, weather, landscaping, people, mood). Do NOT change or invent building geometry, floor count or camera. "
+               "Under 70 words, plain text only, no preface.\n\nRequest: ")
     try:
         from services.gemini_chat import gemini_chat_completion
         text = gemini_chat_completion(
             model="gemini-3.1-flash-lite",
-            messages=[{"role": "user", "content": (
-                "Rewrite the following request as concise English directions for an architectural photorealistic rendering "
-                "(materials, time of day, weather, landscaping, people, mood). Do NOT change or invent building geometry, floor count or camera. "
-                "Under 70 words, plain text only, no preface.\n\nRequest: " + extra.strip())}],
+            messages=[{"role": "user", "content": ask + extra.strip()}],
             max_tokens=400, temperature=0.2,
         )
         text = (text or "").strip()
@@ -1005,7 +999,151 @@ def _expand_extra_to_english(extra: str) -> str:
 async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
     extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra)
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles), "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode), "extra_en": extra_en, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+
+
+LOCAL_ENGINES = {
+    "local_kontext": {"label": "무료 · 고품질 (로컬)", "model": "FLUX Kontext dev", "kind": "kontext", "note": "약 3분/장(참조 이미지가 있으면 더 걸림). 원본 형태·재질 배치를 가장 잘 지킴"},
+    "local_sdxl": {"label": "무료 · 빠른 초안 (로컬)", "model": "Juggernaut XL + ControlNet", "kind": "sdxl", "note": "약 1분/장. 형태가 바뀔 수 있어 분위기 초안 확인용"},
+}
+
+
+def _aerial_provider_list() -> list:
+    avail = aerial_local.available()
+    out = [{"id": pid, "label": e["label"], "model": e["model"], "available": avail[e["kind"]], "est_cost_usd": 0.0, "free": True, "note": e["note"]}
+           for pid, e in LOCAL_ENGINES.items()]
+    for p in paid_image.provider_status():
+        out.append({**p, "free": False, "note": "외부 서버로 전송 · 장당 과금. 최종본·형태 보존이 중요할 때"})
+    return out
+
+
+class AerialGenerateRequest(BaseModel):
+    mode: str = "render"                  # 'render' | 'facade' | 'reference'
+    variant: str = ""                     # 분위기 id 또는 입면 id
+    common_prompt: str = ""               # /image/aerial-prompt 가 만든 공통 프롬프트(영어, 사용자가 고쳤을 수 있음)
+    extra_en: str = ""                    # 추가 요구사항의 영어 확장(로컬 SDXL 키워드 프롬프트용)
+    provider: str = "local_sdxl"
+    aspect_ratio: Optional[str] = None    # 유료 API 용. 로컬은 입력 비율을 그대로 쓴다
+    input_image_base64: str
+    reference_images: List[RefImage] = []
+    external_consent: bool = False
+    keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
+    seed: Optional[int] = None
+    project: str = image_history_store.DEFAULT_PROJECT
+
+
+def _new_output_path(project: str, prefix: str = "gen") -> tuple:
+    project_dir = image_history_store.project_dir_name(project)
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "images", project_dir))
+    os.makedirs(output_dir, exist_ok=True)
+    bare = f"{prefix}_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}.png"
+    return os.path.join(output_dir, bare), f"{project_dir}/{bare}"
+
+
+def _decode_b64(data: str, what: str) -> bytes:
+    try:
+        return base64.b64decode(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"{what} 디코딩 실패: {e}")
+
+
+async def _local_aerial(request: AerialGenerateRequest, engine: dict, instruction_or_prompt: str, input_bytes: bytes, refs: list, seed: int,
+                        output_path: str, filename: str, project: str, label: str):
+    avail = aerial_local.available()
+    if not avail[engine["kind"]]:
+        raise HTTPException(status_code=503, detail="로컬 이미지 엔진(ComfyUI)을 쓸 수 없습니다. ComfyUI가 켜져 있고 모델이 설치되어 있는지 관리자에게 확인하세요.")
+    t0 = time.time()
+    try:
+        if engine["kind"] == "sdxl":
+            _, (w, h) = await asyncio.to_thread(aerial_local.render_sdxl, input_bytes, instruction_or_prompt, output_path, seed, request.keep_form, refs)
+        else:
+            _, (w, h) = await asyncio.to_thread(aerial_local.render_kontext, input_bytes, instruction_or_prompt, output_path, seed, refs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"로컬 이미지 생성 실패: {e}")
+    await _reject_if_unsafe_image(output_path, project=project)
+    form = {"score": None, "note": ""}
+    try:
+        with open(output_path, "rb") as f:
+            out_bytes = f.read()
+        from services import form_check
+        form = await asyncio.to_thread(form_check.form_score, input_bytes, out_bytes)
+    except Exception as e:
+        form = {"score": None, "note": f"형태 점수 계산 실패: {e}"}
+    try:
+        image_history_store.save_generation(
+            prompt=instruction_or_prompt, style=label, aspect_ratio=None, sampler_name=None, scheduler=None, seed=seed,
+            loras=[], image_filename=filename, checkpoint=engine["model"], project=project,
+        )
+    except Exception as e:
+        print(f"[WARNING] ImageHistory: 이력 저장 실패(생성 자체는 성공): {e}")
+    return {
+        "status": "success", "filename": filename, "file_path": output_path, "seed_used": seed, "checkpoint_used": engine["model"],
+        "width": w, "height": h, "form_score": form["score"], "form_note": form["note"], "est_cost_usd": 0.0,
+        "usage_today": paid_image.usage_today(), "elapsed_sec": round(time.time() - t0), "prompt_used": instruction_or_prompt,
+    }
+
+
+@router.post("/image/aerial/generate")
+async def aerial_generate(request: AerialGenerateRequest):
+    """조감도 탭 생성 한 장. 엔진이 무료(로컬)든 유료(OpenAI·Gemini)든 같은 요청·같은 응답이다."""
+    _reject_if_unsafe(request.common_prompt + " " + request.extra_en, project=request.project)
+    input_bytes = _decode_b64(request.input_image_base64, "원본 이미지")
+    refs = [_decode_b64(r.base64, "참조 이미지") for r in request.reference_images[:paid_image.MAX_REFERENCE_IMAGES]]
+    output_path, filename = _new_output_path(request.project, "aerial")
+    seed = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
+    label = aerial_modes.variant_label(request.mode, request.variant)
+
+    engine = LOCAL_ENGINES.get(request.provider)
+    if engine is None:      # 유료 API
+        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant)}".strip()
+        paid_req = ImageGenerateRequest(
+            prompt=prompt, aspect_ratio=request.aspect_ratio, provider=request.provider, input_image_base64=request.input_image_base64,
+            reference_images=request.reference_images, external_consent=request.external_consent, project=request.project, style=label,
+        )
+        res = await _generate_with_paid_provider(paid_req, output_path, filename)
+        res["prompt_used"] = prompt
+        res["seed_used"] = None
+        return res
+
+    if engine["kind"] == "sdxl":
+        prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant)
+    else:   # kontext: 문장형 지시
+        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant)}".strip()
+    return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
+
+
+class AerialEditRequest(BaseModel):
+    image_base64: str                     # 방금 나온 결과 이미지
+    instruction: str                      # "창을 더 크게", "나무를 늘려줘" 등(한글 가능)
+    provider: str = "local_kontext"
+    aspect_ratio: Optional[str] = None
+    external_consent: bool = False
+    seed: Optional[int] = None
+    project: str = image_history_store.DEFAULT_PROJECT
+
+
+@router.post("/image/aerial/edit")
+async def aerial_edit(request: AerialEditRequest):
+    """조감도 결과를 이어서 고친다(결과 → 입력). 무료는 Kontext, 유료는 같은 API 의 편집."""
+    _reject_if_unsafe(request.instruction, project=request.project)
+    img_bytes = _decode_b64(request.image_base64, "이미지")
+    instr_en = await asyncio.to_thread(_expand_extra_to_english, request.instruction, "edit")
+    output_path, filename = _new_output_path(request.project, "aerial_edit")
+    seed = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
+    prompt = f"Edit this architectural rendering: {instr_en}. Keep everything else - building shape, camera angle, materials and lighting - exactly identical."
+    engine = LOCAL_ENGINES.get(request.provider)
+    if engine is None:
+        paid_req = ImageGenerateRequest(
+            prompt=prompt, aspect_ratio=request.aspect_ratio, provider=request.provider, input_image_base64=request.image_base64,
+            external_consent=request.external_consent, project=request.project, style="수정",
+        )
+        res = await _generate_with_paid_provider(paid_req, output_path, filename)
+        res["prompt_used"] = prompt
+        return res
+    if engine["kind"] != "kontext":
+        engine = LOCAL_ENGINES["local_kontext"]   # SDXL 은 지시문 편집이 안 되므로 Kontext 로 보낸다
+    req = AerialGenerateRequest(input_image_base64=request.image_base64, provider="local_kontext", project=request.project)
+    return await _local_aerial(req, engine, prompt, img_bytes, [], seed, output_path, filename, request.project, "수정")
 
 
 @router.get("/image/checkpoints")

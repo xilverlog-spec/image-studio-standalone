@@ -75,3 +75,7 @@ $null
 public/__t/
 public/cd_test/
 public/aerial_test/
+
+ah_test.html
+src/__ahMain.jsx
+vite.ah.config.mjs
