@@ -24,7 +24,9 @@ from services import diagram_kind
 REDRAW_INSTRUCTION = (
     "Redraw this isometric architecture diagram as a clean, crisp, high-resolution black line drawing on a pure white background. "
     "Keep every shape, proportion, edge position and the camera angle exactly the same. Remove all textures, shading, colors and noise. "
-    "Use only thin uniform black single lines. Do not add or remove any object."
+    "Use only single black lines with exactly two weights: a bold line only for the outer silhouette of each solid volume, and one thin uniform line for everything else "
+    "(inner edges, translucent or ghost volumes, arrows). Do not add or remove any object. "
+    "Draw every arrowhead as a small solid filled black triangle (never hollow), keeping dashed arrow shafts as dashed lines."
 )
 REDRAW_LONG_EDGE = 1100
 SHAPE_IOU_MIN = 0.72

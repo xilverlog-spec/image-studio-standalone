@@ -284,6 +284,30 @@ def _find_vertical_arrows(gray, text_zone, u):
     return arrows, ndi.binary_dilation(kill, iterations=max(2, int(2 * u)))
 
 
+def _find_iso_arrows(gray, text_zone, u, key):
+    """대각선(아이소 가로 방향 A/B) 점선 화살표: 이미지를 돌려 그 방향이 세로가 되게 한 뒤 세로 화살표 추출기를 쓰고 결과를 원래 좌표로 되돌린다.
+    반환: [(꼬리점, 머리밑점, 삼각형 세 꼭짓점)], 지울 영역 마스크(원래 크기)."""
+    phi = math.radians(90.0 - DIRS[key])
+    H, W = gray.shape
+    corners = np.array([[0, 0], [W, 0], [W, H], [0, H]], float)
+    rot0 = transform.AffineTransform(rotation=phi)
+    cr = rot0(corners)
+    tf = transform.AffineTransform(rotation=phi, translation=(-cr[:, 0].min(), -cr[:, 1].min()))
+    Hn, Wn = int(math.ceil(cr[:, 1].max() - cr[:, 1].min())) + 1, int(math.ceil(cr[:, 0].max() - cr[:, 0].min())) + 1
+    g_r = transform.warp(gray, tf.inverse, output_shape=(Hn, Wn), order=1, cval=255.0, preserve_range=True)
+    t_r = transform.warp(text_zone.astype(np.float32), tf.inverse, output_shape=(Hn, Wn), order=0, cval=0.0, preserve_range=True) > 0.5
+    arrows_r, kill_r = _find_vertical_arrows(g_r, t_r, u)
+    if not arrows_r:
+        return [], np.zeros(gray.shape, bool)
+    inv = tf.inverse
+    out = []
+    for xs_, yt_, yb_, hx0_, hx1_, ytip_ in arrows_r:
+        p = inv(np.array([[xs_, yt_], [xs_, yb_], [hx0_, yb_], [hx1_, yb_], [xs_, ytip_]], float))
+        out.append((tuple(p[0]), tuple(p[1]), [tuple(p[2]), tuple(p[3]), tuple(p[4])]))
+    kill = transform.warp(kill_r.astype(np.float32), tf, output_shape=(H, W), order=0, cval=0.0, preserve_range=True) > 0.5
+    return out, kill
+
+
 def _find_text_clusters(mask, long_edge):
     """작은 어두운 덩어리들이 가로로 늘어선 묶음 = 글자줄. 반환: [{'bbox':(x0,y0,x1,y1), 'pix': bool mask}]"""
     lab, n = ndi.label(mask, structure=np.ones((3, 3)))
@@ -554,10 +578,16 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
     for bm in arrow_blobs:
         arrow_only |= bm
     arrow_zone = morphology.dilation(arrow_only, morphology.disk(max(2, int(3 * f))))  # 화살촉만 선 검출에서 뺀다(굵은 선까지 지우지 않는다)
-    v_arrows = []
+    v_arrows, i_arrows = [], []
     if line_art:  # AI 선화의 점선 세로 화살표(대시 + 채운 화살촉)는 한 묶음으로 따로 뽑는다
         v_arrows, v_zone = _find_vertical_arrows(gray, text_zone, s)
         arrow_zone = arrow_zone | v_zone
+        g_left = np.where(v_zone, 255.0, gray)   # 이미 찾은 세로 화살표는 빼고 대각선 방향을 본다
+        for key_ in ("A", "B"):
+            ia_, iz_ = _find_iso_arrows(g_left, text_zone, s, key_)
+            i_arrows += ia_
+            arrow_zone = arrow_zone | iz_
+            g_left = np.where(iz_, 255.0, g_left)
 
     line_ink = ink & ~arrow_zone & ~text_zone
     line_ink = morphology.remove_small_objects(line_ink, max(20, int(40 * f * f)))
@@ -983,6 +1013,10 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             xs_ / s, yt_ / s, xs_ / s, yb_ / s, w_, 3.2 * k_w, 2.6 * k_w))
         out_parts.append('<polygon points="%.1f,%.1f %.1f,%.1f %.1f,%.1f" fill="#1d1d1d"/>' % (
             hx0_ / s, yb_ / s, hx1_ / s, yb_ / s, xs_ / s, ytip_ / s))
+    for pt_, pb_, poly_ in i_arrows:   # 대각선 점선 화살표
+        out_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#1d1d1d" stroke-width="%.2f" stroke-dasharray="%.1f %.1f"/>' % (
+            pt_[0] / s, pt_[1] / s, pb_[0] / s, pb_[1] / s, 1.4 * k_w, 3.2 * k_w, 2.6 * k_w))
+        out_parts.append('<polygon points="%s" fill="#1d1d1d"/>' % " ".join("%.1f,%.1f" % (q[0] / s, q[1] / s) for q in poly_))
     v_lines = [(float(-L[1]), float(L[2]), float(L[3])) for L in merged if L[0] == 'V']
     for x0, y0, x1, y1, dr_ in ([] if line_art else arrows):
         sz_ = max(x1 - x0, y1 - y0, 1)
