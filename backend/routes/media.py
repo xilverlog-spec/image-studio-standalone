@@ -960,6 +960,7 @@ class AerialPromptRequest(BaseModel):
     ref_roles: List[str] = []             # 참조 이미지 역할 순서: 'facade' | 'material' | 'mood' | 'site'
     mode: str = "render"                  # 'render' | 'facade' | 'reference'
     depth: str = "material"               # 입면 비교의 변경 폭: 'material'(재료만) | 'redesign'(입면 재디자인, 형태 약 70%)
+    ref_images: List[str] = []            # 참조 이미지 base64(ref_roles 와 같은 순서). 있으면 이 PC의 로컬 비전 모델로 입면 특징을 글로 뽑아 프롬프트에 넣는다(외부 전송 없음)
 
 
 @router.get("/image/aerial-options")
@@ -968,8 +969,31 @@ async def aerial_options():
     return {"status": "success", **aerial_modes.options(), "providers": await asyncio.to_thread(_aerial_provider_list)}
 
 
-def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material") -> str:
-    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth)
+def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material", ref_notes: list | None = None) -> str:
+    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth, ref_notes)
+
+
+_REF_VISION_MODEL = "qwen2.5vl:3b"   # 실측: 적벽돌 참조의 재료·격자 리듬을 맞게 읽음(gemma4:e4b 는 색을 틀림), 약 9초
+_REF_DESCRIBE_ROLES = {"facade", "material"}
+_REF_DESCRIBE_ASK = ("Describe ONLY the facade design language of the building in this image, in English, under 60 words: cladding materials and colors, "
+                     "window proportions and rhythm, panel or grid divisions, projections, fins or louvers, depth and detailing. Plain text, no preface.")
+
+
+def _describe_refs(ref_images: list, ref_roles: list) -> list:
+    """참조 이미지(입면·재질 역할)를 로컬 비전 모델로 설명한다. 실패하거나 모델이 없으면 빈 문장(프롬프트는 그대로 동작)."""
+    from services.simple_chat import chat_completion
+    notes = []
+    for i, b64 in enumerate(ref_images):
+        role = ref_roles[i] if i < len(ref_roles) else ""
+        if role not in _REF_DESCRIBE_ROLES:
+            notes.append("")
+            continue
+        try:
+            notes.append(chat_completion(_REF_VISION_MODEL, [{"role": "user", "content": _REF_DESCRIBE_ASK, "images": [b64]}], max_tokens=300, temperature=0.2).replace("\n", " ").strip())
+        except Exception as e:
+            print(f"[AERIAL] 참조 이미지 설명 실패(무시하고 진행): {e}")
+            notes.append("")
+    return notes
 
 
 def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
@@ -1000,7 +1024,8 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
 async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
     extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra)
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth), "extra_en": extra_en, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    ref_notes = await asyncio.to_thread(_describe_refs, request.ref_images, request.ref_roles) if request.ref_images else []
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes), "extra_en": extra_en, "ref_notes": ref_notes, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
 
 
 LOCAL_ENGINES = {

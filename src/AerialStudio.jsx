@@ -125,7 +125,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [aspect, setAspect] = useState('16:9');
   const [provider, setProvider] = useState('');
   const [keepForm, setKeepForm] = useState(85);
-  const [depth, setDepth] = useState('material');      // 입면 비교의 변경 폭: 'material' 재료만 | 'redesign' 입면 재디자인(형태 약 70%)
+  const [depths, setDepths] = useState({});            // 방식별 변경 폭. 입면 비교: material 재료만 | redesign 재디자인(형태 약 70%) / 레퍼런스: ref_apply 그대로 입히기 | ref_propose 참고해서 새로 제안
   const [consent, setConsent] = useState(readConsent);
   const [autoRetry, setAutoRetry] = useState(true);
   const [sortBy, setSortBy] = useState('recent');
@@ -200,14 +200,16 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
 
   const togglePick = (id) => setPicks((p) => ({ ...p, [mode]: (p[mode] || []).includes(id) ? p[mode].filter((x) => x !== id) : [...(p[mode] || []), id] }));
 
-  const activeDepth = mode === 'facade' ? depth : 'material';
+  const modeDepths = (opts?.depths || []).filter((d) => d.mode === mode);
+  const activeDepth = modeDepths.length ? (depths[mode] || opts?.default_depth?.[mode] || modeDepths[0].id) : 'material';
   const pickDepth = (d) => {
-    setDepth(d);
+    setDepths((prev) => ({ ...prev, [mode]: d }));
     const keep = opts?.depths?.find((x) => x.id === d)?.keep_form;
     if (keep) setKeepForm(keep);   // 빠른 초안 엔진의 형태 유지 슬라이더도 같이 맞춘다
   };
+  const redesigned = activeDepth === 'redesign' || activeDepth === 'ref_propose';
 
-  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => r.role)]), [mode, activeDepth, extra, refs]);
+  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => `${r.id}:${r.role}`)]), [mode, activeDepth, extra, refs]);
   const promptStale = !!commonPrompt && builtFor !== promptKey;
 
   const buildCommonPrompt = async () => {
@@ -216,7 +218,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
       const res = await apiFetch('/v1/image/aerial-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), mode, depth: activeDepth }),
+        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), mode, depth: activeDepth }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
@@ -287,7 +289,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
         }
         ok++;
         const vLabel = (mode === 'facade' ? opts.facades : opts.atmospheres).find((v) => v.id === jobs[i])?.label || jobs[i];
-        const entry = addResult(data, { label: activeDepth === 'redesign' ? `${vLabel} · 재디자인` : vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
+        const entry = addResult(data, { label: redesigned ? `${vLabel} · ${mode === 'reference' ? '참고 제안' : '재디자인'}` : vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
         if (thumb) setThumbs((t) => ({ ...t, [entry.id]: thumb }));
         onGenerated?.();
       } catch (e) {
@@ -407,15 +409,15 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           {refsNeeded && refs.length === 0 && <p style={{ ...hint, color: '#B91C1C' }}>이 방식은 참조 이미지가 1장 이상 필요합니다.</p>}
         </div>
 
-        {mode === 'facade' && (
+        {modeDepths.length > 0 && (
           <div style={col}>
-            <span style={label}>입면을 얼마나 바꿀까요</span>
+            <span style={label}>{mode === 'facade' ? '입면을 얼마나 바꿀까요' : '참조를 어떻게 쓸까요'}</span>
             <div style={{ display: 'flex', gap: 6 }}>
-              {(opts?.depths || []).map((d) => (
-                <button key={d.id} style={{ ...chip(depth === d.id, busy), flex: 1 }} disabled={busy} onClick={() => pickDepth(d.id)}>{d.label}</button>
+              {modeDepths.map((d) => (
+                <button key={d.id} style={{ ...chip(activeDepth === d.id, busy), flex: 1 }} disabled={busy} onClick={() => pickDepth(d.id)}>{d.label}</button>
               ))}
             </div>
-            <p style={hint}>{opts?.depths?.find((d) => d.id === depth)?.desc}</p>
+            <p style={hint}>{modeDepths.find((d) => d.id === activeDepth)?.desc}</p>
           </div>
         )}
 

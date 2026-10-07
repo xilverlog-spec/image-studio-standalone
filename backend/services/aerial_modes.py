@@ -25,6 +25,21 @@ FACADES = [
     {"id": "corten", "label": "코르텐강", "prompt": "a weathered Corten steel panel facade with rich rust-brown patina"},
 ]
 
+# 입면 재디자인에서 재료와 함께 지시하는 구체적인 디자인 수법(창 비율·분할·깊이). 재료만 바뀌고 리듬이 그대로 남는 것을 막는다.
+REDESIGN_MOVES = {
+    "glass": "replace the existing window pattern with a unitized curtain wall of tall glass panels, alternating clear glass and opaque spandrel bands every floor, with deep projecting vertical fins at regular intervals",
+    "white": "replace the existing window pattern with large framed rectangular openings of varied sizes set deep into thick white walls, with a few cantilevered horizontal slab edges and crisp shadow lines",
+    "redbrick": "replace the existing window pattern with brick piers between tall recessed window bays, with soldier-course brick bands at each floor line and a few deep-set brick-framed openings",
+    "greybrick": "replace the existing window pattern with wide horizontal ribbon windows between grey brick spandrels, with projecting brick corbel bands at the floor lines",
+    "concrete": "replace the existing window pattern with a strong grid of deep concrete frames, each frame holding recessed glazing, with heavy horizontal beams and deep shadows",
+    "metal": "replace the existing window pattern with continuous horizontal ribbon windows separated by wide dark metal spandrel panels, with a rhythm of vertical metal fins and a recessed entrance canopy",
+    "perforated": "wrap the facade in a layered perforated metal screen with a large-scale pattern that varies in density, set a short distance in front of recessed glazing, so the original window pattern disappears behind the screen",
+    "timber": "replace the existing window pattern with a rhythm of vertical timber louver bays alternating with full-height glazing, with deep timber fins and horizontal timber bands at the floor lines",
+    "stone": "replace the existing window pattern with tall slender stone-framed openings of uniform width, with thick stone piers and projecting stone sills and lintels",
+    "terracotta": "replace the existing window pattern with large glazed openings framed by terracotta fins, with baguette tiles running vertically in varied depths to create a rippled rhythm",
+    "corten": "replace the existing window pattern with deep-set corten steel framed windows of varying heights, with folded corten panels projecting at some floors to make a bold sculptural rhythm",
+}
+
 # 시간대·날씨·계절 분위기
 ATMOSPHERES = [
     {"id": "sunny", "label": "화창한 한낮", "prompt": "bright sunny midday, clear blue sky with a few soft clouds, crisp natural shadows"},
@@ -53,9 +68,14 @@ KEEP_FORM = (
 
 # 입면 비교의 변경 폭: material = 재료만 교체(형태 100% 유지), redesign = 입면 디자인 자체를 새로 구성(전체 매스는 유지, 형태 약 70%)
 DEPTHS = [
-    {"id": "material", "label": "재료만 바꾸기", "desc": "형태·창 배치는 그대로, 외장 재료만 교체합니다.", "keep_form": 90},
-    {"id": "redesign", "label": "입면 재디자인", "desc": "전체 매스·높이·카메라는 유지하되(형태 약 70%), 창 구성·패널 리듬·루버·발코니 등 입면 디자인을 새로 짭니다.", "keep_form": 70},
+    {"id": "material", "mode": "facade", "label": "재료만 바꾸기", "desc": "형태·창 배치는 그대로, 외장 재료만 교체합니다.", "keep_form": 90},
+    {"id": "redesign", "mode": "facade", "label": "입면 재디자인", "desc": "전체 매스·높이·카메라는 유지하되(형태 약 70%), 창 구성·패널 리듬·루버·발코니 등 입면 디자인을 새로 짭니다.", "keep_form": 70},
+    {"id": "ref_apply", "mode": "reference", "label": "그대로 입히기", "desc": "참조 사진의 재료·분위기를 내 건물에 그대로 입힙니다(형태 유지).", "keep_form": 85},
+    {"id": "ref_propose", "mode": "reference", "label": "참고해서 새로 제안", "desc": "참조 사진의 입면 언어(재료·비례·리듬·디테일)를 분석해 내 건물에 맞는 새 입면을 제안합니다(형태 약 70%). 참조를 베끼지 않습니다.", "keep_form": 70},
 ]
+DEFAULT_DEPTH = {"facade": "material", "reference": "ref_apply"}
+INSPIRATION_SENTENCE = ("is a DESIGN INSPIRATION: study its facade language (cladding materials, proportions, window rhythm, panel divisions, depth and detailing) "
+                        "and use that language to design the facade of image 1, never its overall shape or its precise floor plan")
 KEEP_FORM_REDESIGN = (
     "Keep the overall building massing, footprint, height, number of floors, roof silhouette and camera angle from image 1 (about 70% of the form must remain recognizable), "
     "and keep the surrounding site, roads and neighboring buildings as drawn. The facade design itself - window arrangement, panel rhythm, fins, louvers, balconies, entrance articulation - may be redesigned."
@@ -68,7 +88,7 @@ def _by_id(items: list, key: str) -> dict:
 
 def options() -> dict:
     strip = lambda items: [{"id": x["id"], "label": x["label"]} for x in items]
-    return {"modes": MODES, "depths": DEPTHS, "facades": strip(FACADES), "atmospheres": strip(ATMOSPHERES), "ref_roles": [{"id": k, "label": {"facade": "입면", "material": "재질", "mood": "분위기", "site": "대지·주변"}[k]} for k in REF_ROLES]}
+    return {"modes": MODES, "depths": DEPTHS, "default_depth": DEFAULT_DEPTH, "facades": strip(FACADES), "atmospheres": strip(ATMOSPHERES), "ref_roles": [{"id": k, "label": {"facade": "입면", "material": "재질", "mood": "분위기", "site": "대지·주변"}[k]} for k in REF_ROLES]}
 
 
 def variant_phrase(mode: str, variant_id: str, depth: str = "material") -> str:
@@ -78,8 +98,10 @@ def variant_phrase(mode: str, variant_id: str, depth: str = "material") -> str:
         if not f:
             return ""
         if depth == "redesign":
-            return (f"Facade redesign: redesign the facade of the building with {f['prompt']}. Compose a fresh, coherent facade design with this material "
-                    "(new window proportions and rhythm, panel divisions, depth and shadow lines) while the overall massing stays recognizable.")
+            move = REDESIGN_MOVES.get(variant_id, "give it a new window proportion, panel division and rhythm")
+            return (f"Facade redesign: completely redesign the facade of the building as {f['prompt']}. Specifically, {move}. "
+                    "The facade must look clearly different from image 1 in window proportions, divisions and rhythm, not just in color or material, "
+                    "while the overall massing, height and silhouette stay recognizable.")
         return f"Facade design: change only the facade finish of the building to {f['prompt']}. Everything else stays identical."
     a = _by_id(ATMOSPHERES, variant_id)
     return f"Atmosphere: {a['prompt']}." if a else ""
@@ -89,14 +111,22 @@ def variant_label(mode: str, variant_id: str) -> str:
     return (_by_id(FACADES if mode == "facade" else ATMOSPHERES, variant_id) or {}).get("label", variant_id)
 
 
-def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material") -> str:
+def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material", ref_notes: list | None = None) -> str:
     """모든 장에 공통으로 들어가는 영어 프롬프트."""
-    keep = KEEP_FORM_REDESIGN if (mode == "facade" and depth == "redesign") else KEEP_FORM
+    propose = mode == "reference" and depth == "ref_propose"
+    keep = KEEP_FORM_REDESIGN if (propose or (mode == "facade" and depth == "redesign")) else KEEP_FORM
     parts = ["Transform image 1, an architectural massing / 3D model / sketch capture, into a photorealistic architectural rendering as if produced by a professional render engine.", keep]
     for i, role in enumerate(ref_roles):
         sent = REF_ROLES.get(role)
+        if propose and role == "facade":
+            sent = INSPIRATION_SENTENCE
         if sent:
             parts.append(f"Image {i + 2} {sent}.")
+        note = (ref_notes[i] if ref_notes and i < len(ref_notes) else "").strip()
+        if sent and note:   # 이미지 모델이 참조에서 재료·리듬을 못 읽는 것을 글로 보완한다
+            parts.append(f"What image {i + 2} shows: {note}")
+    if propose:
+        parts.append("Propose a new, original facade design for the building of image 1 inspired by the reference. The facade must clearly differ from image 1 in window proportions, divisions and rhythm, and must not be a copy of the reference.")
     if mode == "facade":
         parts.append("Use realistic daylight, with natural landscaping and sky; keep lighting identical across variants so only the facade differs.")
     else:
@@ -115,6 +145,10 @@ def local_prompt(mode: str, extra_en: str, variant_id: str, depth: str = "materi
         base += f", {v}, bright daylight, blue sky"
         if depth == "redesign":
             base += ", newly designed contemporary facade composition, distinctive window rhythm"
+    elif mode == "reference" and depth == "ref_propose":
+        base += ", newly designed contemporary facade composition, distinctive window rhythm"
+        a = _by_id(ATMOSPHERES, variant_id)
+        base += f", {a['prompt']}" if a else ""
     else:
         a = _by_id(ATMOSPHERES, variant_id)
         base += f", {a['prompt']}" if a else ""
