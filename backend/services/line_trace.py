@@ -339,6 +339,21 @@ def _find_iso_arrows(gray, text_zone, u, key):
     return out, kill
 
 
+def _drop_small_heads(v_arrows, i_arrows):
+    """한 도식 안의 화살촉은 크기가 비슷하다. 4개 이상 찾았을 때 큰 쪽(상위 25%)의 절반보다 작은 것은 선이 만나는 지점의 얼룩이므로 버린다."""
+    def area_v(a):
+        return 0.5 * abs(a[4] - a[3]) * abs(a[5] - a[2])
+
+    def area_i(a):
+        p = a[2]
+        return 0.5 * abs((p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]))
+    areas = [area_v(a) for a in v_arrows] + [area_i(a) for a in i_arrows]
+    if len(areas) < 4:
+        return v_arrows, i_arrows
+    thr = 0.5 * float(np.percentile(areas, 75))
+    return [a for a in v_arrows if area_v(a) >= thr], [a for a in i_arrows if area_i(a) >= thr]
+
+
 def _find_text_clusters(mask, long_edge):
     """작은 어두운 덩어리들이 가로로 늘어선 묶음 = 글자줄. 반환: [{'bbox':(x0,y0,x1,y1), 'pix': bool mask}]"""
     lab, n = ndi.label(mask, structure=np.ones((3, 3)))
@@ -622,6 +637,7 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
             i_arrows += ia_
             arrow_zone = arrow_zone | iz_
             g_left = np.where(iz_, 255.0, g_left)
+        v_arrows, i_arrows = _drop_small_heads(v_arrows, i_arrows)
 
     line_ink = ink & ~arrow_zone & ~text_zone
     line_ink = morphology.remove_small_objects(line_ink, max(20, int(40 * f * f)))

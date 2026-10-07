@@ -95,6 +95,12 @@ def find_plate_edges(im):
     return [(tuple(left), tuple(bottom)), (tuple(bottom), tuple(right))]
 
 
+def _pt_seg(px, py, x1, y1, x2, y2):
+    dx, dy = x2 - x1, y2 - y1
+    t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+
+
 def _polygons(svg):
     out = []
     for m in re.finditer(r'<polygon points="([^"]+)"', svg):
@@ -128,9 +134,21 @@ def augment(traced, crop):
         have.append(c)
         added["arrows"] += 1
 
-    # 2) 바닥판: AI 결과에 점선(role=dash)이 하나도 없을 때만 원본에서 보충한다
+    # 2) 바닥판: AI 결과에 점선(role=dash)이 하나도 없을 때만, 그리고 그 자리에 이미 선이 없는 변만 원본에서 보충한다
+    #    (AI 가 바닥판을 실선으로 그려 둔 경우 같은 자리에 선이 두 줄 겹치는 것을 막는다)
     if int(traced["stats"].get("roles", {}).get("dash", 0)) == 0:
-        edges = find_plate_edges(crop)
+        segs = [tuple(float(v) for v in m.groups()) for m in re.finditer(r'<line x1="([\d.\-]+)" y1="([\d.\-]+)" x2="([\d.\-]+)" y2="([\d.\-]+)"', svg)]
+        tol = 0.025 * max(sw, sh)
+
+        def _covered(p0, p1):
+            hit = 0
+            for q in np.linspace(0.05, 0.95, 10):
+                px, py = p0[0] + (p1[0] - p0[0]) * q, p0[1] + (p1[1] - p0[1]) * q
+                if any(_pt_seg(px, py, *s_) < tol for s_ in segs):
+                    hit += 1
+            return hit / 10.0 >= 0.6
+        edges = [e for e in find_plate_edges(crop)
+                 if not _covered((e[0][0] * fx, e[0][1] * fy), (e[1][0] * fx, e[1][1] * fy))]
         for (x0, y0), (x1, y1) in edges:
             add.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-linecap="round" stroke-dasharray="%.1f %.1f"/>' % (
                 x0 * fx, y0 * fy, x1 * fx, y1 * fy, _INK, 0.85 * k_w, 3.2 * k_w, 2.6 * k_w))

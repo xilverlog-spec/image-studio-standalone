@@ -19,6 +19,7 @@ from PIL import Image
 
 import comfyui_client
 from services import line_trace
+from services import line_augment
 from services import diagram_kind
 
 REDRAW_INSTRUCTION = (
@@ -201,6 +202,13 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                             _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 선 추출")
                             traced = line_trace.trace_lines(_png_bytes(redrawn), fills=fills, line_art=True, role_by="geometry")
                             if traced["stats"]["lines"] >= 4:
+                                try:   # AI 가 빼먹은 화살표·바닥판을 원본에서 읽어 보충(이미 있는 것은 건드리지 않는다)
+                                    traced, aug = line_augment.augment(traced, crop)
+                                    if aug["arrows"] or aug["plate"]:
+                                        what = ([f"화살표 {aug['arrows']}개"] if aug["arrows"] else []) + (["바닥판"] if aug["plate"] else [])
+                                        warnings.append(f"칸 {idx + 1}: AI가 빼먹은 요소를 원본에서 보충했습니다 ({', '.join(what)})")
+                                except Exception:
+                                    pass
                                 chosen, used_ai = traced, True
                             else:
                                 warnings.append(f"칸 {idx + 1}: 재생성본에서 선이 거의 안 잡혀 원본에서 직접 추출")

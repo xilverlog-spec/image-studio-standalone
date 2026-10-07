@@ -45,6 +45,8 @@ ${READ_SCHEMA}
 ${READ_RULES}${gridNote}`;
 }
 
+const FORM_SPAN = 10;   // 읽은 건물 형태의 가로·세로 전체 길이(모듈). 읽을 때마다 단위가 달라지는 것을 막는다.
+
 const num = (v, d = 0, lo = -50, hi = 50) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 
 // AI 응답 → 검증된 읽기 결과. 못 읽었으면 Error.
@@ -54,14 +56,28 @@ export function normalizeRead(parsed, forcedKind) {
   if (!SUBJECT_KINDS[kind]) kind = parsed.form ? 'form' : (parsed.shapes ? 'plan' : 'other');
   const summary = String(parsed.summary || '');
   if (kind === 'form') {
-    const boxes = (Array.isArray(parsed.form?.boxes) ? parsed.form.boxes : []).slice(0, 16).map((b) => ({
-      x: num(b.x), y: num(b.y), z: num(b.z, 0, 0, 30), w: Math.max(0.3, num(b.w, 1, 0, 30)), d: Math.max(0.3, num(b.d, 1, 0, 30)), h: Math.max(0.2, num(b.h, 1, 0, 30)),
+    const f0 = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+    const raw = (Array.isArray(parsed.form?.boxes) ? parsed.form.boxes : []).slice(0, 16).map((b) => ({
+      x: f0(b.x, 0), y: f0(b.y, 0), z: Math.max(0, f0(b.z, 0)), w: Math.max(0.01, f0(b.w, 1)), d: Math.max(0.01, f0(b.d, 1)), h: Math.max(0.01, f0(b.h, 1)),
     }));
-    if (!boxes.length) throw new Error('건물 형태를 읽지 못했습니다. 종류를 바꾸거나 다시 읽어 보세요.');
+    if (!raw.length) throw new Error('건물 형태를 읽지 못했습니다. 종류를 바꾸거나 다시 읽어 보세요.');
+    // AI 가 좌표 단위를 매번 다르게 쓴다(모듈 10 기준 / 눈금 100 기준 등). 가로·세로 전체 길이가 FORM_SPAN 이 되도록 한 비율로 맞춘다
+    // (값을 잘라 버리면 100 기준으로 읽힌 결과가 찌그러진다).
+    const rMinX = Math.min(...raw.map((b) => b.x)); const rMinY = Math.min(...raw.map((b) => b.y));
+    const rExt = Math.max(Math.max(...raw.map((b) => b.x + b.w)) - rMinX, Math.max(...raw.map((b) => b.y + b.d)) - rMinY, 0.01);
+    const sc = FORM_SPAN / rExt;
+    const boxes = raw.map((b) => ({
+      x: num((b.x - rMinX) * sc), y: num((b.y - rMinY) * sc), z: num(b.z * sc, 0, 0, 30),
+      w: Math.max(0.3, num(b.w * sc, 1, 0, 30)), d: Math.max(0.3, num(b.d * sc, 1, 0, 30)), h: Math.max(0.2, num(b.h * sc, 1, 0, 30)),
+    }));
+    const bb = groundOf(boxes);
     const g = parsed.form?.ground;
-    const minX = Math.min(...boxes.map((b) => b.x)); const minY = Math.min(...boxes.map((b) => b.y));
-    const maxX = Math.max(...boxes.map((b) => b.x + b.w)); const maxY = Math.max(...boxes.map((b) => b.y + b.d));
-    const ground = g && typeof g === 'object' ? { x: num(g.x, minX), y: num(g.y, minY), w: num(g.w, maxX - minX, 1, 40), d: num(g.d, maxY - minY, 1, 40) } : { x: minX, y: minY, w: maxX - minX, d: maxY - minY };
+    let ground = bb;
+    if (g && typeof g === 'object') {   // AI 가 준 바닥은 같은 비율로 옮기되, 모든 박스를 덮도록 넓힌다
+      const gx = (f0(g.x, rMinX) - rMinX) * sc; const gy = (f0(g.y, rMinY) - rMinY) * sc; const gw = f0(g.w, 0) * sc; const gd = f0(g.d, 0) * sc;
+      const x0 = Math.min(bb.x, gx); const y0 = Math.min(bb.y, gy);
+      ground = { x: x0, y: y0, w: Math.max(bb.x + bb.w, gx + gw) - x0, d: Math.max(bb.y + bb.d, gy + gd) - y0 };
+    }
     return { kind, summary, form: { ground, boxes } };
   }
   if (kind === 'plan' || kind === 'site') {
@@ -79,6 +95,38 @@ export function normalizeRead(parsed, forcedKind) {
     return { kind, summary, shapes };
   }
   throw new Error(summary || '이 이미지는 아직 지원하지 않는 종류입니다(평면·건물 형태·배치도만 가능).');
+}
+
+// 건물 형태 읽기 합의: 같은 이미지를 여러 번 읽으면 매번 조금씩 달라진다. 박스를 격자 칸으로 채워서 서로 겹치는 정도(IoU)를 재고,
+// 다른 읽기들과 평균적으로 가장 비슷한(= 한 번 엉뚱하게 읽힌 것에 휘둘리지 않는) 결과를 고른다.
+function formCells(boxes, step = 0.5) {
+  const cells = new Set();
+  boxes.forEach((b) => {
+    for (let x = Math.floor(b.x / step); x < Math.ceil((b.x + b.w) / step); x++) {
+      for (let y = Math.floor(b.y / step); y < Math.ceil((b.y + b.d) / step); y++) {
+        for (let z = Math.floor(b.z / step); z < Math.ceil((b.z + b.h) / step); z++) cells.add(`${x},${y},${z}`);
+      }
+    }
+  });
+  return cells;
+}
+
+export function formIoU(a, b) {
+  const ca = formCells(a.form.boxes); const cb = formCells(b.form.boxes);
+  let inter = 0; ca.forEach((c) => { if (cb.has(c)) inter++; });
+  const union = ca.size + cb.size - inter;
+  return union ? inter / union : 0;
+}
+
+export function pickConsensusRead(reads) {
+  const forms = reads.filter((r) => r && r.kind === 'form');
+  if (forms.length <= 2) return forms[0] || reads[0];
+  let best = null;
+  forms.forEach((r, i) => {
+    const score = forms.reduce((s, o, j) => (i === j ? s : s + formIoU(r, o)), 0) / (forms.length - 1);
+    if (!best || score > best.score) best = { r, score };
+  });
+  return { ...best.r, summary: `${best.r.summary || ''} (${forms.length}번 읽은 결과 중 서로 가장 일치하는 것을 골랐습니다)`.trim() };
 }
 
 // 가장자리 정렬: 서로 가까운 x/y 좌표(눈대중 오차)를 하나로 모아 방들이 반듯하게 맞닿게 한다

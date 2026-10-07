@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -195,6 +195,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         catch (e) { lastErr = e; }
       }
       if (!r) throw lastErr;
+      if (r.kind === 'form') { // 건물 형태는 읽을 때마다 조금씩 달라지므로 두 번 더 읽어서 서로 가장 일치하는 결과를 쓴다(엉뚱하게 읽힌 한 번에 휘둘리지 않게)
+        const more = await Promise.all([0, 1].map(async () => {
+          try { return normalizeRead(await callAI(buildReadPrompt('form', { grid: useGrid }), [gridded]), 'form'); } catch { return null; }
+        }));
+        r = pickConsensusRead([r, ...more.filter(Boolean)]);
+      }
       if (r.kind === 'plan') { // 평면도: AI 좌표는 가로·세로를 따로 0~100 으로 주므로 가로세로 비율만 바로잡는다(방 모양은 AI 가 읽은 직사각형 그대로)
         try {
           const dim = await new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = reject; im.src = subjectImage; });
@@ -225,7 +231,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
-    const parsed = await callAI(buildSubjectPrompt(read, userText.trim(), !!styleImage), styleImage ? [styleImage] : []);
+    const askPrompt = buildSubjectPrompt(read, userText.trim(), !!styleImage);
+    let parsed;
+    try { parsed = await callAI(askPrompt, styleImage ? [styleImage] : []); }
+    catch { parsed = await callAI(askPrompt, styleImage ? [styleImage] : []); } // 응답을 해석하지 못하면(JSON 깨짐 등) 한 번 더 요청한다
     if (read.kind === 'form') {
       const steps = Array.isArray(parsed.steps) ? parsed.steps : [];
       if (!steps.length) throw new Error('단계가 비어 있습니다.');
