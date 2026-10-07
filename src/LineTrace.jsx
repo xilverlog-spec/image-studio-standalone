@@ -81,7 +81,9 @@ export default function LineTrace({ addToast, apiFetch }) {
         setProgress({ stage: st.stage, done: st.done || 0, total: st.total || 0 });
         if (st.status === 'done') {
           setResult({ svg: st.svg, stats: st.stats, warnings: st.warnings || [] });
-          addToast?.('success', st.stats.method === 'color' ? '색 면 도식으로 변환 완료' : '선 추출 완료', st.stats.method === 'color' ? '색 영역을 그대로 벡터로 변환했습니다.' : `${st.stats.panels}칸, 선 ${st.stats.lines}개를 정리했습니다.`);
+          addToast?.('success',
+            st.stats.method === 'color' ? '색 면 도식으로 변환 완료' : st.stats.method === 'perspective' ? '원근 이미지를 선 도면으로 변환 완료' : '선 추출 완료',
+            st.stats.method === 'color' ? '색 영역을 그대로 벡터로 변환했습니다.' : st.stats.method === 'perspective' ? 'AI가 선화로 다시 그린 것을 벡터로 바꿨습니다. 건물 세부가 원본과 다를 수 있으니 확인하세요.' : `${st.stats.panels}칸, 선 ${st.stats.lines}개를 정리했습니다.`);
           break;
         }
         if (st.status === 'error') throw new Error(st.error || '선 추출에 실패했습니다.');
@@ -145,7 +147,7 @@ export default function LineTrace({ addToast, apiFetch }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>이미지 → 깔끔한 선</div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
-            이미지를 보고 알아서 방식을 고릅니다. <b>선으로 그린 도식</b>(아이소메트릭 등)은 선을 찾아 반듯한 단선으로, <b>색 면으로 칠한 도식</b>(블록 다이어그램 등)은 색 영역 그대로 벡터로 바꿉니다.
+            이미지를 보고 알아서 방식을 고릅니다. <b>선으로 그린 도식</b>(아이소메트릭 등)은 선을 찾아 반듯한 단선으로, <b>색 면으로 칠한 도식·평면도</b>는 색 영역 그대로 벡터로, <b>원근 모델 캡처·렌더</b>는 AI가 선 도면으로 다시 그려 벡터로 바꿉니다.
           </p>
         </div>
 
@@ -208,6 +210,7 @@ export default function LineTrace({ addToast, apiFetch }) {
               <option value="auto">자동 (이미지를 보고 판단)</option>
               <option value="lines">선 도식 — 선을 찾아 반듯한 단선으로</option>
               <option value="color">색 면 도식 — 색 영역 그대로 벡터로</option>
+              <option value="perspective">원근 모델 캡처·렌더 — AI가 선 도면으로 다시 그려 벡터로 (약 3분)</option>
             </select>
           </label>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, cursor: 'pointer' }}>
@@ -230,7 +233,9 @@ export default function LineTrace({ addToast, apiFetch }) {
             <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>
               {result.stats.method === 'color'
                 ? '🎨 색 면 도식으로 인식 → 색 영역 그대로 벡터 변환 (글자는 윤곽선 모양)'
-                : <>
+                : result.stats.method === 'perspective'
+                  ? '🏢 원근 모델 캡처·렌더로 인식 → AI가 선화로 다시 그린 것을 벡터로 변환'
+                  : <>
                   {'📐 선 도식으로 인식 · '}{result.stats.panels}칸 · 선 {result.stats.lines}개 · 화살촉 {result.stats.arrows} · 글자줄 {result.stats.text_lines}
                   {result.stats.text_editable ? ` (편집 가능 ${result.stats.text_editable})` : ''}
                   {result.stats.redraw_used ? ` · AI 재생성 ${result.stats.ai_panels}칸 / 원본 직접 ${result.stats.fallback_panels}칸` : ' · AI 재생성 안 함'}

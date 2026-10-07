@@ -1449,6 +1449,27 @@ def _ocr_labels_with_gemini(png_bytes: bytes, width: int, height: int) -> list:
     return out
 
 
+LINETRACE_MAX_EDGE = 4000   # 선 추출은 어차피 긴 변 3600px 로 줄여서 처리하므로, 그보다 큰 원본은 올라오는 즉시 줄인다(서버 메모리·시간 보호)
+
+
+def _prepare_upload_png(image_base64: str):
+    """업로드된 이미지를 RGB PNG 로 바꾸고 너무 크면 줄인다. 큰 이미지의 디코딩은 수 초~수십 초 걸리므로 반드시 별도 스레드에서 부른다.
+    반환: (png 바이트, 가로, 세로, 원본 가로, 원본 세로)"""
+    from PIL import Image as _I
+    _I.MAX_IMAGE_PIXELS = None
+    raw = base64.b64decode(image_base64)
+    with _I.open(io.BytesIO(raw)) as im:
+        ow, oh = im.size
+        if max(ow, oh) > LINETRACE_MAX_EDGE * 1.5:
+            im.draft("RGB", (LINETRACE_MAX_EDGE, LINETRACE_MAX_EDGE))   # JPEG 는 디코딩 단계에서 바로 줄여 훨씬 빠르다
+        rgb = im.convert("RGB")
+    if max(rgb.size) > LINETRACE_MAX_EDGE:
+        rgb.thumbnail((LINETRACE_MAX_EDGE, LINETRACE_MAX_EDGE), _I.LANCZOS)
+    buf = io.BytesIO()
+    rgb.save(buf, "PNG")
+    return buf.getvalue(), rgb.size[0], rgb.size[1], ow, oh
+
+
 @router.post("/image/linetrace")
 async def linetrace_image(request: LineTraceRequest):
     try:
@@ -1456,13 +1477,7 @@ async def linetrace_image(request: LineTraceRequest):
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"선 추출에 필요한 라이브러리가 없습니다(scikit-image, scipy): {e}")
     try:
-        raw = base64.b64decode(request.image_base64)
-        from PIL import Image as _I
-        with _I.open(io.BytesIO(raw)) as im:
-            w, h = im.size
-            buf = io.BytesIO()
-            im.convert("RGB").save(buf, "PNG")
-        png = buf.getvalue()
+        png, w, h, _ow, _oh = await asyncio.to_thread(_prepare_upload_png, request.image_base64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
 
@@ -1501,13 +1516,7 @@ async def linetrace_start(request: LineTraceStartRequest):
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"선 추출에 필요한 라이브러리가 없습니다: {e}")
     try:
-        raw = base64.b64decode(request.image_base64)
-        from PIL import Image as _I
-        with _I.open(io.BytesIO(raw)) as im:
-            w, h = im.size
-            buf = io.BytesIO()
-            im.convert("RGB").save(buf, "PNG")
-        png = buf.getvalue()
+        png, w, h, _ow, _oh = await asyncio.to_thread(_prepare_upload_png, request.image_base64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
     ocr = []
@@ -1516,7 +1525,8 @@ async def linetrace_start(request: LineTraceStartRequest):
             ocr = await asyncio.to_thread(_ocr_labels_with_gemini, png, w, h)
         except Exception as e:
             print(f"[LINETRACE] OCR 실패(글자는 모양 그대로 옮김): {e}")
-    job_id = line_pipeline.start_job(png, request.read_text, request.fills, request.redraw, ocr, request.max_panels, request.method)
+    # start_job 은 도식 종류 판별(이미지 분석)을 하므로 이벤트 루프를 막지 않게 별도 스레드에서 부른다
+    job_id = await asyncio.to_thread(line_pipeline.start_job, png, request.read_text, request.fills, request.redraw, ocr, request.max_panels, request.method)
     return {"status": "success", "job_id": job_id}
 
 

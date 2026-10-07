@@ -22,6 +22,44 @@ const normBox = (b) => ({
 
 const poly = (pts) => pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 
+// ── 덜어내기(subtract): AI 가 '덜어낼 부분'을 매스 안쪽에 겹쳐 두는 일이 많다. 그대로 그리면 큰 박스 면에 가려 아무 변화가 없어 보이므로,
+//    겹친 부분은 렌더러가 매스에서 직접 도려내고, 덜어낸 박스는 빈 자리 바로 위로 띄워서 그린다(위로 빠지는 화살표가 그 위에 붙는다).
+const EPS = 1e-6;
+const overlaps = (a, c) => a.x < c.x + c.w - EPS && c.x < a.x + a.w - EPS && a.y < c.y + c.d - EPS && c.y < a.y + a.d - EPS && a.z < c.z + c.h - EPS && c.z < a.z + a.h - EPS;
+
+// 직육면체 a 에서 직육면체 c 를 뺀 나머지를 최대 6개의 직육면체로 쪼갠다
+function subtractBox(a, c) {
+  if (!overlaps(a, c)) return [a];
+  const out = [];
+  const ax1 = a.x + a.w; const ay1 = a.y + a.d; const az1 = a.z + a.h;
+  const x0 = Math.max(a.x, c.x); const x1 = Math.min(ax1, c.x + c.w);
+  const y0 = Math.max(a.y, c.y); const y1 = Math.min(ay1, c.y + c.d);
+  const z0 = Math.max(a.z, c.z); const z1 = Math.min(az1, c.z + c.h);
+  const piece = (x, y, z, w, d, h) => { if (w > 0.05 && d > 0.05 && h > 0.05) out.push({ ...a, x, y, z, w, d, h }); };
+  piece(a.x, a.y, a.z, x0 - a.x, a.d, a.h);                 // x 왼쪽
+  piece(x1, a.y, a.z, ax1 - x1, a.d, a.h);                  // x 오른쪽
+  piece(x0, a.y, a.z, x1 - x0, y0 - a.y, a.h);              // 가운데 x 구간의 y 앞쪽
+  piece(x0, y1, a.z, x1 - x0, ay1 - y1, a.h);               // 가운데 x 구간의 y 뒤쪽
+  piece(x0, y0, a.z, x1 - x0, y1 - y0, z0 - a.z);           // 겹친 칸의 아래
+  piece(x0, y0, z1, x1 - x0, y1 - y0, az1 - z1);            // 겹친 칸의 위
+  return out;
+}
+
+export function applySubtractions(boxes) {
+  const cutters = boxes.filter((b) => b.mode === 'subtract');
+  if (!cutters.length) return boxes;
+  let solids = boxes.filter((b) => b.mode !== 'subtract');
+  const lifted = [];
+  cutters.forEach((c) => {
+    const hit = solids.some((s) => (s.mode === 'solid' || s.mode === 'add') && overlaps(s, c));
+    if (!hit) { lifted.push(c); return; }   // 이미 떠 있는 박스는 그대로 둔다
+    solids = solids.flatMap((s) => (s.mode === 'solid' ? subtractBox(s, c) : [s]));
+    // 빈 자리 바로 위로 띄운다(떠 있는 박스가 아래 매스 면을 가리지 않게 약간 더 띄움)
+    lifted.push({ ...c, z: c.z + c.h * 0.9 + 0.3, move: c.move || 'up' });
+  });
+  return [...solids, ...lifted];
+}
+
 function boxSvg(b, accent) {
   const { x, y, z, w, d, h } = b;
   const x1 = x + w; const y1 = y + d; const z1 = z + h;
@@ -67,7 +105,7 @@ export function renderMassing(spec) {
   const steps = (Array.isArray(spec.steps) ? spec.steps : []).slice(0, 8).map((s) => ({
     label: String(s.label || ''),
     ground: s.ground && typeof s.ground === 'object' ? { x: num(s.ground.x, 0), y: num(s.ground.y, 0), w: num(s.ground.w, 6, 1, 40), d: num(s.ground.d, 5, 1, 40) } : null,
-    boxes: (Array.isArray(s.boxes) ? s.boxes : []).slice(0, 24).map(normBox),
+    boxes: applySubtractions((Array.isArray(s.boxes) ? s.boxes : []).slice(0, 24).map(normBox)),
   }));
   const cols = Math.min(MASSING_COLS, Math.max(1, steps.length));
   const rows = Math.ceil(steps.length / cols) || 1;

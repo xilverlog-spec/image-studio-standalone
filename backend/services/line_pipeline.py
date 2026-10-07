@@ -103,7 +103,14 @@ def _prep_for_redraw(img):
     return im.quantize(colors=10, method=Image.MEDIANCUT, dither=Image.NONE).convert("RGB")
 
 
-def _redraw_panel(crop, seed, tag, prep=None):
+PERSP_INSTRUCTION = (
+    "Convert this architectural 3D model screenshot or rendering into a clean black-and-white architectural line drawing on a pure white background. "
+    "Keep the building's shape, proportions, perspective and every edge exactly the same. Remove all colors, shading, textures, sky and ground fill. "
+    "Use only thin uniform black single lines. Do not add or remove any object."
+)
+
+
+def _redraw_panel(crop, seed, tag, prep=None, instruction=None):
     """칸 하나를 Kontext로 선화로 재생성. 성공하면 PIL 이미지, 아니면 (None, 사유). prep=True 면 입력을 먼저 정리한다(기본은 REDRAW_PREP)."""
     k = REDRAW_LONG_EDGE / float(max(crop.size))
     sized = crop.resize((max(64, int(crop.width * k)), max(64, int(crop.height * k))), Image.LANCZOS)
@@ -111,7 +118,7 @@ def _redraw_panel(crop, seed, tag, prep=None):
         sized = _prep_for_redraw(sized)
     out_path = os.path.join(_tmp_dir(), f"redraw_{tag}_{uuid.uuid4().hex[:6]}.png")
     try:
-        comfyui_client.edit_image_with_kontext_or_raise(_png_bytes(sized), REDRAW_INSTRUCTION, out_path, seed=seed)
+        comfyui_client.edit_image_with_kontext_or_raise(_png_bytes(sized), instruction or REDRAW_INSTRUCTION, out_path, seed=seed)
         if not os.path.exists(out_path):
             return None, "AI가 이미지를 반환하지 않았습니다"
         img = Image.open(out_path).convert("RGB")
@@ -270,6 +277,45 @@ def _run_color(job_id, png_bytes, kind_info):
         _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
+def _run_perspective(job_id, png_bytes, kind_info, redraw):
+    """원근 모델 캡처·렌더·사진: AI(FLUX Kontext)가 선화로 다시 그린 것을 그대로 벡터화한다(선을 아이소 방향으로 맞추지 않는다).
+    AI 를 못 쓰면 색 영역 그대로 벡터화한다(원본 복사본이라 용량이 크다고 경고)."""
+    job = JOBS[job_id]
+    with _RUN_LOCK:   # GPU 를 쓰므로 다른 AI 작업과 한 줄로 세운다
+        _update(job, status="running", stage="원근 캡처·렌더로 판단 — AI가 선화로 다시 그리는 중 (약 3분)")
+        try:
+            img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            W, H = img.size
+            warnings, line = [], None
+            if redraw and comfyui_client.is_flux_kontext_available():
+                err = None
+                for seed in (7, 107):   # 한 번 실패하면 다른 시드로 다시
+                    line, err = _redraw_panel(img, seed=seed, tag="persp", instruction=PERSP_INSTRUCTION)
+                    if line is not None:
+                        break
+                    _update(job, stage="AI 재생성 재시도 중")
+                if line is None:
+                    warnings.append(f"AI 재생성 실패 → 색 영역 그대로 벡터 변환 ({err})")
+            else:
+                warnings.append("AI 재생성(FLUX Kontext)을 쓸 수 없어 색 영역 그대로 벡터 변환했습니다(원본 복사본이라 용량이 큽니다).")
+            if line is not None:
+                _update(job, stage="선화를 벡터로 변환 중")
+                svg = diagram_kind.vectorize_lineart(line, (W, H))
+                warnings.append("원근 이미지는 AI가 선화로 다시 그리므로 건물 세부(유리 안쪽 구조, 작은 부재)가 원본과 다를 수 있습니다. 원본과 비교해 확인하세요.")
+                used = "perspective"
+            else:
+                svg, (W, H) = diagram_kind.vectorize_color(png_bytes)
+                used = "color"
+            stats = {"method": used, "kind": kind_info, "panels": 1, "lines": 0, "arrows": 0, "text_lines": 0, "text_editable": 0,
+                     "size": [W, H], "redraw_used": line is not None, "ai_panels": 1 if line is not None else 0, "fallback_panels": 0 if line is not None else 1,
+                     "panel_info": []}
+            _update(job, status="done", stage="완료", svg=svg, stats=stats, warnings=warnings, finished=time.time(), done=1, total=1)
+        except BaseException as e:
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
+            _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
+
+
 def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None, method="auto"):
     now = time.time()
     with _JOBS_LOCK:
@@ -279,12 +325,18 @@ def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=No
         JOBS[job_id] = {"status": "queued", "stage": "대기 중(앞선 작업이 끝나면 시작)", "done": 0, "total": 0, "created": now}
     kind_info = None
     use_color = method == "color"
+    use_persp = method == "perspective"
     if method == "auto":
         try:
             kind_info = diagram_kind.classify_diagram(png_bytes)
             use_color = kind_info["kind"] == "color"
+            use_persp = kind_info["kind"] == "perspective"
         except Exception:
             use_color = False
+    if use_persp:
+        JOBS[job_id]["stage"] = "원근 캡처·렌더로 판단"
+        threading.Thread(target=_run_perspective, args=(job_id, png_bytes, kind_info, redraw), daemon=True).start()
+        return job_id
     if use_color:
         JOBS[job_id]["stage"] = "색 면 도식으로 판단"
         threading.Thread(target=_run_color, args=(job_id, png_bytes, kind_info), daemon=True).start()

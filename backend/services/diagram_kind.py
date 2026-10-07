@@ -36,10 +36,27 @@ def iso_edge_share(im, tol=7.0):
     return float(w[(d(30) < tol) | (d(150) < tol)].sum() / w.sum())
 
 
+PHOTO_TOP1_MAX = 0.30   # 가장 큰 색(보통 흰 배경)이 화소의 30% 미만이면 사진·렌더·모델 캡처 (실측: 사진·렌더 샘플 0.05~0.24, 도식·평면 0.48~0.96)
+
+
+def top_color_share(im):
+    """4비트로 줄인 색 중 가장 많은 색이 차지하는 비율. 도식·평면은 흰 배경이 압도적이라 높고, 하늘·지형·음영이 있는 사진·렌더는 낮다."""
+    s = 600.0 / max(im.size)
+    if s < 1:
+        im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))), Image.BOX)
+    a = np.asarray(im.convert("RGB")).astype(np.int32)
+    q = (a[..., 0] >> 4) * 256 + (a[..., 1] >> 4) * 16 + (a[..., 2] >> 4)
+    return float(np.bincount(q.ravel(), minlength=4096).max()) / q.size
+
+
 def classify_diagram(png_bytes):
     """반환: {'kind': 'color'|'line', 'area': 큰 색 면 비율, 'outlined': 면 가장자리가 선에 닿은 비율, 'iso': 아이소 방향 윤곽 비율}
     아이소 방향 선이 거의 없으면(평면도·단면도·배치도·컨셉 다이어그램) 선 추출 대신 원본 그대로 벡터화하는 'color' 로 보낸다."""
     im = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    top1 = top_color_share(im)
+    if top1 < PHOTO_TOP1_MAX:
+        # 원근 모델 캡처·렌더·사진: 도식이 아니므로 색 영역 그대로 따면 원본 복사본(수~수십 MB)이 된다 → AI 선화로 다시 그려 선 도면으로 만든다
+        return {"kind": "perspective", "area": 0.0, "outlined": 0.0, "iso": 0.0, "top1": round(top1, 3)}
     iso = iso_edge_share(im)
     s = 900.0 / max(im.size)
     if s < 1:
@@ -70,6 +87,39 @@ def _finish_color_svg(svg, im, work_size):
     svg = re.sub(r'(<svg\b[^>]*?)\swidth="[^"]*"', r'\1', svg, count=1)
     svg = re.sub(r'(<svg\b[^>]*?)\sheight="[^"]*"', r'\1', svg, count=1)
     return svg.replace("<svg", '<svg width="%d" height="%d" viewBox="0 0 %d %d"' % (ow, oh, ww, wh), 1)
+
+
+def vectorize_lineart(line_img, out_size):
+    """AI 가 그린 검은 선 이미지(흰 바탕)를 선 모양 그대로 SVG 로 벡터화한다(vtracer 흑백). out_size = 원본 가로·세로(표시 크기)."""
+    import vtracer
+    g = line_img.convert("L")
+    # AI 선화의 가는 선(1~2px)은 그대로 이진화하면 조각조각 끊긴다(실측). 2배로 키우고 회색 선까지 잉크로 치는 부드러운 문턱값(185~230)을 쓰면 끊김 없이 이어진다.
+    g = g.resize((g.width * 2, g.height * 2), Image.LANCZOS)
+    g = g.point(lambda v: 0 if v < 185 else (255 if v > 230 else int((v - 185) * 255 / 45)))
+    tmp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "tmp"))
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_in = os.path.join(tmp_dir, f"lineart_in_{int(time.time() * 1000)}.png")
+    tmp_out = tmp_in.replace("_in_", "_out_").replace(".png", ".svg")
+    try:
+        g.save(tmp_in, "PNG")
+        vtracer.convert_image_to_svg_py(
+            tmp_in, tmp_out, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=4,
+            corner_threshold=60, length_threshold=4.0, splice_threshold=45, path_precision=2,
+        )
+        with open(tmp_out, "r", encoding="utf-8") as f:
+            svg = f.read()
+        svg = _finish_color_svg(svg, Image.new("RGB", out_size), g.size)
+        m = re.search(r"<svg\b[^>]*>", svg)
+        if m:   # 바탕을 흰색으로 깔아 PNG 저장·다른 배경 위에서도 선이 보이게 한다
+            svg = svg[:m.end()] + '<rect width="100%" height="100%" fill="#fff"/>' + svg[m.end():]
+        return svg
+    finally:
+        for p in (tmp_in, tmp_out):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
 
 def vectorize_color(png_bytes):

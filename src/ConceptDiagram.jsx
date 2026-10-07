@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
+import { checkCoverage } from './conceptDiagram/coverage';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -152,6 +153,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   }, [result]);
 
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
+  // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
+  const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
   const readMode = !!subjectImage && subjectUse === 'read';
   const asisMode = !!subjectImage && subjectUse === 'asis';
   const canGenerate = !busy && !reading && !!(userText.trim() || subjectImage || styleImage);
@@ -231,7 +234,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
-    const askPrompt = buildSubjectPrompt(read, userText.trim(), !!styleImage);
+    const askPrompt = buildSubjectPrompt(read, askText(), !!styleImage);
     let parsed;
     try { parsed = await callAI(askPrompt, styleImage ? [styleImage] : []); }
     catch { parsed = await callAI(askPrompt, styleImage ? [styleImage] : []); } // 응답을 해석하지 못하면(JSON 깨짐 등) 한 번 더 요청한다
@@ -255,14 +258,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const generateFromText = async () => {
     const type0 = asisMode ? 'site' : forcedType;
     const images = [...(subjectImage && asisMode ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
-    const parsed = await callAI(buildConceptPrompt(type0, userText.trim(), { asis: asisMode, style: !!styleImage }), images);
+    const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, style: !!styleImage }), images);
     const guessed = parsed.steps ? 'massing' : 'site';
     const type = asisMode ? 'site' : forcedType !== 'auto' ? forcedType : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
     const { type: _drop, ...spec } = parsed;
     return { type, spec, ...(asisMode ? { baseImage: subjectImage } : {}) };
   };
 
-  const generate = async () => {
+  // '요청 반영 점검'에서 빠진 항목을 넣어 다시 만들 때, 그 항목을 요청 문장 뒤에 덧붙여서 AI에 보낸다
+  const mustRef = useRef([]);
+  const askText = () => [userText.trim(), mustRef.current.length ? `[반드시 결과의 제목·칩·주석 글자에 그대로 포함할 표현] ${mustRef.current.join(', ')}` : ''].filter(Boolean).join('\n');
+
+  const generate = async (must) => {
+    mustRef.current = Array.isArray(must) ? must : [];
     if (!canGenerate) return;
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
     let readNow = read;
@@ -410,10 +418,31 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
-          <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={generate}>
+          <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
         </div>
+
+        {coverage.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="coverage">
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>요청 반영 점검</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {coverage.map((c) => (
+                <span key={c.item} style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 999, border: `1px solid ${c.ok ? '#86efac' : '#fca5a5'}`, background: c.ok ? '#f0fdf4' : '#fef2f2', color: c.ok ? '#15803D' : '#B91C1C' }}>
+                  {c.ok ? '✓' : '✗'} {c.item}
+                </span>
+              ))}
+            </div>
+            {coverage.some((c) => !c.ok)
+              ? (
+                <>
+                  <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>빨간 항목은 결과의 글에서 찾지 못했습니다(비슷한 표현이 있어도 못 찾을 수 있으니 결과를 직접 확인하세요).</p>
+                  <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => generate(coverage.filter((c) => !c.ok).map((c) => c.item))}>빠진 항목 넣어서 다시 만들기</button>
+                </>
+              )
+              : <p style={{ fontSize: 11, color: '#15803D', margin: 0 }}>요청한 항목이 모두 결과에 들어 있습니다.</p>}
+          </div>
+        )}
 
         {result && fields.length > 0 && (
           <details>
