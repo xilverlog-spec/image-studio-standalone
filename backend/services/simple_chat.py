@@ -41,13 +41,16 @@ def _think_param(model: str):
     return None
 
 
-def chat_completion(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3) -> str:
+def chat_completion(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3, keep_alive=None) -> str:
+    """keep_alive=0 이면 답한 직후 모델을 GPU 메모리에서 내린다(8GB GPU 에서 ComfyUI 이미지 모델과 자리를 다투지 않도록)."""
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
         "options": {"temperature": temperature, "num_predict": max_tokens},
     }
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     think = _think_param(model)
     if think is not None:
         payload["think"] = think

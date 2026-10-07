@@ -989,7 +989,7 @@ def _describe_refs(ref_images: list, ref_roles: list) -> list:
             notes.append("")
             continue
         try:
-            notes.append(chat_completion(_REF_VISION_MODEL, [{"role": "user", "content": _REF_DESCRIBE_ASK, "images": [b64]}], max_tokens=300, temperature=0.2).replace("\n", " ").strip())
+            notes.append(chat_completion(_REF_VISION_MODEL, [{"role": "user", "content": _REF_DESCRIBE_ASK, "images": [b64]}], max_tokens=300, temperature=0.2, keep_alive=0).replace("\n", " ").strip())
         except Exception as e:
             print(f"[AERIAL] 참조 이미지 설명 실패(무시하고 진행): {e}")
             notes.append("")
