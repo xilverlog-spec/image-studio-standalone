@@ -233,6 +233,7 @@ def _find_vertical_arrows(gray, text_zone, u):
         if 8 * u <= w <= 40 * u and 8 * u <= h <= 70 * u and 0.3 <= area / float(w * h) <= 0.85 and w / float(h) <= 1.6 and h / float(w) <= 2.2:
             heads.append((-j, x0 - pad, y0 - pad, x1 + pad, y1 + pad))
     arrows, kill = [], np.zeros(gray.shape, bool)
+    used = set()
     for hid, hx0, hy0, hx1, hy1 in heads:
         hcx = (hx0 + hx1) / 2.0
         chain = sorted([d for d in dashes if abs(d[1] - hcx) <= 5 * u], key=lambda d: d[2])
@@ -268,6 +269,7 @@ def _find_vertical_arrows(gray, text_zone, u):
                 tail = grp[-1][2]
             if len(grp) < 2:
                 continue
+            used.add(hid)
             for d in grp:
                 kill |= (lab == d[0])
             if hid > 0:
@@ -281,6 +283,33 @@ def _find_vertical_arrows(gray, text_zone, u):
             else:
                 arrows.append((x_shaft, float(tail), float(hy1 - hh), float(hx0), float(hx1), float(hy1)))
             break
+    # 점선이 아니라 '실선 줄' 끝에 달린 채운 삼각 화살촉(AI 가 선으로 그린 화살표): 줄은 보통 선 검출이 그대로 살리므로 머리만 따로 채운 삼각형으로 만든다.
+    # 넓은 쪽(밑변)에 세로로 이어진 줄이 있어야 화살촉으로 본다(그냥 어두운 덩어리는 제외).
+    for hid, hx0, hy0, hx1, hy1 in heads:
+        if hid in used:
+            continue
+        ys, xs = np.nonzero(lab_h == -hid)
+        if len(ys) < 100 * u * u:   # 실제 화살촉은 원본 기준 수백 px² 이상, 모서리 얼룩 같은 작은 덩어리는 제외
+            continue
+        ymid = (ys.min() + ys.max()) / 2.0
+        n_top, n_bot = int((ys < ymid).sum()), int((ys >= ymid).sum())
+        if max(n_top, n_bot) < 1.25 * max(1, min(n_top, n_bot)):
+            continue   # 위아래 질량 차이가 없으면 삼각형이 아니다
+        base_top = n_top > n_bot   # 위가 넓으면 줄은 위쪽에 있고 화살촉은 아래를 가리킨다
+        cx = float(np.median(xs))
+        r0, r1 = (int(ys.min() - 14 * u), int(ys.min() - 2 * u)) if base_top else (int(ys.max() + 2 * u), int(ys.max() + 14 * u))
+        r0, r1 = max(0, r0), min(gray.shape[0], r1)
+        if r1 - r0 < 6 * u:
+            continue
+        xa, xb = max(0, int(cx - 2.5 * u)), min(gray.shape[1], int(cx + 2.5 * u) + 1)
+        strip = (gray[r0:r1, xa:xb] < 125).any(axis=1)
+        if float(strip.mean()) < 0.6:
+            continue
+        hh = min(hy1 - hy0, 1.6 * (hx1 - hx0))
+        base = float(hy1 - hh) if base_top else float(hy0 + hh)
+        tip = float(hy1) if base_top else float(hy0)
+        arrows.append((cx, base, base, float(hx0), float(hx1), tip))
+        kill |= ndi.binary_dilation(lab_h == -hid, iterations=max(2, int(2 * u)))
     return arrows, ndi.binary_dilation(kill, iterations=max(2, int(2 * u)))
 
 

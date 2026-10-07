@@ -155,7 +155,8 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                             again, _err2 = _redraw_panel(crop, seed=207 + idx, tag=str(idx))
                             if again is not None:
                                 iou2 = _shape_iou(crop, again)
-                                if iou2 > iou:
+                                # 차이가 작으면 첫 번째를 쓴다(두 번째가 손으로 그린 듯 선이 끊기고 흔들리는 경우가 있어 일치도가 확실히 높을 때만 바꾼다)
+                                if iou2 > iou + 0.03:
                                     redrawn, iou = again, iou2
                         if iou < SHAPE_IOU_FLOOR:
                             warnings.append(f"칸 {idx + 1}: AI가 형태를 바꿔서(일치도 {iou:.0%}) 원본에서 직접 추출")
