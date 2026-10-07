@@ -28,7 +28,8 @@ REDRAW_INSTRUCTION = (
     "Draw every arrowhead as a small solid filled black triangle (never hollow), keeping dashed arrow shafts as dashed lines."
 )
 REDRAW_LONG_EDGE = 1100
-SHAPE_IOU_MIN = 0.72
+SHAPE_IOU_MIN = 0.72     # 이 이상이면 안심하고 쓴다
+SHAPE_IOU_FLOOR = 0.62   # 이 미만이면 AI가 형태를 많이 바꾼 것이라 버린다(그 사이는 경고를 붙여 쓴다)
 JOB_TTL = 3600
 
 JOBS = {}
@@ -149,8 +150,18 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                     else:
                         iou = _shape_iou(crop, redrawn)
                         if iou < SHAPE_IOU_MIN:
+                            # 합격선에 가깝게 못 미쳤으면 다른 시드로 한 번 더 그려 보고 더 일치하는 쪽을 쓴다(질감 있는 이미지는 직접 추출이 훨씬 지저분하다)
+                            _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 형태가 달라져 다시 그리는 중")
+                            again, _err2 = _redraw_panel(crop, seed=207 + idx, tag=str(idx))
+                            if again is not None:
+                                iou2 = _shape_iou(crop, again)
+                                if iou2 > iou:
+                                    redrawn, iou = again, iou2
+                        if iou < SHAPE_IOU_FLOOR:
                             warnings.append(f"칸 {idx + 1}: AI가 형태를 바꿔서(일치도 {iou:.0%}) 원본에서 직접 추출")
                         else:
+                            if iou < SHAPE_IOU_MIN:
+                                warnings.append(f"칸 {idx + 1}: AI 재생성본의 형태 일치도가 {iou:.0%}로 다소 낮습니다. 결과를 원본과 비교해 확인하세요")
                             _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 선 추출")
                             traced = line_trace.trace_lines(_png_bytes(redrawn), fills=fills, line_art=True, role_by="geometry")
                             if traced["stats"]["lines"] >= 4:
