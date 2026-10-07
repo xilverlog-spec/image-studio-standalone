@@ -475,7 +475,8 @@ def texture_noise(im):
 
 def is_clean_diagram(im):
     nf, n_all = texture_noise(im)
-    return (nf < 1.0) if nf >= 0 else (n_all < 0.15)
+    # 깨끗한 도식 0.05~0.14, 질감 있는 3D 캡처 0.64(14번), 사진·스캔 2.2 이상 — 중간값은 AI 재생성 쪽(안전한 쪽)으로 보낸다
+    return (nf < 0.4) if nf >= 0 else (n_all < 0.15)
 
 
 def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, enhance=None, fills=False, line_art=False, auto_clean=True, role_by="auto"):
