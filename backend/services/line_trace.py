@@ -478,7 +478,9 @@ def is_clean_diagram(im):
     return (nf < 1.0) if nf >= 0 else (n_all < 0.15)
 
 
-def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, enhance=None, fills=False, line_art=False, auto_clean=True):
+def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, enhance=None, fills=False, line_art=False, auto_clean=True, role_by="auto"):
+    """role_by: 'auto' = 선 굵기 차이가 뚜렷하면 굵기로, 아니면 도형 위치로 위계를 정한다.
+    'geometry' = 항상 도형 위치(배경과 맞닿는 바깥 경계 = 외곽선)로만 정한다 — AI가 다시 그린 선화는 굵기가 매번 달라서 이쪽을 쓴다."""
     im0 = Image.open(io.BytesIO(image_bytes))
     if im0.mode in ("RGBA", "LA", "P"):
         rgba = im0.convert("RGBA")
@@ -894,22 +896,40 @@ def trace_lines(image_bytes, ocr_texts=None, target_long_edge=3600, debug=None, 
         tcap = 0.014 * long_edge   # 이보다 두꺼운 '선'은 이미지 가장자리의 어두운 테두리·채운 면이라 선이 아니다
         pos_ = [x for x in thick if 0 < x <= tcap] or [1.0]
         hi_t, lo_t = float(np.percentile(pos_, 90)), float(np.percentile(pos_, 10))
-        spread_ok = hi_t / max(lo_t, 1e-6) >= 1.5  # 굵기 차이가 뚜렷할 때만 위계를 둔다(전부 비슷하면 모두 같은 선)
+        spread_ok = hi_t / max(lo_t, 1e-6) >= 1.5 and role_by != "geometry"  # 굵기 차이가 뚜렷할 때만 굵기로 위계를 둔다(전부 비슷하면 도형 위치로)
         if debug is not None:
             debug['thick'] = [round(x, 1) for x in thick]; debug['med_t'] = med_t
-        sil_fill = None
-        if not spread_ok:  # 굵기 차이가 없으면 선으로 둘러싸인 전체 모양을 채워서 바깥 경계 여부로 위계를 정한다
+        blk = None
+        if not spread_ok:
+            # 굵기 차이가 없으면 도형 위치로 위계를 정한다: 선 한 점에서 사방으로 빛을 쏴서 선에 막히지 않고 이미지 밖으로 나가는 비율이 높으면 '바깥'.
+            # (선이 조금 끊겨 있어도 면 채우기처럼 안쪽이 바깥으로 오판되지 않는다. 바닥판 점선은 건물과 붙어 보이므로 뺀다)
             m_img = Image.new("L", (W, H), 0)
             dm = ImageDraw.Draw(m_img)
             for L_ in lines:
-                dm.line([tuple(L_[0]), tuple(L_[1])], fill=255, width=max(15, int(0.012 * max(W, H))))
-            sil_fill = ndi.binary_fill_holes(np.asarray(m_img) > 0)
-            if debug is not None: debug['sil_fill'] = sil_fill
+                if L_[2] == "dash":
+                    continue
+                dm.line([tuple(L_[0]), tuple(L_[1])], fill=255, width=max(5, int(0.004 * max(W, H))))
+            blk = np.asarray(m_img) > 0
+            _ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+            _dirs = np.stack([np.cos(_ang), np.sin(_ang)], 1)
+            _step = max(3.0, 0.002 * max(W, H))
+            _ts = np.arange(1, int(1.5 * max(W, H) / _step) + 1) * _step
         off_ = max(10.0, 0.012 * max(W, H))
 
         def _inside_sil(pt):
             x_, y_ = int(round(pt[0])), int(round(pt[1]))
-            return 0 <= x_ < W and 0 <= y_ < H and bool(sil_fill[y_, x_])
+            if not (0 <= x_ < W and 0 <= y_ < H):
+                return False
+            free_ = 0
+            for d_ in _dirs:
+                xs_ = np.rint(pt[0] + d_[0] * _ts).astype(int)
+                ys_ = np.rint(pt[1] + d_[1] * _ts).astype(int)
+                ok_ = (xs_ >= 0) & (xs_ < W) & (ys_ >= 0) & (ys_ < H)
+                bad_ = np.nonzero(~ok_)[0]
+                end_ = int(bad_[0]) if len(bad_) else len(_ts)
+                if not blk[ys_[:end_], xs_[:end_]].any():
+                    free_ += 1
+            return free_ / float(len(_dirs)) < 0.2
         new_lines = []
         for idx_, (L_, tk) in enumerate(zip(lines, thick)):
             if tk > tcap:

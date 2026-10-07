@@ -24,8 +24,7 @@ from services import diagram_kind
 REDRAW_INSTRUCTION = (
     "Redraw this isometric architecture diagram as a clean, crisp, high-resolution black line drawing on a pure white background. "
     "Keep every shape, proportion, edge position and the camera angle exactly the same. Remove all textures, shading, colors and noise. "
-    "Use only single black lines with exactly two weights: a bold line only for the outer silhouette of each solid volume, and one thin uniform line for everything else "
-    "(inner edges, translucent or ghost volumes, arrows). Do not add or remove any object. "
+    "Use only thin uniform black single lines. Do not add or remove any object. "
     "Draw every arrowhead as a small solid filled black triangle (never hollow), keeping dashed arrow shafts as dashed lines."
 )
 REDRAW_LONG_EDGE = 1100
@@ -153,7 +152,7 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                             warnings.append(f"칸 {idx + 1}: AI가 형태를 바꿔서(일치도 {iou:.0%}) 원본에서 직접 추출")
                         else:
                             _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 선 추출")
-                            traced = line_trace.trace_lines(_png_bytes(redrawn), fills=fills, line_art=True)
+                            traced = line_trace.trace_lines(_png_bytes(redrawn), fills=fills, line_art=True, role_by="geometry")
                             if traced["stats"]["lines"] >= 4:
                                 chosen, used_ai = traced, True
                             else:
