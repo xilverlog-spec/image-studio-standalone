@@ -125,6 +125,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [aspect, setAspect] = useState('16:9');
   const [provider, setProvider] = useState('');
   const [keepForm, setKeepForm] = useState(85);
+  const [depth, setDepth] = useState('material');      // 입면 비교의 변경 폭: 'material' 재료만 | 'redesign' 입면 재디자인(형태 약 70%)
   const [consent, setConsent] = useState(readConsent);
   const [autoRetry, setAutoRetry] = useState(true);
   const [sortBy, setSortBy] = useState('recent');
@@ -199,7 +200,14 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
 
   const togglePick = (id) => setPicks((p) => ({ ...p, [mode]: (p[mode] || []).includes(id) ? p[mode].filter((x) => x !== id) : [...(p[mode] || []), id] }));
 
-  const promptKey = useMemo(() => JSON.stringify([mode, extra.trim(), refs.map((r) => r.role)]), [mode, extra, refs]);
+  const activeDepth = mode === 'facade' ? depth : 'material';
+  const pickDepth = (d) => {
+    setDepth(d);
+    const keep = opts?.depths?.find((x) => x.id === d)?.keep_form;
+    if (keep) setKeepForm(keep);   // 빠른 초안 엔진의 형태 유지 슬라이더도 같이 맞춘다
+  };
+
+  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => r.role)]), [mode, activeDepth, extra, refs]);
   const promptStale = !!commonPrompt && builtFor !== promptKey;
 
   const buildCommonPrompt = async () => {
@@ -208,7 +216,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
       const res = await apiFetch('/v1/image/aerial-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), mode }),
+        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), mode, depth: activeDepth }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
@@ -229,7 +237,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   };
 
   const oneGeneration = (variant, prompt, ex) => postJson('/v1/image/aerial/generate', {
-    mode, variant, common_prompt: prompt, extra_en: ex, provider, aspect_ratio: aspect, keep_form: keepForm,
+    mode, variant, depth: activeDepth, common_prompt: prompt, extra_en: ex, provider, aspect_ratio: aspect, keep_form: keepForm,
     input_image_base64: image.dataUrl.split(',').pop(),
     reference_images: refs.map((r) => ({ role: r.role, base64: r.dataUrl.split(',').pop() })),
     external_consent: consent,
@@ -279,7 +287,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
         }
         ok++;
         const vLabel = (mode === 'facade' ? opts.facades : opts.atmospheres).find((v) => v.id === jobs[i])?.label || jobs[i];
-        const entry = addResult(data, { label: vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
+        const entry = addResult(data, { label: activeDepth === 'redesign' ? `${vLabel} · 재디자인` : vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
         if (thumb) setThumbs((t) => ({ ...t, [entry.id]: thumb }));
         onGenerated?.();
       } catch (e) {
@@ -398,6 +406,18 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           <input ref={refFileRef} type="file" accept="image/*" hidden onChange={(e) => { onPickRef(e.target.files?.[0]); e.target.value = ''; }} />
           {refsNeeded && refs.length === 0 && <p style={{ ...hint, color: '#B91C1C' }}>이 방식은 참조 이미지가 1장 이상 필요합니다.</p>}
         </div>
+
+        {mode === 'facade' && (
+          <div style={col}>
+            <span style={label}>입면을 얼마나 바꿀까요</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(opts?.depths || []).map((d) => (
+                <button key={d.id} style={{ ...chip(depth === d.id, busy), flex: 1 }} disabled={busy} onClick={() => pickDepth(d.id)}>{d.label}</button>
+              ))}
+            </div>
+            <p style={hint}>{opts?.depths?.find((d) => d.id === depth)?.desc}</p>
+          </div>
+        )}
 
         <div style={col}>
           <span style={label}>3. {mode === 'facade' ? '입면 후보 (여러 개 선택 → 한 번에 비교)' : '분위기 (여러 개 선택 → 한 번에 비교)'}</span>

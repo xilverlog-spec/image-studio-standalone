@@ -51,6 +51,16 @@ KEEP_FORM = (
     "do not add, remove, merge or restyle floors, volumes or openings. Keep the surrounding site, roads and neighboring buildings as drawn unless asked otherwise."
 )
 
+# 입면 비교의 변경 폭: material = 재료만 교체(형태 100% 유지), redesign = 입면 디자인 자체를 새로 구성(전체 매스는 유지, 형태 약 70%)
+DEPTHS = [
+    {"id": "material", "label": "재료만 바꾸기", "desc": "형태·창 배치는 그대로, 외장 재료만 교체합니다.", "keep_form": 90},
+    {"id": "redesign", "label": "입면 재디자인", "desc": "전체 매스·높이·카메라는 유지하되(형태 약 70%), 창 구성·패널 리듬·루버·발코니 등 입면 디자인을 새로 짭니다.", "keep_form": 70},
+]
+KEEP_FORM_REDESIGN = (
+    "Keep the overall building massing, footprint, height, number of floors, roof silhouette and camera angle from image 1 (about 70% of the form must remain recognizable), "
+    "and keep the surrounding site, roads and neighboring buildings as drawn. The facade design itself - window arrangement, panel rhythm, fins, louvers, balconies, entrance articulation - may be redesigned."
+)
+
 
 def _by_id(items: list, key: str) -> dict:
     return next((x for x in items if x["id"] == key), {})
@@ -58,14 +68,19 @@ def _by_id(items: list, key: str) -> dict:
 
 def options() -> dict:
     strip = lambda items: [{"id": x["id"], "label": x["label"]} for x in items]
-    return {"modes": MODES, "facades": strip(FACADES), "atmospheres": strip(ATMOSPHERES), "ref_roles": [{"id": k, "label": {"facade": "입면", "material": "재질", "mood": "분위기", "site": "대지·주변"}[k]} for k in REF_ROLES]}
+    return {"modes": MODES, "depths": DEPTHS, "facades": strip(FACADES), "atmospheres": strip(ATMOSPHERES), "ref_roles": [{"id": k, "label": {"facade": "입면", "material": "재질", "mood": "분위기", "site": "대지·주변"}[k]} for k in REF_ROLES]}
 
 
-def variant_phrase(mode: str, variant_id: str) -> str:
+def variant_phrase(mode: str, variant_id: str, depth: str = "material") -> str:
     """한 장마다 달라지는 문구(선택한 분위기 또는 입면)."""
     if mode == "facade":
         f = _by_id(FACADES, variant_id)
-        return f"Facade design: change only the facade finish of the building to {f['prompt']}. Everything else stays identical." if f else ""
+        if not f:
+            return ""
+        if depth == "redesign":
+            return (f"Facade redesign: redesign the facade of the building with {f['prompt']}. Compose a fresh, coherent facade design with this material "
+                    "(new window proportions and rhythm, panel divisions, depth and shadow lines) while the overall massing stays recognizable.")
+        return f"Facade design: change only the facade finish of the building to {f['prompt']}. Everything else stays identical."
     a = _by_id(ATMOSPHERES, variant_id)
     return f"Atmosphere: {a['prompt']}." if a else ""
 
@@ -74,9 +89,10 @@ def variant_label(mode: str, variant_id: str) -> str:
     return (_by_id(FACADES if mode == "facade" else ATMOSPHERES, variant_id) or {}).get("label", variant_id)
 
 
-def common_prompt(mode: str, extra_en: str, ref_roles: list) -> str:
+def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material") -> str:
     """모든 장에 공통으로 들어가는 영어 프롬프트."""
-    parts = ["Transform image 1, an architectural massing / 3D model / sketch capture, into a photorealistic architectural rendering as if produced by a professional render engine.", KEEP_FORM]
+    keep = KEEP_FORM_REDESIGN if (mode == "facade" and depth == "redesign") else KEEP_FORM
+    parts = ["Transform image 1, an architectural massing / 3D model / sketch capture, into a photorealistic architectural rendering as if produced by a professional render engine.", keep]
     for i, role in enumerate(ref_roles):
         sent = REF_ROLES.get(role)
         if sent:
@@ -90,13 +106,15 @@ def common_prompt(mode: str, extra_en: str, ref_roles: list) -> str:
     return " ".join(parts)
 
 
-def local_prompt(mode: str, extra_en: str, variant_id: str) -> str:
+def local_prompt(mode: str, extra_en: str, variant_id: str, depth: str = "material") -> str:
     """로컬 SDXL 용 키워드형 프롬프트(문장 지시를 이해하지 못하므로 장면 묘사로 쓴다)."""
     base = "photorealistic architectural photograph of a building, professional architectural visualization, realistic materials, detailed landscaping, natural light"
     if mode == "facade":
         f = _by_id(FACADES, variant_id)
         v = f["prompt"] if f else ""
         base += f", {v}, bright daylight, blue sky"
+        if depth == "redesign":
+            base += ", newly designed contemporary facade composition, distinctive window rhythm"
     else:
         a = _by_id(ATMOSPHERES, variant_id)
         base += f", {a['prompt']}" if a else ""

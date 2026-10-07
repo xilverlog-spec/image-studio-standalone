@@ -959,6 +959,7 @@ class AerialPromptRequest(BaseModel):
     extra: str = ""                       # 사용자가 쓴 추가 요구사항(한글 가능)
     ref_roles: List[str] = []             # 참조 이미지 역할 순서: 'facade' | 'material' | 'mood' | 'site'
     mode: str = "render"                  # 'render' | 'facade' | 'reference'
+    depth: str = "material"               # 입면 비교의 변경 폭: 'material'(재료만) | 'redesign'(입면 재디자인, 형태 약 70%)
 
 
 @router.get("/image/aerial-options")
@@ -967,8 +968,8 @@ async def aerial_options():
     return {"status": "success", **aerial_modes.options(), "providers": await asyncio.to_thread(_aerial_provider_list)}
 
 
-def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render") -> str:
-    return aerial_modes.common_prompt(mode, extra_en, ref_roles)
+def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material") -> str:
+    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth)
 
 
 def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
@@ -999,7 +1000,7 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
 async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
     extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra)
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode), "extra_en": extra_en, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth), "extra_en": extra_en, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
 
 
 LOCAL_ENGINES = {
@@ -1020,6 +1021,7 @@ def _aerial_provider_list() -> list:
 class AerialGenerateRequest(BaseModel):
     mode: str = "render"                  # 'render' | 'facade' | 'reference'
     variant: str = ""                     # 분위기 id 또는 입면 id
+    depth: str = "material"               # 입면 비교의 변경 폭(aerial_modes.DEPTHS)
     common_prompt: str = ""               # /image/aerial-prompt 가 만든 공통 프롬프트(영어, 사용자가 고쳤을 수 있음)
     extra_en: str = ""                    # 추가 요구사항의 영어 확장(로컬 SDXL 키워드 프롬프트용)
     provider: str = "local_sdxl"
@@ -1095,7 +1097,7 @@ async def aerial_generate(request: AerialGenerateRequest):
 
     engine = LOCAL_ENGINES.get(request.provider)
     if engine is None:      # 유료 API
-        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant)}".strip()
+        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
         paid_req = ImageGenerateRequest(
             prompt=prompt, aspect_ratio=request.aspect_ratio, provider=request.provider, input_image_base64=request.input_image_base64,
             reference_images=request.reference_images, external_consent=request.external_consent, project=request.project, style=label,
@@ -1106,9 +1108,9 @@ async def aerial_generate(request: AerialGenerateRequest):
         return res
 
     if engine["kind"] == "sdxl":
-        prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant)
+        prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant, request.depth)
     else:   # kontext: 문장형 지시
-        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant)}".strip()
+        prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
     return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
 
 
