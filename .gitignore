@@ -69,3 +69,9 @@ firebase-debug.log
 $null
 *.log
 .DS_Store
+
+# 2026-10-07 고객 프로젝트 이미지(시험 샘플)는 자동 백업(git add -A + push)으로 원격에 올라가면 안 된다
+모델링/
+public/__t/
+public/cd_test/
+public/aerial_test/
