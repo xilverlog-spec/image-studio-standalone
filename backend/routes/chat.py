@@ -30,10 +30,15 @@ class ChatCompletionRequest(BaseModel):
     messages: List[ChatMessage]
     max_tokens: int = 3000
     temperature: float = 0.3
+    project: Optional[str] = None   # 프론트의 apiFetch 가 현재 프로젝트를 자동으로 실어 보낸다
 
 
 @router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
+    if request.model.lower().startswith("gemini") and request.project:
+        from services import project_store
+        if not project_store.get_external_allowed(request.project):
+            raise HTTPException(status_code=403, detail="이 프로젝트는 외부 서버 전송이 금지되어 있어 Gemini(구글 서버)를 쓸 수 없습니다. 프로젝트 비밀번호로 설정을 바꾸거나 다른 프로젝트에서 작업하세요.")
     # "gemini"로 시작하는 모델명은 로컬 Ollama 대신 Gemini API(무료 등급, 텍스트/비전 전용)로
     # 라우팅한다 — § config.py GEMINI_API_KEY 주석 참고. 호출부(프론트엔드)는 두 경우 모두
     # 같은 /v1/chat/completions 모양을 그대로 쓴다.

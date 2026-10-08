@@ -111,7 +111,11 @@ def variant_label(mode: str, variant_id: str) -> str:
     return (_by_id(FACADES if mode == "facade" else ATMOSPHERES, variant_id) or {}).get("label", variant_id)
 
 
-def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None) -> str:
+KEEP_SITE = ("Keep the site exactly as in image 1: the terrain and slopes, ground surfaces, roads, fences, retaining walls and neighboring buildings must not be moved, "
+             "removed, redrawn or replaced. Only add small landscaping such as trees and plants where it does not change the site layout.")
+
+
+def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None, keep_site: bool = False) -> str:
     """모든 장에 공통으로 들어가는 영어 프롬프트."""
     propose = mode == "reference" and depth == "ref_propose"
     keep = KEEP_FORM_REDESIGN if (propose or (mode == "facade" and depth == "redesign")) else KEEP_FORM
@@ -135,6 +139,8 @@ def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "mater
         parts.append("Use realistic daylight, with natural landscaping and sky; keep lighting identical across variants so only the facade differs.")
     else:
         parts.append("Add realistic materials, lighting, landscaping and sky.")
+    if keep_site:
+        parts.append(KEEP_SITE)
     if extra_en.strip():
         parts.append(f"Additional requirements: {extra_en.strip()}")
     return " ".join(parts)

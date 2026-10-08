@@ -27,6 +27,27 @@ class ProjectDeleteRequest(BaseModel):
     password: str
 
 
+class ExternalPolicyRequest(BaseModel):
+    name: str
+    password: str
+    allowed: bool
+
+
+@router.get("/external-policy")
+async def external_policy(project: str = ""):
+    """현재 프로젝트가 외부 서버 전송(유료 이미지 API)을 허용하는지."""
+    return {"status": "success", "project": project, "external_allowed": project_store.get_external_allowed(project)}
+
+
+@router.post("/external-policy")
+async def set_external_policy(request: ExternalPolicyRequest):
+    try:
+        project_store.set_external_allowed(request.name, request.allowed, request.password)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return {"status": "success", "project": request.name, "external_allowed": request.allowed}
+
+
 @router.get("")
 async def list_projects():
     return {"status": "success", "projects": project_store.list_projects()}

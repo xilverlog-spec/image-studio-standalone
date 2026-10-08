@@ -109,7 +109,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const fileRef = useRef(null);
   const refFileRef = useRef(null);
   const topRef = useRef(null);
-  const [opts, setOpts] = useState(null);             // { modes, facades, atmospheres, ref_roles, providers }
+  const [opts, setOpts] = useState(null);             // { modes, facades, atmospheres, ref_roles, providers, external_allowed }
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [policyPw, setPolicyPw] = useState('');
+  const [policyBusy, setPolicyBusy] = useState(false);
   const [mode, setMode] = useState('render');
   const [picks, setPicks] = useState(DEFAULT_PICKS);
   const [image, setImage] = useState(null);           // { dataUrl, width, height, resized, srcWidth, srcHeight }
@@ -125,6 +128,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [aspect, setAspect] = useState('16:9');
   const [provider, setProvider] = useState('');
   const [keepForm, setKeepForm] = useState(85);
+  const [keepSite, setKeepSite] = useState(true);      // 부지·주변은 원본 그대로 두고 건물만 바꾼다
   const [depths, setDepths] = useState({});            // 방식별 변경 폭. 입면 비교: material 재료만 | redesign 재디자인(형태 약 70%) / 레퍼런스: ref_apply 그대로 입히기 | ref_propose 참고해서 새로 제안
   const [consent, setConsent] = useState(readConsent);
   const [autoRetry, setAutoRetry] = useState(true);
@@ -157,15 +161,36 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const refsOk = !refsNeeded || refs.length > 0;
   const canGenerate = !!image && totalJobs > 0 && !!provider && refsOk && (!paid || consent) && !busy && !promptBusy;
 
+  const loadOptions = () => apiFetch('/v1/image/aerial-options').then((r) => r.json()).then((d) => {
+    if (d.status !== 'success') return;
+    setOpts(d);
+    const firstFree = d.providers.find((p) => p.available && p.free) || d.providers.find((p) => p.available);
+    setProvider((cur) => (d.providers.some((p) => p.id === cur && p.available) ? cur : (firstFree?.id || '')));
+  }).catch(() => {});
+
   useEffect(() => {
-    apiFetch('/v1/image/aerial-options').then((r) => r.json()).then((d) => {
-      if (d.status !== 'success') return;
-      setOpts(d);
-      const firstFree = d.providers.find((p) => p.available && p.free) || d.providers.find((p) => p.available);
-      setProvider((cur) => (d.providers.some((p) => p.id === cur && p.available) ? cur : (firstFree?.id || '')));
-    }).catch(() => {});
+    loadOptions();
     apiFetch('/v1/image/options').then((r) => r.json()).then((d) => d.paid_usage && setUsage(d.paid_usage)).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 프로젝트의 외부 전송 허용 여부를 바꾼다(프로젝트 비밀번호 필요). 금지하면 유료 엔진과 Gemini 호출이 서버에서 막힌다.
+  const changeExternalPolicy = async (allowed) => {
+    if (!policyPw) { addToast?.('error', '비밀번호 필요', '프로젝트 비밀번호를 입력하세요.'); return; }
+    setPolicyBusy(true);
+    try {
+      const proj = (await (await apiFetch('/v1/projects/external-policy')).json()).project;
+      const res = await fetch('/v1/projects/external-policy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: proj, password: policyPw, allowed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '설정을 바꾸지 못했습니다');
+      setPolicyPw(''); setPolicyOpen(false);
+      addToast?.('success', '프로젝트 설정 변경', allowed ? '외부 서버 전송을 허용했습니다.' : '외부 서버 전송을 금지했습니다. 유료 엔진과 Gemini는 이 프로젝트에서 쓸 수 없습니다.');
+      await loadOptions();
+    } catch (e) { addToast?.('error', '설정 변경 실패', e.message); }
+    setPolicyBusy(false);
+  };
 
   useEffect(() => {
     if (!busy) return undefined;
@@ -209,7 +234,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   };
   const redesigned = activeDepth === 'redesign' || activeDepth === 'ref_propose';
 
-  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => `${r.id}:${r.role}:${(r.hint || '').trim()}`)]), [mode, activeDepth, extra, refs]);
+  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, keepSite, extra.trim(), refs.map((r) => `${r.id}:${r.role}:${(r.hint || '').trim()}`)]), [mode, activeDepth, keepSite, extra, refs]);
   const promptStale = !!commonPrompt && builtFor !== promptKey;
 
   const buildCommonPrompt = async () => {
@@ -218,7 +243,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
       const res = await apiFetch('/v1/image/aerial-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), ref_hints: refs.map((r) => r.hint || ''), mode, depth: activeDepth }),
+        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), ref_hints: refs.map((r) => r.hint || ''), keep_site: keepSite, mode, depth: activeDepth }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
@@ -437,6 +462,14 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           </div>
         </div>
 
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
+          <input type="checkbox" checked={keepSite} onChange={(e) => setKeepSite(e.target.checked)} disabled={busy} style={{ marginTop: 3 }} data-testid="keep-site" />
+          <span>
+            부지·주변을 원본 그대로 두도록 요청 (지형·도로·울타리·이웃 건물은 두고 건물만 바꾸도록 지시합니다)
+            <br /><span style={{ color: '#C2410C' }}>보장되지는 않습니다. 추가 요구사항에 오션뷰·광장처럼 부지를 바꾸는 내용이 있으면 그쪽이 우선되어 주변이 바뀝니다.</span>
+          </span>
+        </label>
+
         <div style={col}>
           <span style={label}>4. 추가 요구사항 (선택, 한글 가능)</span>
           <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={3}
@@ -497,8 +530,23 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
               </button>
             ))}
           </div>
-          {providers.length > 0 && !providers.some((p) => !p.free && p.available) && (
+          {opts?.external_allowed === false ? (
+            <p style={{ ...hint, color: '#B91C1C' }} data-testid="external-locked">🔒 이 프로젝트는 외부 서버 전송이 금지되어 있습니다. 유료 엔진은 쓸 수 없고, 한글 요구사항도 이 PC의 모델로만 변환합니다.</p>
+          ) : providers.length > 0 && !providers.some((p) => !p.free && p.available) && (
             <p style={hint}>유료 엔진은 관리자가 backend/.env 에 API 키를 넣으면 켜집니다. 지금은 무료 엔진만 쓸 수 있습니다.</p>
+          )}
+          <button style={{ ...chip(false), padding: '4px 8px', fontSize: 11.5, alignSelf: 'flex-start' }} onClick={() => setPolicyOpen((v) => !v)} data-testid="policy-toggle">
+            {policyOpen ? '▼' : '▶'} 프로젝트 외부 전송 설정
+          </button>
+          {policyOpen && (
+            <div style={{ ...col, padding: 8, border: '1px solid var(--border-color)', borderRadius: 8, background: 'rgba(255,255,255,0.6)' }}>
+              <p style={hint}>대외비 프로젝트는 외부 전송을 금지하세요. 금지하면 이 프로젝트에서는 유료 엔진, Gemini(구글 서버) 호출이 서버에서 막힙니다. 바꾸려면 프로젝트 비밀번호가 필요합니다.</p>
+              <input type="password" value={policyPw} onChange={(e) => setPolicyPw(e.target.value)} placeholder="프로젝트 비밀번호" style={inputBase} autoComplete="off" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={{ ...chip(opts?.external_allowed === false, policyBusy), flex: 1 }} disabled={policyBusy} onClick={() => changeExternalPolicy(false)}>외부 전송 금지</button>
+                <button style={{ ...chip(opts?.external_allowed !== false, policyBusy), flex: 1 }} disabled={policyBusy} onClick={() => changeExternalPolicy(true)}>외부 전송 허용</button>
+              </div>
+            </div>
           )}
         </div>
 

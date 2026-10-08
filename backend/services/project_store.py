@@ -34,6 +34,30 @@ def init_project_db():
             created_at REAL NOT NULL
         )
     """)
+    # 2026-10-08: 프로젝트별 외부 전송 허용 여부(1=허용, 0=금지). 대외비 프로젝트는 이미지·설명이 OpenAI/Google 서버로 나가는 유료 엔진을 막는다.
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(projects)").fetchall()]
+    if "external_allowed" not in cols:
+        cur.execute("ALTER TABLE projects ADD COLUMN external_allowed INTEGER NOT NULL DEFAULT 1")
+    conn.commit()
+    conn.close()
+
+
+def get_external_allowed(name: str) -> bool:
+    """프로젝트가 외부 서버 전송(유료 이미지 API)을 허용하는지. 계정이 없는 프로젝트(default 등)는 허용으로 본다."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT external_allowed FROM projects WHERE name = ?", (name,))
+    row = cur.fetchone()
+    conn.close()
+    return True if row is None else bool(row[0])
+
+
+def set_external_allowed(name: str, allowed: bool, password: str):
+    """바꾸려면 프로젝트 비밀번호가 필요하다(아무나 대외비 보호를 풀지 못하게)."""
+    if not verify_project(name, password):
+        raise ValueError("비밀번호가 올바르지 않습니다.")
+    conn = _get_conn()
+    conn.execute("UPDATE projects SET external_allowed = ? WHERE name = ?", (1 if allowed else 0, name))
     conn.commit()
     conn.close()
 

@@ -116,6 +116,9 @@ class ImageGenerateRequest(BaseModel):
     external_consent: bool = False
 
 async def _generate_with_paid_provider(request: ImageGenerateRequest, output_path: str, filename: str):
+    from services import project_store
+    if not project_store.get_external_allowed(request.project):
+        raise HTTPException(status_code=403, detail="이 프로젝트는 외부 서버 전송이 금지되어 있어 유료 엔진을 쓸 수 없습니다. 무료(로컬) 엔진을 쓰거나, 프로젝트 비밀번호로 설정을 바꾸세요.")
     if not request.external_consent:
         raise HTTPException(status_code=400, detail="이미지와 설명이 외부 서버(OpenAI/Google)로 전송되는 것에 동의해야 유료 생성을 쓸 수 있습니다.")
     input_image_bytes = None
@@ -960,18 +963,25 @@ class AerialPromptRequest(BaseModel):
     ref_roles: List[str] = []             # 참조 이미지 역할 순서: 'facade' | 'material' | 'mood' | 'site'
     mode: str = "render"                  # 'render' | 'facade' | 'reference'
     depth: str = "material"               # 입면 비교의 변경 폭: 'material'(재료만) | 'redesign'(입면 재디자인, 형태 약 70%)
+    project: str = image_history_store.DEFAULT_PROJECT   # 외부 전송 금지 프로젝트면 한글 변환도 로컬 모델로 한다
     ref_images: List[str] = []            # 참조 이미지 base64(ref_roles 와 같은 순서). 있으면 이 PC의 로컬 비전 모델로 입면 특징을 글로 뽑아 프롬프트에 넣는다(외부 전송 없음)
+    keep_site: bool = True                # 부지·주변(지형, 도로, 울타리, 이웃 건물)을 원본 그대로 두고 건물만 바꾼다
     ref_hints: List[str] = []             # 참조마다 직원이 적은 "이 사진에서 가져올 것"(한글 가능, 같은 순서). 적은 참조는 자동 분석을 건너뛰고 이 문장을 우선한다
 
 
 @router.get("/image/aerial-options")
-async def aerial_options():
-    """조감도 탭 선택지(작업 방식·입면 후보·분위기·참조 역할)와 엔진 목록. 문구는 aerial_modes 한 곳에서만 관리한다."""
-    return {"status": "success", **aerial_modes.options(), "providers": await asyncio.to_thread(_aerial_provider_list)}
+async def aerial_options(project: str = ""):
+    """조감도 탭 선택지(작업 방식·입면 후보·분위기·참조 역할)와 엔진 목록. 문구는 aerial_modes 한 곳에서만 관리한다. project 가 외부 전송을 금지하면 유료 엔진은 사용 불가로 내려 준다."""
+    from services import project_store
+    allowed = project_store.get_external_allowed(project)
+    providers = await asyncio.to_thread(_aerial_provider_list)
+    if not allowed:
+        providers = [{**p, "available": False, "note": "이 프로젝트는 외부 서버 전송이 금지되어 있습니다"} if not p["free"] else p for p in providers]
+    return {"status": "success", **aerial_modes.options(), "providers": providers, "external_allowed": allowed}
 
 
-def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None) -> str:
-    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth, ref_notes, ref_hints)
+def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None, keep_site: bool = False) -> str:
+    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth, ref_notes, ref_hints, keep_site)
 
 
 _REF_VISION_MODEL = "qwen2.5vl:3b"   # 실측: 적벽돌 참조의 재료·격자 리듬을 맞게 읽음(gemma4:e4b 는 색을 틀림), 약 9초
@@ -998,7 +1008,7 @@ def _describe_refs(ref_images: list, ref_roles: list, skip: list | None = None) 
     return notes
 
 
-def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
+def _expand_extra_to_english(extra: str, kind: str = "render", local_only: bool = False) -> str:
     """한글 요청을 건축 렌더링 지시용 영어로 옮긴다(무료 Gemini 텍스트). 키가 없거나 실패하면 원문 그대로 쓴다. kind='edit' 은 결과 이미지 부분 수정 지시용."""
     if not extra.strip():
         return ""
@@ -1013,12 +1023,16 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
                "(materials, time of day, weather, landscaping, people, mood). Do NOT change or invent building geometry, floor count or camera. "
                "Under 70 words, plain text only, no preface.\n\nRequest: ")
     try:
-        from services.gemini_chat import gemini_chat_completion
-        text = gemini_chat_completion(
-            model="gemini-3.1-flash-lite",
-            messages=[{"role": "user", "content": ask + extra.strip()}],
-            max_tokens=400, temperature=0.2,
-        )
+        if local_only:   # 외부 전송이 금지된 프로젝트: 한글 문장도 구글 서버로 보내지 않고 이 PC의 로컬 모델로 변환한다
+            from services.simple_chat import chat_completion
+            text = chat_completion("gemma4:e4b", [{"role": "user", "content": ask + extra.strip()}], max_tokens=300, temperature=0.2, keep_alive=0)
+        else:
+            from services.gemini_chat import gemini_chat_completion
+            text = gemini_chat_completion(
+                model="gemini-3.1-flash-lite",
+                messages=[{"role": "user", "content": ask + extra.strip()}],
+                max_tokens=400, temperature=0.2,
+            )
         text = (text or "").strip()
         return text if text else extra.strip()
     except Exception:
@@ -1028,10 +1042,12 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
 @router.post("/image/aerial-prompt")
 async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
-    extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra)
-    ref_hints = [await asyncio.to_thread(_expand_extra_to_english, h, "ref") if h.strip() else "" for h in request.ref_hints]
+    from services import project_store
+    local_only = not project_store.get_external_allowed(request.project)
+    extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra, "render", local_only)
+    ref_hints = [await asyncio.to_thread(_expand_extra_to_english, h, "ref", local_only) if h.strip() else "" for h in request.ref_hints]
     ref_notes = await asyncio.to_thread(_describe_refs, request.ref_images, request.ref_roles, [bool(h) for h in ref_hints]) if request.ref_images else []
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes, ref_hints), "extra_en": extra_en, "ref_notes": ref_notes, "ref_hints_en": ref_hints, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes, ref_hints, request.keep_site), "extra_en": extra_en, "ref_notes": ref_notes, "ref_hints_en": ref_hints, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
 
 
 LOCAL_ENGINES = {
@@ -1160,7 +1176,8 @@ async def aerial_edit(request: AerialEditRequest):
     """조감도 결과를 이어서 고친다(결과 → 입력). 무료는 Kontext, 유료는 같은 API 의 편집."""
     _reject_if_unsafe(request.instruction, project=request.project)
     img_bytes = _decode_b64(request.image_base64, "이미지")
-    instr_en = await asyncio.to_thread(_expand_extra_to_english, request.instruction, "edit")
+    from services import project_store
+    instr_en = await asyncio.to_thread(_expand_extra_to_english, request.instruction, "edit", not project_store.get_external_allowed(request.project))
     output_path, filename = _new_output_path(request.project, "aerial_edit")
     seed = request.seed if request.seed is not None else int.from_bytes(os.urandom(4), "big")
     prompt = f"Edit this architectural rendering: {instr_en}. Keep everything else - building shape, camera angle, materials and lighting - exactly identical."
