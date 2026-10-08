@@ -966,6 +966,7 @@ class AerialPromptRequest(BaseModel):
     project: str = image_history_store.DEFAULT_PROJECT   # 외부 전송 금지 프로젝트면 한글 변환도 로컬 모델로 한다
     ref_images: List[str] = []            # 참조 이미지 base64(ref_roles 와 같은 순서). 있으면 이 PC의 로컬 비전 모델로 입면 특징을 글로 뽑아 프롬프트에 넣는다(외부 전송 없음)
     keep_site: bool = True                # 부지·주변(지형, 도로, 울타리, 이웃 건물)을 원본 그대로 두고 건물만 바꾼다
+    infer_roles: bool = False             # 이지 모드: 글("이미지 2는 재질, 이미지 3은 건물 외관 참고")에서 참조 이미지별 역할과 가져올 것을 읽어 낸다
     ref_hints: List[str] = []             # 참조마다 직원이 적은 "이 사진에서 가져올 것"(한글 가능, 같은 순서). 적은 참조는 자동 분석을 건너뛰고 이 문장을 우선한다
 
 
@@ -989,6 +990,42 @@ _REF_DESCRIBE_ROLES = {"facade", "material"}
 _REF_DESCRIBE_ASK = ("Describe ONLY the surface language of the facade in this image, in English, under 45 words: cladding materials and colors, "
                      "texture and joint pattern, window frame style and spacing rhythm, surface detailing. "
                      "Do NOT describe the building's overall shape, number of floors, roof, massing, or surroundings. Plain text, no preface.")
+
+
+_VALID_ROLES = {"facade", "material", "mood", "site"}
+
+
+def _infer_ref_roles(extra: str, n_refs: int, local_only: bool = False) -> list:
+    """이지 모드: 사용자가 쓴 글에서 참조 이미지(이미지 2, 3, …)마다 무엇을 가져올지 읽어 낸다.
+    반환: [{"role": facade|material|mood|site, "take": 영어 한 구절 또는 ''}] (길이 n_refs). 글에 언급이 없거나 실패하면 {"role": "facade", "take": ""} (자동 분석에 맡긴다)."""
+    default = [{"role": "facade", "take": ""} for _ in range(n_refs)]
+    if n_refs <= 0 or not extra.strip():
+        return default
+    ask = (
+        "The user attached one base image (image 1) plus %d reference images (image 2%s) to an architectural rendering request, and wrote the text below in Korean. "
+        "For each reference image, decide what the user wants to take from it. Roles: facade = building exterior / facade design / window rhythm, "
+        "material = material, texture or color, mood = lighting, weather or atmosphere, site = surroundings or landscaping. "
+        "Never treat any role as copying the building shape. If a reference is not mentioned, use role facade and take ''. "
+        "Answer with ONLY a JSON array of %d objects in order, each {\"role\": \"...\", \"take\": \"short English phrase of what to take, or empty\"}.\n\nText: "
+    ) % (n_refs, "" if n_refs == 1 else f"..{n_refs + 1}", n_refs)
+    try:
+        if local_only:
+            from services.simple_chat import chat_completion
+            text = chat_completion("gemma4:e4b", [{"role": "user", "content": ask + extra.strip()}], max_tokens=500, temperature=0.1, keep_alive=0)
+        else:
+            from services.gemini_chat import gemini_chat_completion
+            text = gemini_chat_completion(model="gemini-3.1-flash-lite", messages=[{"role": "user", "content": ask + extra.strip()}], max_tokens=600, temperature=0.1)
+        m = re.search(r"\[.*\]", text or "", flags=re.S)
+        arr = json.loads(m.group(0)) if m else []
+        out = []
+        for i in range(n_refs):
+            item = arr[i] if i < len(arr) and isinstance(arr[i], dict) else {}
+            role = item.get("role") if item.get("role") in _VALID_ROLES else "facade"
+            out.append({"role": role, "take": str(item.get("take") or "").strip()})
+        return out
+    except Exception as e:
+        print(f"[AERIAL] 참조 역할 읽기 실패(자동 분석으로 진행): {e}")
+        return default
 
 
 def _describe_refs(ref_images: list, ref_roles: list, skip: list | None = None) -> list:
@@ -1044,10 +1081,17 @@ async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
     from services import project_store
     local_only = not project_store.get_external_allowed(request.project)
+    ref_images = request.ref_images[:paid_image.MAX_REFERENCE_IMAGES]   # 참조는 최대 3장(로컬 GPU 메모리·시간 한계)
+    ref_roles = request.ref_roles[:len(ref_images)]
     extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra, "render", local_only)
-    ref_hints = [await asyncio.to_thread(_expand_extra_to_english, h, "ref", local_only) if h.strip() else "" for h in request.ref_hints]
-    ref_notes = await asyncio.to_thread(_describe_refs, request.ref_images, request.ref_roles, [bool(h) for h in ref_hints]) if request.ref_images else []
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes, ref_hints, request.keep_site), "extra_en": extra_en, "ref_notes": ref_notes, "ref_hints_en": ref_hints, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    if request.infer_roles and ref_images:
+        inferred = await asyncio.to_thread(_infer_ref_roles, request.extra, len(ref_images), local_only)
+        ref_roles = [x["role"] for x in inferred]
+        ref_hints = [x["take"] for x in inferred]     # 이미 영어 문구라 다시 변환하지 않는다
+    else:
+        ref_hints = [await asyncio.to_thread(_expand_extra_to_english, h, "ref", local_only) if h.strip() else "" for h in request.ref_hints[:len(ref_images)]]
+    ref_notes = await asyncio.to_thread(_describe_refs, ref_images, ref_roles, [bool(h) for h in ref_hints]) if ref_images else []
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, ref_roles, request.mode, request.depth, ref_notes, ref_hints, request.keep_site), "ref_roles_used": ref_roles, "extra_en": extra_en, "ref_notes": ref_notes, "ref_hints_en": ref_hints, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
 
 
 LOCAL_ENGINES = {
@@ -1077,6 +1121,8 @@ class AerialGenerateRequest(BaseModel):
     reference_images: List[RefImage] = []
     external_consent: bool = False
     keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
+    keep_site: bool = True                # 짧은 지시문(prompt_style='short')에 부지 유지 문구를 넣을지
+    prompt_style: str = "long"            # Kontext 지시문 길이: 'long'(기본, 형태 보존·참조 설명 등을 길게) | 'short'(BFL 가이드식 짧은 지시문, 비교 시험용)
     seed: Optional[int] = None
     project: str = image_history_store.DEFAULT_PROJECT
 
@@ -1156,6 +1202,8 @@ async def aerial_generate(request: AerialGenerateRequest):
 
     if engine["kind"] == "sdxl":
         prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant, request.depth)
+    elif request.prompt_style == "short" and not refs:   # BFL 가이드식 짧은 지시문(참조 이미지가 없을 때만)
+        prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
     return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)

@@ -42,7 +42,7 @@ REDESIGN_MOVES = {
 
 # 시간대·날씨·계절 분위기
 ATMOSPHERES = [
-    {"id": "sunny", "label": "화창한 한낮", "prompt": "bright sunny midday, clear blue sky with a few soft clouds, crisp natural shadows"},
+    {"id": "sunny", "label": "화창한 오후 (건물이 잘 보임)", "prompt": "bright sunny afternoon, clear blue sky with a few soft clouds, soft natural daylight with gentle shadows so the whole building is clearly and evenly visible"},
     {"id": "golden", "label": "해질녘", "prompt": "golden hour late afternoon, warm low sunlight, long soft shadows, glowing sky"},
     {"id": "dusk", "label": "황혼 (실내 조명)", "prompt": "blue hour dusk, deep blue sky, warm interior lights glowing through the windows"},
     {"id": "night", "label": "야경", "prompt": "night scene, dark blue sky, illuminated windows and architectural lighting, lit paths and street lights"},
@@ -144,6 +144,29 @@ def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "mater
     if extra_en.strip():
         parts.append(f"Additional requirements: {extra_en.strip()}")
     return " ".join(parts)
+
+
+def kontext_short(mode: str, extra_en: str, variant_id: str, depth: str = "material", keep_site: bool = True) -> str:
+    """BFL(Kontext 제작사) 가이드식 짧은 지시문: '바꿀 것을 직접 동사로 말하고, 그대로 둘 것을 한 문장으로 명시'한다.
+    템플릿: "Change [대상] to [새 상태], keep [유지할 것] unchanged". 참조 이미지가 없는 렌더·입면 비교용(비교 시험 2026-10-08)."""
+    if mode == "facade":
+        f = _by_id(FACADES, variant_id)
+        what = f"Change the facade of the building to {f['prompt']}" if f else "Change the facade of the building"
+        if depth == "redesign" and f:
+            what += ", " + REDESIGN_MOVES.get(variant_id, "with a new window proportion and rhythm")
+        keep = "keep the overall building massing, height, roof and camera angle unchanged"
+        if depth != "redesign":
+            keep = "keep the building shape, window layout, roof lines and camera angle unchanged"
+    else:
+        a = _by_id(ATMOSPHERES, variant_id)
+        what = "Change this 3D model screenshot into a photorealistic architectural photograph" + (f", {a['prompt']}" if a else "")
+        keep = "keep the building shape, number of floors, window layout, roof lines and camera angle unchanged"
+    if keep_site:
+        keep += " and keep the site, roads and surroundings unchanged"
+    out = f"{what}, {keep}."
+    if extra_en.strip():
+        out += f" {extra_en.strip()}"
+    return out
 
 
 def local_prompt(mode: str, extra_en: str, variant_id: str, depth: str = "material") -> str:

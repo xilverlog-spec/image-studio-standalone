@@ -112,6 +112,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const easy = !!isEasyMode;
   const fileRef = useRef(null);
   const refFileRef = useRef(null);
+  const easyFileRef = useRef(null);
   const topRef = useRef(null);
   const [opts, setOpts] = useState(null);             // { modes, facades, atmospheres, ref_roles, providers, external_allowed }
   const [policyOpen, setPolicyOpen] = useState(false);
@@ -119,7 +120,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const [policyBusy, setPolicyBusy] = useState(false);
   const [modeSel, setMode] = useState('render');
   const [picks, setPicks] = useState(DEFAULT_PICKS);
-  const [image, setImage] = useState(null);           // { dataUrl, width, height, resized, srcWidth, srcHeight }
+  const [imageSel, setImage] = useState(null);        // 프로: { dataUrl, width, height, resized, srcWidth, srcHeight }
+  const [easyImgs, setEasyImgs] = useState([]);        // 이지: 여러 장 첨부 [{ id, dataUrl, ... }] — 첫 번째가 원본, 나머지는 참조(최대 3장)
   const [refsSel, setRefs] = useState([]);            // [{ id, dataUrl, role }]
   const [perVariant, setPerVariant] = useState(1);
   const [extra, setExtra] = useState('');
@@ -151,7 +153,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   // 이지 모드에서는 프로 설정(작업 방식, 참조 사진, 입면·분위기 선택, 엔진, 부지 옵션)을 전부 무시하고 기본값으로 만든다.
   const mode = easy ? 'render' : modeSel;
-  const refs = easy ? [] : refsSel;
+  const image = easy ? (easyImgs[0] || null) : imageSel;
+  const refs = easy ? easyImgs.slice(1).map((x) => ({ id: x.id, dataUrl: x.dataUrl, role: 'facade', hint: '' })) : refsSel;   // 이지: 역할은 서버가 글에서 읽어 낸다(infer_roles)
   const keepSite = easy ? true : keepSiteSel;
   const modeInfo = opts?.modes.find((m) => m.id === mode);
   const providers = opts?.providers || [];
@@ -220,10 +223,37 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     if (!file) return;
     try {
       const r = await fileToResizedDataUrl(file, MAX_EDGE);
-      setImage(r);
+      if (easy) setEasyImgs([{ id: `${Date.now()}-0`, ...r }]);   // 이지: 원본을 새로 지정(기존 참조는 비운다)
+      else setImage(r);
       setAspect(nearestAspect(r.width, r.height));   // 입력과 비율이 달라지면 형태 점수를 매길 수 없어서 가장 가까운 비율로 맞춘다
     } catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
+
+  // 이지: 한 번에 여러 장 첨부. 첫 번째가 원본(형태 기준), 나머지는 참조. 원본 1장 + 참조 최대 MAX_REFS장.
+  const onPickEasyFiles = async (fileList) => {
+    const files = [...(fileList || [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    const room = 1 + MAX_REFS - easyImgs.length;
+    if (room <= 0) { addToast?.('error', '더 넣을 수 없음', `이미지는 원본 1장 + 참조 ${MAX_REFS}장까지입니다.`); return; }
+    if (files.length > room) addToast?.('info', '일부만 넣었습니다', `이미지는 총 ${1 + MAX_REFS}장까지라 ${room}장만 추가하고 나머지는 제외했습니다.`);
+    const added = [];
+    for (const f of files.slice(0, room)) {
+      try {
+        const isFirst = easyImgs.length + added.length === 0;
+        const r = await fileToResizedDataUrl(f, isFirst ? MAX_EDGE : REF_MAX_EDGE);
+        added.push({ id: `${Date.now()}-${easyImgs.length + added.length}`, ...r });
+      } catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
+    }
+    if (!added.length) return;
+    if (easyImgs.length === 0) setAspect(nearestAspect(added[0].width, added[0].height));
+    setEasyImgs((prev) => [...prev, ...added]);
+  };
+  const moveEasyImg = (idx, dir) => setEasyImgs((prev) => {
+    const j = idx + dir;
+    if (j < 0 || j >= prev.length) return prev;
+    const next = [...prev]; [next[idx], next[j]] = [next[j], next[idx]];
+    return next;
+  });
 
   const onPickRef = async (file) => {
     if (!file || refs.length >= MAX_REFS) return;
@@ -245,7 +275,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   };
   const redesigned = activeDepth === 'redesign' || activeDepth === 'ref_propose';
 
-  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, keepSite, extra.trim(), refs.map((r) => `${r.id}:${r.role}:${(r.hint || '').trim()}`)]), [mode, activeDepth, keepSite, extra, refs]);
+  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, keepSite, extra.trim(), refs.map((r) => `${r.id}:${r.role}:${(r.hint || '').trim()}`), easy]), [mode, activeDepth, keepSite, extra, refs, easy]);
   const promptStale = !!commonPrompt && builtFor !== promptKey;
 
   const buildCommonPrompt = async () => {
@@ -254,7 +284,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       const res = await apiFetch('/v1/image/aerial-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), ref_hints: refs.map((r) => r.hint || ''), keep_site: keepSite, mode, depth: activeDepth }),
+        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), ref_hints: refs.map((r) => r.hint || ''), infer_roles: easy && refs.length > 0, keep_site: keepSite, mode, depth: activeDepth }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
@@ -406,6 +436,39 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     </div>
   );
 
+  // 이지: 여러 장을 한 번에 첨부하고, 첫 번째가 원본·나머지가 참조. 번호표와 순서 바꾸기로 원본/참조가 뒤바뀌는 실수를 막는다.
+  const easyImageBlock = (
+    <div style={col}>
+      <span style={label}>1. 이미지 첨부 (여러 장 가능)</span>
+      <p style={hint}>첫 번째 이미지가 <strong>원본(형태 기준)</strong>이고, 나머지는 <strong>참조</strong>입니다. 원본 1장 + 참조 최대 {MAX_REFS}장까지 넣을 수 있습니다.</p>
+      {easyImgs.map((im, i) => (
+        <div key={im.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6, borderRadius: 8, border: i === 0 ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="easy-img">
+          <img src={im.dataUrl} alt={i === 0 ? '원본' : `참조 ${i + 1}`} style={{ width: i === 0 ? 120 : 72, height: i === 0 ? 80 : 54, objectFit: 'cover', borderRadius: 6, background: '#fff' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: i === 0 ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}>{i === 0 ? '이미지 1 · 원본(형태 기준)' : `이미지 ${i + 1} · 참조`}</div>
+            {i === 0 && im.resized && <div style={hint}>긴 변 {MAX_EDGE}px로 줄여 사용</div>}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <button style={{ ...chip(false, busy || i === 0), padding: '1px 7px', fontSize: 11 }} disabled={busy || i === 0} title="앞으로" onClick={() => moveEasyImg(i, -1)}>▲</button>
+            <button style={{ ...chip(false, busy || i === easyImgs.length - 1), padding: '1px 7px', fontSize: 11 }} disabled={busy || i === easyImgs.length - 1} title="뒤로" onClick={() => moveEasyImg(i, 1)}>▼</button>
+          </div>
+          <button style={{ ...chip(false, busy), padding: '4px 8px', fontSize: 11.5 }} disabled={busy} onClick={() => setEasyImgs((prev) => prev.filter((x) => x.id !== im.id))}>삭제</button>
+        </div>
+      ))}
+      {easyImgs.length < 1 + MAX_REFS && (
+        <button
+          style={{ ...chip(false), padding: easyImgs.length ? '10px' : '22px 10px', borderStyle: 'dashed' }}
+          onClick={() => easyFileRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); onPickEasyFiles(e.dataTransfer.files); }}
+        >
+          🖼️ {easyImgs.length ? '＋ 이미지 더 넣기 (참조)' : '이미지 선택 (여러 장 가능, 끌어다 놓기)'}
+        </button>
+      )}
+      <input ref={easyFileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { onPickEasyFiles(e.target.files); e.target.value = ''; }} />
+    </div>
+  );
+
   const generateButton = (
     <>
       <button className="run-btn glow-cyan" style={{ padding: '12px', fontSize: 14, borderRadius: 10, opacity: canGenerate ? 1 : 0.55 }}
@@ -426,14 +489,33 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           <>
             <div ref={topRef}>
               <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 이지 모드</div>
-              <p style={hint}>모델링 이미지를 올리고 원하는 모습을 글로 적으면 바로 실사 조감도로 만들어 줍니다. 건물 형태는 최대한 그대로 유지합니다.</p>
+              <p style={hint}>모델링 이미지를 올리고 원하는 모습을 글로 적으면 바로 실사 조감도로 만들어 줍니다. 건물 형태는 최대한 그대로 유지합니다. 참고할 사진이 있으면 함께 첨부하고, 글에 "이미지 2에서는 재질을 참고해서"처럼 적어 주세요.</p>
             </div>
-            {imageBlock}
+            {easyImageBlock}
             <div style={col}>
               <span style={label}>2. 만들고 싶은 모습 (한글 가능)</span>
+              {easyImgs.length > 1 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={hint}>글에 넣기:</span>
+                  {easyImgs.slice(1).map((_, i) => (
+                    <button key={i} style={{ ...chip(false, busy), padding: '3px 8px', fontSize: 11.5 }} disabled={busy} data-testid="easy-chip"
+                      onClick={() => setExtra((t) => `${t}${t && !/\s$/.test(t) ? ' ' : ''}이미지 ${i + 2}`)}>이미지 {i + 2}</button>
+                  ))}
+                </div>
+              )}
               <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={6} data-testid="easy-prompt"
-                placeholder={'예) 이 건물은 카페입니다. 해질녘의 따뜻한 분위기, 테라스에 손님들이 앉아 있고 실내 조명이 켜져 있어요.\n건물 용도, 시간대·날씨, 재료, 주변 분위기를 자유롭게 적어 주세요.'}
+                placeholder={easyImgs.length > 1
+                  ? '예) 이미지 2에서는 재질을 참고하고, 이미지 3에서는 건물 외관(입면 디자인)을 참고해서 이미지 1을 실사 조감도로 만들어 줘. 화창한 오후, 건물이 잘 보이게.'
+                  : '예) 이 건물은 카페입니다. 화창한 오후, 건물이 잘 보이는 밝은 자연광. 테라스에 손님들이 앉아 있어요.\n건물 용도, 시간대·날씨, 재료, 주변 분위기를 자유롭게 적어 주세요.'}
                 style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
+              {easyImgs.length > 1 && (
+                <p style={hint}>
+                  참조 사진마다 <strong>무엇을 가져올지</strong> 적어 주세요(예: "이미지 2에서는 재질", "이미지 3에서는 건물 외관(입면 디자인)"). 건물 모양은 항상 이미지 1을 그대로 유지하고, 참조에서는 재료·질감·분위기·입면 느낌만 가져옵니다.
+                </p>
+              )}
+              {easyImgs.length > 1 && !/(이미지|사진)\s*\d|\d\s*번/.test(extra) && (
+                <p style={{ ...hint, color: '#C2410C' }} data-testid="easy-noroles">참조 사진에서 가져올 것이 글에 없습니다. 이 경우 사진의 재료와 입면 느낌을 자동으로 읽어서 반영합니다. 원하는 것이 있으면 위 예시처럼 적어 주세요.</p>
+              )}
             </div>
             <div style={{ ...col, gap: 4 }}>
               <span style={label}>만들 장수</span>
@@ -441,7 +523,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
                 {[1, 2, 3].map((n) => <option key={n} value={n}>{n}장</option>)}
               </select>
             </div>
-            <p style={hint}>참조 사진, 입면 비교, 분위기 비교, 엔진 선택 같은 세부 설정은 상단의 <strong>프로 모드</strong>에서 쓸 수 있습니다.</p>
+            <p style={hint}>사진마다 역할 지정, 입면·분위기 여러 개 한 번에 비교, 엔진 선택 같은 세부 설정은 상단의 <strong>프로 모드</strong>에서 쓸 수 있습니다.</p>
           </>
         ) : (
           <>
