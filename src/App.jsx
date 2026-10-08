@@ -2408,7 +2408,7 @@ function App() {
 
       {/* 조감도 모듈 — 유료 이미지 API 전용(AI 이미지 탭은 무료 로컬 전용). 탭을 오가도 입력이 유지되게 항상 마운트해 둔다. */}
       <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'aerial' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
-        <AerialStudio addToast={addToast} apiFetch={apiFetch} onGenerated={loadStudioGallery} />
+        <AerialStudio addToast={addToast} apiFetch={apiFetch} onGenerated={loadStudioGallery} isEasyMode={isEasyMode} />
       </div>
 
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}

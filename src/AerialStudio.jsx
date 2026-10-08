@@ -107,7 +107,9 @@ function CompareSlider({ before, after }) {
   );
 }
 
-export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
+// isEasyMode(앱 상단 이지/프로 스위치): 이지 = 이미지 + 글만 넣고 바로 생성(무료 고품질 엔진, 나머지는 기본값). 프로 = 작업 방식·참조 사진 역할·입면·분위기·엔진 등 전부 지정.
+export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMode = false }) {
+  const easy = !!isEasyMode;
   const fileRef = useRef(null);
   const refFileRef = useRef(null);
   const topRef = useRef(null);
@@ -115,10 +117,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [policyOpen, setPolicyOpen] = useState(false);
   const [policyPw, setPolicyPw] = useState('');
   const [policyBusy, setPolicyBusy] = useState(false);
-  const [mode, setMode] = useState('render');
+  const [modeSel, setMode] = useState('render');
   const [picks, setPicks] = useState(DEFAULT_PICKS);
   const [image, setImage] = useState(null);           // { dataUrl, width, height, resized, srcWidth, srcHeight }
-  const [refs, setRefs] = useState([]);               // [{ id, dataUrl, role }]
+  const [refsSel, setRefs] = useState([]);            // [{ id, dataUrl, role }]
   const [perVariant, setPerVariant] = useState(1);
   const [extra, setExtra] = useState('');
   const [commonPrompt, setCommonPrompt] = useState('');
@@ -128,9 +130,9 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptBusy, setPromptBusy] = useState(false);
   const [aspect, setAspect] = useState('16:9');
-  const [provider, setProvider] = useState('');
+  const [providerSel, setProvider] = useState('');
   const [keepForm, setKeepForm] = useState(85);
-  const [keepSite, setKeepSite] = useState(true);      // 부지·주변은 원본 그대로 두고 건물만 바꾼다
+  const [keepSiteSel, setKeepSite] = useState(true);   // 부지·주변은 원본 그대로 두고 건물만 바꾼다
   const [depths, setDepths] = useState({});            // 방식별 변경 폭. 입면 비교: material 재료만 | redesign 재디자인(형태 약 70%) / 레퍼런스: ref_apply 그대로 입히기 | ref_propose 참고해서 새로 제안
   const [consent, setConsent] = useState(readConsent);
   const [autoRetry, setAutoRetry] = useState(true);
@@ -147,14 +149,19 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const [editBusy, setEditBusy] = useState('');
   const [nowTick, setNowTick] = useState(0);
 
+  // 이지 모드에서는 프로 설정(작업 방식, 참조 사진, 입면·분위기 선택, 엔진, 부지 옵션)을 전부 무시하고 기본값으로 만든다.
+  const mode = easy ? 'render' : modeSel;
+  const refs = easy ? [] : refsSel;
+  const keepSite = easy ? true : keepSiteSel;
   const modeInfo = opts?.modes.find((m) => m.id === mode);
   const providers = opts?.providers || [];
+  const provider = easy ? (providers.find((p) => p.available && p.free)?.id || '') : providerSel;   // 이지: 사용 가능한 무료 엔진 중 첫 번째(고품질 Kontext)
   const providerInfo = providers.find((p) => p.id === provider);
   const paid = !!providerInfo && !providerInfo.free;
   const isKontext = provider === 'local_kontext';
   const isSdxl = provider === 'local_sdxl';
   const variantList = mode === 'facade' ? opts?.facades : opts?.atmospheres;
-  const picked0 = picks[mode] || [];
+  const picked0 = easy ? [] : (picks[mode] || []);
   const chosen = picked0.length === 0 && VARIANT_OPTIONAL(mode) ? [''] : picked0;   // 분위기를 안 고르면 변형 문구 없이 1가지로 만든다
   const totalJobs = chosen.length * perVariant;
   const unitCost = providerInfo?.est_cost_usd || 0;
@@ -375,11 +382,71 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const pickedResults = picked.map((id) => results.find((r) => r.id === id)).filter(Boolean);
   const elapsedHint = busy ? ` · 약 ${Math.max(0, Math.round(perImageMin * (progress.total - progress.current)))}분 남음` : '';
 
+  // 이지·프로 둘 다 쓰는 부분
+  const imageBlock = (
+    <div style={col}>
+      <span style={label}>1. 원본 이미지 (형태 기준)</span>
+      {image ? (
+        <div style={col}>
+          <img src={image.dataUrl} alt="원본" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-color)', background: '#fff' }} />
+          {image.resized && <p style={hint}>큰 이미지라 긴 변 {MAX_EDGE}px로 줄여서 사용합니다 ({image.srcWidth}×{image.srcHeight} → {image.width}×{image.height}).</p>}
+          <button style={chip(false, busy)} disabled={busy} onClick={() => setImage(null)}>이미지 제거</button>
+        </div>
+      ) : (
+        <button
+          style={{ ...chip(false), padding: '22px 10px', borderStyle: 'dashed' }}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); onPickFile(e.dataTransfer.files?.[0]); }}
+        >
+          🖼️ 이미지 선택 (또는 끌어다 놓기)
+        </button>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
+    </div>
+  );
+
+  const generateButton = (
+    <>
+      <button className="run-btn glow-cyan" style={{ padding: '12px', fontSize: 14, borderRadius: 10, opacity: canGenerate ? 1 : 0.55 }}
+        onClick={generate} disabled={!canGenerate}>
+        {busy
+          ? `생성 중… (${progress.current}/${progress.total})${elapsedHint}`
+          : `✨ 조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
+      </button>
+      {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: '#B91C1C', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
+      {easy && !providerInfo && opts && <p style={{ ...hint, color: '#B91C1C' }}>사용할 수 있는 무료 이미지 엔진이 없습니다(ComfyUI가 꺼져 있을 수 있습니다). 관리자에게 알려 주세요.</p>}
+    </>
+  );
+
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
       <div style={{ width: 380, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }}>
+        {easy ? (
+          <>
+            <div ref={topRef}>
+              <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 이지 모드</div>
+              <p style={hint}>모델링 이미지를 올리고 원하는 모습을 글로 적으면 바로 실사 조감도로 만들어 줍니다. 건물 형태는 최대한 그대로 유지합니다.</p>
+            </div>
+            {imageBlock}
+            <div style={col}>
+              <span style={label}>2. 만들고 싶은 모습 (한글 가능)</span>
+              <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={6} data-testid="easy-prompt"
+                placeholder={'예) 이 건물은 카페입니다. 해질녘의 따뜻한 분위기, 테라스에 손님들이 앉아 있고 실내 조명이 켜져 있어요.\n건물 용도, 시간대·날씨, 재료, 주변 분위기를 자유롭게 적어 주세요.'}
+                style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
+            </div>
+            <div style={{ ...col, gap: 4 }}>
+              <span style={label}>만들 장수</span>
+              <select value={perVariant} onChange={(e) => setPerVariant(Number(e.target.value))} style={inputBase}>
+                {[1, 2, 3].map((n) => <option key={n} value={n}>{n}장</option>)}
+              </select>
+            </div>
+            <p style={hint}>참조 사진, 입면 비교, 분위기 비교, 엔진 선택 같은 세부 설정은 상단의 <strong>프로 모드</strong>에서 쓸 수 있습니다.</p>
+          </>
+        ) : (
+          <>
         <div ref={topRef}>
-          <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도</div>
+          <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 프로 모드</div>
           <p style={hint}>스케치업 캡처·매스·3D 모델 이미지를 올리면 형태를 지킨 실사 렌더로 만들어 줍니다. 무료(로컬) 엔진은 초안용, 유료 엔진은 형태를 더 정확히 지키는 최종본용입니다.</p>
         </div>
 
@@ -393,26 +460,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           {modeInfo && <p style={hint}>{modeInfo.desc}</p>}
         </div>
 
-        <div style={col}>
-          <span style={label}>1. 원본 이미지 (형태 기준)</span>
-          {image ? (
-            <div style={col}>
-              <img src={image.dataUrl} alt="원본" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-color)', background: '#fff' }} />
-              {image.resized && <p style={hint}>큰 이미지라 긴 변 {MAX_EDGE}px로 줄여서 사용합니다 ({image.srcWidth}×{image.srcHeight} → {image.width}×{image.height}).</p>}
-              <button style={chip(false, busy)} disabled={busy} onClick={() => setImage(null)}>이미지 제거</button>
-            </div>
-          ) : (
-            <button
-              style={{ ...chip(false), padding: '22px 10px', borderStyle: 'dashed' }}
-              onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); onPickFile(e.dataTransfer.files?.[0]); }}
-            >
-              🖼️ 이미지 선택 (또는 끌어다 놓기)
-            </button>
-          )}
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
-        </div>
+        {imageBlock}
 
         <div style={col}>
           <span style={label}>2. 참조 이미지 {refsNeeded ? '(필수' : '(선택'}, 최대 {MAX_REFS}장)</span>
@@ -581,13 +629,9 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           <span>형태 점수가 낮으면(&lt;{AUTO_RETRY_BELOW}) 1회 자동 재생성하고 더 나은 쪽을 남김{paid ? ' (추가 비용)' : ' (시간이 더 걸림)'}</span>
         </label>
 
-        <button className="run-btn glow-cyan" style={{ padding: '12px', fontSize: 14, borderRadius: 10, opacity: canGenerate ? 1 : 0.55 }}
-          onClick={generate} disabled={!canGenerate}>
-          {busy
-            ? `생성 중… (${progress.current}/${progress.total})${elapsedHint}`
-            : `✨ 조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
-        </button>
-        {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: '#B91C1C', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
+          </>
+        )}
+        {generateButton}
         <span hidden>{nowTick}</span>
       </div>
 
