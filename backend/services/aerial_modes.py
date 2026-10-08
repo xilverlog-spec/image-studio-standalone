@@ -111,7 +111,7 @@ def variant_label(mode: str, variant_id: str) -> str:
     return (_by_id(FACADES if mode == "facade" else ATMOSPHERES, variant_id) or {}).get("label", variant_id)
 
 
-def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material", ref_notes: list | None = None) -> str:
+def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None) -> str:
     """모든 장에 공통으로 들어가는 영어 프롬프트."""
     propose = mode == "reference" and depth == "ref_propose"
     keep = KEEP_FORM_REDESIGN if (propose or (mode == "facade" and depth == "redesign")) else KEEP_FORM
@@ -122,12 +122,15 @@ def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "mater
             sent = INSPIRATION_SENTENCE
         if sent:
             parts.append(f"Image {i + 2} {sent}.")
+        hint = (ref_hints[i] if ref_hints and i < len(ref_hints) else "").strip()
         note = (ref_notes[i] if ref_notes and i < len(ref_notes) else "").strip()
-        if sent and note:   # 이미지 모델이 참조에서 재료·리듬을 못 읽는 것을 글로 보완한다
+        if sent and hint:   # 사용자가 직접 적은 "이 사진에서 가져올 것"이 자동 분석보다 우선한다
+            parts.append(f"From image {i + 2}, take exactly this and nothing else: {hint}. Never take its building shape.")
+        elif sent and note:   # 이미지 모델이 참조에서 재료·리듬을 못 읽는 것을 글로 보완한다
             parts.append(f"Surface language of image {i + 2} (take only these surface qualities, never its building shape): {note}")
     if propose:
         parts.append("Propose a new, original facade design for the building of image 1 inspired by the reference. The facade must clearly differ from image 1 in window proportions, divisions and rhythm, and must not be a copy of the reference. "
-                     "The building must keep the exact curved and angular volumes, roof forms and terraces of image 1; only the facade surface is redesigned.")
+                     "The building must keep the exact volumes, roof forms, terraces and curved or angular shapes of image 1; only the facade surface is redesigned.")
     if mode == "facade":
         parts.append("Use realistic daylight, with natural landscaping and sky; keep lighting identical across variants so only the facade differs.")
     else:

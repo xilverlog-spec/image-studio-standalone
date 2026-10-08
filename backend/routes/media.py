@@ -961,6 +961,7 @@ class AerialPromptRequest(BaseModel):
     mode: str = "render"                  # 'render' | 'facade' | 'reference'
     depth: str = "material"               # 입면 비교의 변경 폭: 'material'(재료만) | 'redesign'(입면 재디자인, 형태 약 70%)
     ref_images: List[str] = []            # 참조 이미지 base64(ref_roles 와 같은 순서). 있으면 이 PC의 로컬 비전 모델로 입면 특징을 글로 뽑아 프롬프트에 넣는다(외부 전송 없음)
+    ref_hints: List[str] = []             # 참조마다 직원이 적은 "이 사진에서 가져올 것"(한글 가능, 같은 순서). 적은 참조는 자동 분석을 건너뛰고 이 문장을 우선한다
 
 
 @router.get("/image/aerial-options")
@@ -969,8 +970,8 @@ async def aerial_options():
     return {"status": "success", **aerial_modes.options(), "providers": await asyncio.to_thread(_aerial_provider_list)}
 
 
-def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material", ref_notes: list | None = None) -> str:
-    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth, ref_notes)
+def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", depth: str = "material", ref_notes: list | None = None, ref_hints: list | None = None) -> str:
+    return aerial_modes.common_prompt(mode, extra_en, ref_roles, depth, ref_notes, ref_hints)
 
 
 _REF_VISION_MODEL = "qwen2.5vl:3b"   # 실측: 적벽돌 참조의 재료·격자 리듬을 맞게 읽음(gemma4:e4b 는 색을 틀림), 약 9초
@@ -980,13 +981,13 @@ _REF_DESCRIBE_ASK = ("Describe ONLY the surface language of the facade in this i
                      "Do NOT describe the building's overall shape, number of floors, roof, massing, or surroundings. Plain text, no preface.")
 
 
-def _describe_refs(ref_images: list, ref_roles: list) -> list:
-    """참조 이미지(입면·재질 역할)를 로컬 비전 모델로 설명한다. 실패하거나 모델이 없으면 빈 문장(프롬프트는 그대로 동작)."""
+def _describe_refs(ref_images: list, ref_roles: list, skip: list | None = None) -> list:
+    """참조 이미지(입면·재질 역할)를 로컬 비전 모델로 설명한다. 실패하거나 모델이 없으면 빈 문장(프롬프트는 그대로 동작). skip[i] 가 참이면(직원이 직접 적음) 분석하지 않는다."""
     from services.simple_chat import chat_completion
     notes = []
     for i, b64 in enumerate(ref_images):
         role = ref_roles[i] if i < len(ref_roles) else ""
-        if role not in _REF_DESCRIBE_ROLES:
+        if (skip and i < len(skip) and skip[i]) or role not in _REF_DESCRIBE_ROLES:
             notes.append("")
             continue
         try:
@@ -1001,7 +1002,10 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
     """한글 요청을 건축 렌더링 지시용 영어로 옮긴다(무료 Gemini 텍스트). 키가 없거나 실패하면 원문 그대로 쓴다. kind='edit' 은 결과 이미지 부분 수정 지시용."""
     if not extra.strip():
         return ""
-    if kind == "edit":
+    if kind == "ref":
+        ask = ("Rewrite the following note about what to take from a reference photo as one short English phrase describing only surface qualities "
+               "(material, color, texture, window proportion or rhythm, detailing). Do not mention building shape. Under 30 words, plain text, no preface.\n\nNote: ")
+    elif kind == "edit":
         ask = ("Rewrite the following request as one concise English instruction for editing an existing architectural rendering "
                "(what to change, where). Do not add other changes. Under 40 words, plain text only, no preface.\n\nRequest: ")
     else:
@@ -1025,8 +1029,9 @@ def _expand_extra_to_english(extra: str, kind: str = "render") -> str:
 async def aerial_prompt(request: AerialPromptRequest):
     """조감도 탭: 최종 공통 프롬프트(형태 고정 문구 + 참조 이미지 역할 + 한글 요청의 영어 확장)를 만들어 미리 보여 준다."""
     extra_en = await asyncio.to_thread(_expand_extra_to_english, request.extra)
-    ref_notes = await asyncio.to_thread(_describe_refs, request.ref_images, request.ref_roles) if request.ref_images else []
-    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes), "extra_en": extra_en, "ref_notes": ref_notes, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
+    ref_hints = [await asyncio.to_thread(_expand_extra_to_english, h, "ref") if h.strip() else "" for h in request.ref_hints]
+    ref_notes = await asyncio.to_thread(_describe_refs, request.ref_images, request.ref_roles, [bool(h) for h in ref_hints]) if request.ref_images else []
+    return {"status": "success", "prompt": _aerial_common_prompt(extra_en, request.ref_roles, request.mode, request.depth, ref_notes, ref_hints), "extra_en": extra_en, "ref_notes": ref_notes, "ref_hints_en": ref_hints, "expanded": bool(request.extra.strip()) and extra_en != request.extra.strip()}
 
 
 LOCAL_ENGINES = {

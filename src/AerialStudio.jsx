@@ -194,7 +194,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
     if (!file || refs.length >= MAX_REFS) return;
     try {
       const r = await fileToResizedDataUrl(file, REF_MAX_EDGE);
-      setRefs((prev) => [...prev, { id: `${Date.now()}-${prev.length}`, dataUrl: r.dataUrl, role: mode === 'reference' ? 'facade' : 'material' }]);
+      setRefs((prev) => [...prev, { id: `${Date.now()}-${prev.length}`, dataUrl: r.dataUrl, role: mode === 'reference' ? 'facade' : 'material', hint: '' }]);
     } catch (e) { addToast?.('error', '참조 이미지 불러오기 실패', e.message); }
   };
 
@@ -209,7 +209,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   };
   const redesigned = activeDepth === 'redesign' || activeDepth === 'ref_propose';
 
-  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => `${r.id}:${r.role}`)]), [mode, activeDepth, extra, refs]);
+  const promptKey = useMemo(() => JSON.stringify([mode, activeDepth, extra.trim(), refs.map((r) => `${r.id}:${r.role}:${(r.hint || '').trim()}`)]), [mode, activeDepth, extra, refs]);
   const promptStale = !!commonPrompt && builtFor !== promptKey;
 
   const buildCommonPrompt = async () => {
@@ -218,7 +218,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
       const res = await apiFetch('/v1/image/aerial-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), mode, depth: activeDepth }),
+        body: JSON.stringify({ extra, ref_roles: refs.map((r) => r.role), ref_images: refs.map((r) => r.dataUrl.split(',').pop()), ref_hints: refs.map((r) => r.hint || ''), mode, depth: activeDepth }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
@@ -393,15 +393,22 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
               : '재질·분위기·대지 참고를 역할별로 넣으면 그 역할만 가져오고 건물 모양은 바꾸지 않도록 지시합니다.'}
           </p>
           {refs.map((r) => (
-            <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <img src={r.dataUrl} alt="참조" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }} />
-              <select value={r.role} disabled={busy} style={{ ...inputBase, flex: 1 }}
-                onChange={(e) => setRefs((prev) => prev.map((x) => (x.id === r.id ? { ...x, role: e.target.value } : x)))}>
-                {(opts?.ref_roles || []).map((o) => <option key={o.id} value={o.id}>{o.label} 참고</option>)}
-              </select>
-              <button style={{ ...chip(false, busy), padding: '5px 8px' }} disabled={busy} onClick={() => setRefs((prev) => prev.filter((x) => x.id !== r.id))}>삭제</button>
+            <div key={r.id} style={col}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <img src={r.dataUrl} alt="참조" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }} />
+                <select value={r.role} disabled={busy} style={{ ...inputBase, flex: 1 }}
+                  onChange={(e) => setRefs((prev) => prev.map((x) => (x.id === r.id ? { ...x, role: e.target.value } : x)))}>
+                  {(opts?.ref_roles || []).map((o) => <option key={o.id} value={o.id}>{o.label} 참고</option>)}
+                </select>
+                <button style={{ ...chip(false, busy), padding: '5px 8px' }} disabled={busy} onClick={() => setRefs((prev) => prev.filter((x) => x.id !== r.id))}>삭제</button>
+              </div>
+              <input value={r.hint || ''} disabled={busy} data-testid="ref-hint"
+                onChange={(e) => setRefs((prev) => prev.map((x) => (x.id === r.id ? { ...x, hint: e.target.value } : x)))}
+                placeholder="이 사진에서 가져올 것 (선택) 예: 노출콘크리트 회색 질감, 큰 유리창 비례"
+                style={{ ...inputBase, fontSize: 12 }} />
             </div>
           ))}
+          {refs.length > 0 && <p style={hint}>"가져올 것"을 적으면 그 내용이 사진 자동 분석보다 우선합니다. 건물 모양은 항상 원본을 유지합니다. 비워 두면 자동으로 분석합니다.</p>}
           {refs.length < MAX_REFS && (
             <button style={{ ...chip(false, busy), borderStyle: 'dashed' }} disabled={busy} onClick={() => refFileRef.current?.click()}>＋ 참조 이미지 추가</button>
           )}
