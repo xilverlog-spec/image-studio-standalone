@@ -12,7 +12,9 @@ const REF_MAX_EDGE = 1280;
 const MAX_REFS = 3;
 const SAVED_KEY = 'aerial_results_v1';
 const MAX_SAVED = 60;
-const DEFAULT_PICKS = { render: ['sunny'], facade: ['glass', 'redbrick', 'timber'], reference: ['sunny'] };
+// 분위기는 선택 사항이다(아무것도 안 고르면 프롬프트 내용만으로 1장). 입면 비교는 입면 후보를 골라야 한다.
+const DEFAULT_PICKS = { render: [], facade: ['glass', 'redbrick', 'timber'], reference: [] };
+const VARIANT_OPTIONAL = (mode) => mode !== 'facade';
 
 // 형태 점수 기준(0~100): 입력의 뼈대 선이 결과에 얼마나 남았는지
 const scoreInfo = (s) => (s == null ? { text: '점수 없음', color: '#64748b' }
@@ -152,7 +154,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   const isKontext = provider === 'local_kontext';
   const isSdxl = provider === 'local_sdxl';
   const variantList = mode === 'facade' ? opts?.facades : opts?.atmospheres;
-  const chosen = picks[mode] || [];
+  const picked0 = picks[mode] || [];
+  const chosen = picked0.length === 0 && VARIANT_OPTIONAL(mode) ? [''] : picked0;   // 분위기를 안 고르면 변형 문구 없이 1가지로 만든다
   const totalJobs = chosen.length * perVariant;
   const unitCost = providerInfo?.est_cost_usd || 0;
   const estTotal = unitCost * totalJobs;
@@ -224,6 +227,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
   };
 
   const togglePick = (id) => setPicks((p) => ({ ...p, [mode]: (p[mode] || []).includes(id) ? p[mode].filter((x) => x !== id) : [...(p[mode] || []), id] }));
+  const optionalVariants = VARIANT_OPTIONAL(mode);
 
   const modeDepths = (opts?.depths || []).filter((d) => d.mode === mode);
   const activeDepth = modeDepths.length ? (depths[mode] || opts?.default_depth?.[mode] || modeDepths[0].id) : 'material';
@@ -313,7 +317,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
           if ((again.form_score ?? -1) >= (data.form_score ?? -1)) data = again;   // 점수가 더 높은 쪽을 남긴다
         }
         ok++;
-        const vLabel = (mode === 'facade' ? opts.facades : opts.atmospheres).find((v) => v.id === jobs[i])?.label || jobs[i];
+        const vLabel = jobs[i] === '' ? '분위기 지정 없음' : ((mode === 'facade' ? opts.facades : opts.atmospheres).find((v) => v.id === jobs[i])?.label || jobs[i]);
         const entry = addResult(data, { label: redesigned ? `${vLabel} · ${mode === 'reference' ? '참고 제안' : '재디자인'}` : vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
         if (thumb) setThumbs((t) => ({ ...t, [entry.id]: thumb }));
         onGenerated?.();
@@ -454,7 +458,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated }) {
         )}
 
         <div style={col}>
-          <span style={label}>3. {mode === 'facade' ? '입면 후보 (여러 개 선택 → 한 번에 비교)' : '분위기 (여러 개 선택 → 한 번에 비교)'}</span>
+          <span style={label}>3. {mode === 'facade' ? '입면 후보 (여러 개 선택 → 한 번에 비교)' : '분위기 비교 (선택 사항)'}</span>
+          {optionalVariants && (
+            <p style={hint}>분위기는 아래 4번 요구사항에 글로 써도 됩니다(예: "해질녘, 비 온 뒤"). 여러 시간대·날씨를 한 번에 나란히 비교하고 싶을 때만 여기서 고르세요. 아무것도 안 고르면 요구사항 내용대로 1장 만듭니다.</p>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             {(variantList || []).map((v) => (
               <button key={v.id} style={chip(chosen.includes(v.id))} disabled={busy} onClick={() => togglePick(v.id)}>{v.label}</button>
