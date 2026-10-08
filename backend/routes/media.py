@@ -1122,7 +1122,7 @@ class AerialGenerateRequest(BaseModel):
     external_consent: bool = False
     keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
     keep_site: bool = True                # 짧은 지시문(prompt_style='short')에 부지 유지 문구를 넣을지
-    prompt_style: str = "long"            # Kontext 지시문 길이: 'long'(기본, 형태 보존·참조 설명 등을 길게) | 'short'(BFL 가이드식 짧은 지시문, 비교 시험용)
+    prompt_style: str = "auto"            # Kontext 지시문: 'auto'(기본: 분위기 렌더·재료만 바꾸기는 BFL 가이드식 짧은 지시문, 나머지는 긴 지시문) | 'short'(강제) | 'long'(강제)
     seed: Optional[int] = None
     project: str = image_history_store.DEFAULT_PROJECT
 
@@ -1202,7 +1202,10 @@ async def aerial_generate(request: AerialGenerateRequest):
 
     if engine["kind"] == "sdxl":
         prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant, request.depth)
-    elif request.prompt_style == "short" and not refs:   # BFL 가이드식 짧은 지시문(참조 이미지가 없을 때만)
+    elif not refs and (request.prompt_style == "short" or (
+            request.prompt_style == "auto" and (request.mode == "render" or (request.mode == "facade" and request.depth == "material")))):
+        # BFL 가이드식 짧은 지시문. 같은 이미지·시드 비교(ALT3, 1-1)에서 긴 지시문과 눈으로 구분되지 않고 형태 점수도 비슷해(52/52, 52/46) 기본으로 쓴다.
+        # 입면 재디자인·참조 이미지가 있는 경우는 아직 비교하지 않아 긴 지시문을 그대로 쓴다.
         prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()

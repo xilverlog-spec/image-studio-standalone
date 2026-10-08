@@ -151,7 +151,9 @@ def kontext_short(mode: str, extra_en: str, variant_id: str, depth: str = "mater
     템플릿: "Change [대상] to [새 상태], keep [유지할 것] unchanged". 참조 이미지가 없는 렌더·입면 비교용(비교 시험 2026-10-08)."""
     if mode == "facade":
         f = _by_id(FACADES, variant_id)
-        what = f"Change the facade of the building to {f['prompt']}" if f else "Change the facade of the building"
+        # 입면만 바꾸라고만 하면 모델이 스케치업 캡처 느낌(회색 하늘·평평한 조명)을 그대로 둔다(시험 2026-10-08). 사진처럼 만들라는 말과 조명을 함께 지시한다.
+        what = ("Change this 3D model screenshot into a photorealistic architectural photograph in bright sunny afternoon light with a clear blue sky, "
+                + (f"and change the facade of the building to {f['prompt']}" if f else "and change the facade of the building"))
         if depth == "redesign" and f:
             what += ", " + REDESIGN_MOVES.get(variant_id, "with a new window proportion and rhythm")
         keep = "keep the overall building massing, height, roof and camera angle unchanged"
