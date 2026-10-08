@@ -124,9 +124,10 @@ def common_prompt(mode: str, extra_en: str, ref_roles: list, depth: str = "mater
             parts.append(f"Image {i + 2} {sent}.")
         note = (ref_notes[i] if ref_notes and i < len(ref_notes) else "").strip()
         if sent and note:   # 이미지 모델이 참조에서 재료·리듬을 못 읽는 것을 글로 보완한다
-            parts.append(f"What image {i + 2} shows: {note}")
+            parts.append(f"Surface language of image {i + 2} (take only these surface qualities, never its building shape): {note}")
     if propose:
-        parts.append("Propose a new, original facade design for the building of image 1 inspired by the reference. The facade must clearly differ from image 1 in window proportions, divisions and rhythm, and must not be a copy of the reference.")
+        parts.append("Propose a new, original facade design for the building of image 1 inspired by the reference. The facade must clearly differ from image 1 in window proportions, divisions and rhythm, and must not be a copy of the reference. "
+                     "The building must keep the exact curved and angular volumes, roof forms and terraces of image 1; only the facade surface is redesigned.")
     if mode == "facade":
         parts.append("Use realistic daylight, with natural landscaping and sky; keep lighting identical across variants so only the facade differs.")
     else:

@@ -235,19 +235,43 @@ for ($i = 0; $i -le $isLastIndex; $i++) {
     $promptText = $promptLines -join "`n"
     Set-Content -Path $promptPath -Value $promptText -Encoding UTF8
 
-    Write-Log "$dateLabel : claude -p 호출 중..."
+    # 작업 스케줄러 환경에는 claude 가 PATH 에 없다(2026-10-07 첫 자동 실행에서 실패). PATH 에 없으면 데스크톱 앱에 번들된 최신 claude.exe 를 쓴다.
+    $claudeExe = (Get-Command claude -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $claudeExe) {
+        # 버전/해시 폴더 아래(깊이 2)만 본다 — 재귀 탐색은 느리고 스케줄러 실행에서 실패했다.
+        # 데스크톱 앱은 MSIX 패키지라, 앱 밖(작업 스케줄러)에서는 Roaming 경로가 비어 보이고 실제 파일은 Packages\Claude_*\LocalCache\Roaming 아래에 있다(2026-10-08 확인).
+        $found = Get-ChildItem -Path @(
+            (Join-Path $env:LOCALAPPDATA "Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\*\*\claude.exe"),
+            (Join-Path $env:APPDATA "Claude\claude-code\*\*\claude.exe")
+        ) -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($found) { $claudeExe = $found.FullName }
+        Write-Log "claude 탐색: APPDATA=$($env:APPDATA) 결과=$claudeExe"
+    }
+    if (-not $claudeExe) {
+        Write-Log "claude 실행 파일을 찾을 수 없어 이번 실행을 중단합니다(상태 파일은 이 날짜 앞에 남겨 다음 실행에서 다시 시도)."
+        break
+    }
+
+    Write-Log "$dateLabel : claude -p 호출 중... ($claudeExe)"
     $prevPref = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $response = (Get-Content $promptPath -Raw | & claude -p 2>&1) -join "`n"
+        $response = (Get-Content $promptPath -Raw | & $claudeExe -p 2>&1) -join "`n"
     } catch {
-        Write-Log "claude 호출 실패: $_"
+        # 호출 자체가 실패하면 상태 파일을 앞으로 넘기지 않고 멈춘다 — 그래야 다음 실행이 이 날짜부터 다시 시도한다(전에는 건너뛰고 지나가 버렸다).
+        Write-Log "claude 호출 실패, 이번 실행 중단: $_"
         $ErrorActionPreference = $prevPref
         Remove-Item $promptPath -ErrorAction SilentlyContinue
-        continue
+        break
     }
     $ErrorActionPreference = $prevPref
     Remove-Item $promptPath -ErrorAction SilentlyContinue
+
+    # 로그인이 안 된 상태(앱 밖에서 실행한 claude.exe 는 앱의 로그인 정보를 쓰지 못한다)면 날짜를 건너뛰지 말고 멈춘다.
+    if ($response -match "Not logged in|Please run /login") {
+        Write-Log "claude 가 로그인되어 있지 않습니다. 터미널에서 'claude' 를 한 번 실행해 로그인한 뒤 다시 실행하세요. 이번 실행을 중단합니다(상태 파일은 이 날짜 앞에 남김)."
+        break
+    }
 
     # ── 응답 파싱 ──
     function Extract-Block($text, $tag) {

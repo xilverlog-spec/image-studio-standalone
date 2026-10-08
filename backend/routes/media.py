@@ -975,8 +975,9 @@ def _aerial_common_prompt(extra_en: str, ref_roles: list, mode: str = "render", 
 
 _REF_VISION_MODEL = "qwen2.5vl:3b"   # 실측: 적벽돌 참조의 재료·격자 리듬을 맞게 읽음(gemma4:e4b 는 색을 틀림), 약 9초
 _REF_DESCRIBE_ROLES = {"facade", "material"}
-_REF_DESCRIBE_ASK = ("Describe ONLY the facade design language of the building in this image, in English, under 60 words: cladding materials and colors, "
-                     "window proportions and rhythm, panel or grid divisions, projections, fins or louvers, depth and detailing. Plain text, no preface.")
+_REF_DESCRIBE_ASK = ("Describe ONLY the surface language of the facade in this image, in English, under 45 words: cladding materials and colors, "
+                     "texture and joint pattern, window frame style and spacing rhythm, surface detailing. "
+                     "Do NOT describe the building's overall shape, number of floors, roof, massing, or surroundings. Plain text, no preface.")
 
 
 def _describe_refs(ref_images: list, ref_roles: list) -> list:
