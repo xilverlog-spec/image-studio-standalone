@@ -47,7 +47,11 @@ def _tmp_dir():
 
 
 def _svg_inner(svg):
-    body = svg.split(">", 1)[1].rsplit("</svg>", 1)[0]
+    # vtracer 가 만든 SVG 는 맨 앞에 <?xml ...?> 와 주석이 있어서, 첫 '>' 가 아니라 <svg ...> 태그가 끝나는 '>' 를 찾아야 한다
+    # (첫 '>' 로 자르면 <svg> 태그가 그대로 남아 전체 SVG 가 깨졌다 — 2026-10-08 6칸 시트 시험에서 발견).
+    m = re.search(r"<svg\b[^>]*>", svg)
+    body = svg[m.end():] if m else svg.split(">", 1)[1]
+    body = body.rsplit("</svg>", 1)[0]
     return re.sub(r'^\s*<rect width="100%" height="100%" fill="#fff"/>\s*', "", body, count=1)
 
 
@@ -102,6 +106,14 @@ def _prep_for_redraw(img):
     im = img.convert("RGB").filter(ImageFilter.MedianFilter(5))
     return im.quantize(colors=10, method=Image.MEDIANCUT, dither=Image.NONE).convert("RGB")
 
+
+# 나무·사람·물·바닥 포장이 있는 연출 일러스트 칸(FINAL FORM 같은 칸)을 다른 칸과 같은 선 도면으로 통일할 때 쓰는 지시문.
+# 건물용 지시문(REDRAW_INSTRUCTION)을 그대로 쓰면 장식 요소가 건물 선과 뒤섞여 망가졌다(실측).
+SCENE_INSTRUCTION = (
+    "Redraw this isometric architectural diagram as a clean uniform thin black single-line drawing on a pure white background, no fills, no shading, no gray, no colors. "
+    "Keep the building volumes, the pool, the courtyard paving and all outlines in exactly the same positions. Draw trees as simple outlined rounded shapes, "
+    "people as small simple line figures, and the wooden slats as thin parallel lines."
+)
 
 PERSP_INSTRUCTION = (
     "Convert this architectural 3D model screenshot or rendering into a clean black-and-white architectural line drawing on a pure white background. "
@@ -173,6 +185,58 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
                 crop = img.crop((bx0, by0, bx1, by1))
                 cw, ch = crop.size
                 _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 원본 분석")
+                if len(objects) > 1:
+                    # 한 시트 안에서도 칸마다 종류가 다르다: 나무·물·사람이 있는 연출 일러스트(FINAL FORM 같은 칸)는 선으로 바꾸면 건물 선이 묻혀 엉망이 된다
+                    # (실측 6칸 시트: 1~5번 칸 outlined 0.64~0.73 → 선, 6번 칸 0.25 → 색). 이런 칸은 색 영역 그대로 벡터화해 같은 자리에 끼운다.
+                    try:
+                        kind_info = diagram_kind.classify_diagram(_png_bytes(crop))
+                    except Exception:
+                        kind_info = {"kind": "line"}
+                    if kind_info.get("kind") == "color":
+                        scene_svg, how = None, ""
+                        if use_ai:
+                            # 선으로 통일: 장면 전용 지시문으로 AI 가 선화로 다시 그리고, 형태가 합격이면 선 벡터로 만든다(곡선인 나무·사람이 있어 직선 추출기 대신 선 그림 그대로 벡터화).
+                            _update(job, stage=f"칸 {idx + 1}/{len(objects)}: 나무·물·사람이 있는 장면이라 전용 방식으로 선화 변환 (칸당 약 3분)")
+                            best = None
+                            for sd in (7 + idx, 107 + idx):
+                                redrawn, err = _redraw_panel(crop, seed=sd, tag=str(idx), instruction=SCENE_INSTRUCTION)
+                                if redrawn is None:
+                                    continue
+                                iou = _shape_iou(crop, redrawn)
+                                if best is None or iou > best[0]:
+                                    best = (iou, redrawn)
+                                if iou >= SHAPE_IOU_MIN:
+                                    break
+                            if best is not None and best[0] >= SHAPE_IOU_FLOOR:
+                                try:
+                                    lsvg = diagram_kind.vectorize_lineart(best[1].convert("L"), (cw, ch))
+                                    vb = re.search(r'viewBox="0 0 (\d+) (\d+)"', lsvg)
+                                    vw, vh = (float(vb.group(1)), float(vb.group(2))) if vb else (cw, ch)
+                                    scene_svg = ('<g data-panel="%d" data-kind="scene-line" transform="translate(%d %d) scale(%.5f %.5f)">%s</g>' % (
+                                        idx, bx0, by0, cw / vw, ch / vh, _svg_inner(lsvg)))
+                                    how = "line"
+                                    if best[0] < SHAPE_IOU_MIN:
+                                        warnings.append(f"칸 {idx + 1}: 장면 선화의 형태 일치도가 {best[0]:.0%}로 다소 낮습니다. 원본과 비교해 확인하세요")
+                                except Exception as e:
+                                    warnings.append(f"칸 {idx + 1}: 장면 선화 벡터 변환 실패 ({e})")
+                            else:
+                                warnings.append(f"칸 {idx + 1}: AI 가 장면의 형태를 바꿔서 선으로 통일하지 못했습니다 → 색을 살려 벡터로 바꿨습니다")
+                        if scene_svg is None:   # AI 를 못 쓰거나 형태가 어긋나면 원본에 충실한 색 벡터 변환으로 대체(엉망인 선보다 낫다)
+                            try:
+                                csvg, _ = diagram_kind.vectorize_color(_png_bytes(crop))
+                                vb = re.search(r'viewBox="0 0 (\d+) (\d+)"', csvg)
+                                vw, vh = (float(vb.group(1)), float(vb.group(2))) if vb else (cw, ch)
+                                scene_svg = ('<g data-panel="%d" data-kind="color" transform="translate(%d %d) scale(%.5f %.5f)">%s</g>' % (
+                                    idx, bx0, by0, cw / vw, ch / vh, _svg_inner(csvg)))
+                                how = "color"
+                            except Exception as e:
+                                warnings.append(f"칸 {idx + 1}: 색 벡터 변환 실패 → 기본 선 변환으로 진행 ({e})")
+                        if scene_svg is not None:
+                            parts.append(scene_svg)
+                            panel_info.append({"i": idx, "bbox": [bx0, by0, bx1, by1], "complex": True, "ai": how == "line", "scene": how})
+                            stats_acc["scene_panels"] = stats_acc.get("scene_panels", 0) + 1
+                            _update(job, done=idx + 1)
+                            continue
                 direct = line_trace.trace_lines(_png_bytes(crop), fills=fills)
                 chosen, used_ai = direct, False
                 if use_ai and direct["stats"].get("clean"):
