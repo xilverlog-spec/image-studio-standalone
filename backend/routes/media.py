@@ -1203,9 +1203,10 @@ async def aerial_generate(request: AerialGenerateRequest):
     if engine["kind"] == "sdxl":
         prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant, request.depth)
     elif not refs and (request.prompt_style == "short" or (
-            request.prompt_style == "auto" and (request.mode == "render" or (request.mode == "facade" and request.depth == "material")))):
-        # BFL 가이드식 짧은 지시문. 같은 이미지·시드 비교(ALT3, 1-1)에서 긴 지시문과 눈으로 구분되지 않고 형태 점수도 비슷해(52/52, 52/46) 기본으로 쓴다.
-        # 입면 재디자인·참조 이미지가 있는 경우는 아직 비교하지 않아 긴 지시문을 그대로 쓴다.
+            request.prompt_style == "auto" and request.mode in ("render", "facade"))):
+        # BFL 가이드식 짧은 지시문. 같은 이미지·시드 비교(ALT3, 1-1)에서 분위기 렌더는 긴 지시문과 눈으로 구분되지 않았고, 항공 조감(대안1)은 긴 지시문이 시점을 바꿔 실패한 것을 짧은 지시문이 해결했다.
+        # 입면은 "사진처럼·화창한 오후" 문구와 "주 건물만, 이웃 건물은 그대로" 문구를 넣은 뒤 재료만 바꾸기·재디자인 모두 긴 지시문 수준(1500자 → 약 600자)이었다.
+        # 참조 이미지가 있는 경우(레퍼런스 모드·이지 다중 참조)는 아직 짧게 만들지 않아 긴 지시문을 그대로 쓴다.
         prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()

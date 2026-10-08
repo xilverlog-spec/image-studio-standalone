@@ -153,7 +153,7 @@ def kontext_short(mode: str, extra_en: str, variant_id: str, depth: str = "mater
         f = _by_id(FACADES, variant_id)
         # 입면만 바꾸라고만 하면 모델이 스케치업 캡처 느낌(회색 하늘·평평한 조명)을 그대로 둔다(시험 2026-10-08). 사진처럼 만들라는 말과 조명을 함께 지시한다.
         what = ("Change this 3D model screenshot into a photorealistic architectural photograph in bright sunny afternoon light with a clear blue sky, "
-                + (f"and change the facade of the building to {f['prompt']}" if f else "and change the facade of the building"))
+                + (f"and change the facade of the main building only to {f['prompt']}" if f else "and change the facade of the main building only"))
         if depth == "redesign" and f:
             what += ", " + REDESIGN_MOVES.get(variant_id, "with a new window proportion and rhythm")
         keep = "keep the overall building massing, height, roof and camera angle unchanged"
@@ -164,7 +164,7 @@ def kontext_short(mode: str, extra_en: str, variant_id: str, depth: str = "mater
         what = "Change this 3D model screenshot into a photorealistic architectural photograph" + (f", {a['prompt']}" if a else "")
         keep = "keep the building shape, number of floors, window layout, roof lines and camera angle unchanged"
     if keep_site:
-        keep += " and keep the site, roads and surroundings unchanged"
+        keep += " and keep the site, roads and neighboring buildings unchanged"
     out = f"{what}, {keep}."
     if extra_en.strip():
         out += f" {extra_en.strip()}"
