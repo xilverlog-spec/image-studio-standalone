@@ -17,8 +17,8 @@ const isHex = (c) => /^#[0-9a-fA-F]{6}$/.test(c || '');
 const num = (v, d, lo = -50, hi = 150) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const bbox = (pts) => { const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
 
-export const DASHES = { solid: '', dashed: '9 6', dotted: '1.5 6', dashdot: '14 5 2 5' };
-export const DASH_LABEL = { solid: '실선', dashed: '파선', dotted: '점선', dashdot: '일점쇄선' };
+export const DASHES = { solid: '', dashed: '9 6', dotted: '1.5 6', dashdot: '14 5 2 5', dots: '0.1 8.5' };
+export const DASH_LABEL = { solid: '실선', dashed: '파선', dotted: '점선', dashdot: '일점쇄선', dots: '굵은 점(둥근 점선)' };
 // 선 표현(form): line = 선(실선·파선·점선·일점쇄선), 나머지는 모양 자체가 다른 표현
 export const FORMS = ['line', 'ribbon', 'soft', 'double', 'chevron', 'zigzag'];
 export const FORM_LABEL = { line: '선', ribbon: '리본(붓 띠)', soft: '번짐(끝이 흐려지는 띠)', double: '이중선', chevron: '화살표 반복', zigzag: '물결 장식선' };
@@ -56,7 +56,7 @@ export function buildSketchReadPrompt() {
 const SNAP_TOL = 3.2;
 
 // 펜 색 → 화면 색
-export const PEN = { black: '#222222', blue: '#1E4FA0', red: '#D6453D', green: '#3E8E41', other: '#555555' };
+export const PEN = { black: '#222222', blue: '#1E4FA0', red: '#E8832A', green: '#3E8E41', other: '#555555' }; // 빨간 펜 표시는 개념도의 주황 강조색으로 옮긴다
 const penOf = (c) => (PEN[c] ? c : 'other');
 const LINE_KINDS = ['partition', 'arrow', 'flow', 'arc', 'other'];
 const ARROWS = ['end', 'start', 'both', 'none'];
@@ -167,11 +167,11 @@ export function buildSketchAnnotatePrompt(read, userText) {
   "winds":[{"id":"winds 의 id","head":"end|start|both|none","in":"시작 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)","out":"끝 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)"}],
   "legend":{"wind":"화살표·흐름선 범례 문구(20자 이내)","core":"빗금 도형 범례 문구(20자 이내)","opening":"edges(벽에 붙은 표시) 범례 문구(20자 이내)"},
   "notes":["핵심 메시지 문장 1~2개(각 40자 이내)"] }
-규칙: 모든 슬래브와 코어에 items 를 하나씩 순서대로 쓴다. winds 에서 kind 가 arrow 인 것은 스케치에 화살촉이 이미 그려져 있으므로 head 를 바꾸지 않고(arrow 값을 그대로), in/out 은 꼭 필요할 때만 짧게 쓴다. kind 가 flow 이면 요청의 개념(예: 맞통풍은 한쪽 면의 개구부로 들어온 바람이 반대쪽 면으로 빠져나감)에 맞게 head 를 정한다. 이미 읽은 글자(texts)를 다시 쓰거나 바꾸지 않는다. 읽은 목록에 없는 id 는 쓰지 않는다. 손스케치에 없는 내용을 지어내지 않는다. 모든 글자는 한국어(스케치에서 읽은 글자는 제외).`;
+규칙: 모든 슬래브와 코어에 items 를 하나씩 순서대로 쓴다. 코어(빗금 도형)의 name 은 요청에 다른 말이 없으면 \"CORE\" 로 쓴다. winds 에서 kind 가 arrow 인 것은 스케치에 화살촉이 이미 그려져 있으므로 head 를 바꾸지 않고(arrow 값을 그대로), in/out 은 꼭 필요할 때만 짧게 쓴다. kind 가 flow 이면 요청의 개념(예: 맞통풍은 한쪽 면의 개구부로 들어온 바람이 반대쪽 면으로 빠져나감)에 맞게 head 를 정한다. 이미 읽은 글자(texts)를 다시 쓰거나 바꾸지 않는다. 읽은 목록에 없는 id 는 쓰지 않는다. 손스케치에 없는 내용을 지어내지 않는다. 모든 글자는 한국어(스케치에서 읽은 글자는 제외).`;
 }
 
 // 읽기 결과 + AI 이름 → 편집 가능한 spec
-export function makeSketchSpec(read, ann, style = 'line') {
+export function makeSketchSpec(read, ann, style = 'concept') {
   const a = ann && typeof ann === 'object' ? ann : {};
   const area = (b) => (b.rect[2] - b.rect[0]) * (b.rect[3] - b.rect[1]);
   const slabs = read.blocks.filter((b) => !b.hatched).sort((p, q) => area(q) - area(p));
@@ -216,13 +216,13 @@ export function makeSketchSpec(read, ann, style = 'line') {
     if (l.kind === 'flow') {
       winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, ...labels });
     } else if (l.kind === 'arrow') {
-      winds.push({ id: `w${winds.length + 1}`, pts: trimTail(l.pts.length > 4 ? resample(chaikin(l.pts, 1), 5) : l.pts), smooth: true, head: l.arrow, dash: 'solid', width: 3.2, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
+      winds.push({ id: `w${winds.length + 1}`, pts: trimTail(l.pts.length > 4 ? resample(chaikin(l.pts, 1), 5) : l.pts), smooth: true, head: l.arrow, dash: 'solid', width: 3.4, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
     } else {
-      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: 'none', dash: 'solid', width: 2.2, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
+      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: 'none', dash: 'dots', width: 5.2, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
     }
   });
   // 손글씨는 읽은 그대로 글자 메모로(위치 편집 가능)
-  const memos = (read.texts || []).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 18, color: PEN[t.color] }));
+  const memos = (read.texts || []).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 26, color: '#2B2523' }));
   const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...memos.map((m) => [m.x, m.y])];
   const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.04; const padY = (y1 - y0) * 0.04;
   return {
@@ -240,7 +240,7 @@ export function normalizeSketch(raw) {
   const pt = (p) => [num(p?.[0], 0), num(p?.[1], 0)];
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
-    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '' };
+    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
     id: uid(l.id, `p${i + 1}`), pts: (Array.isArray(l.pts) && l.pts.length >= 2 ? l.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt),
@@ -259,26 +259,27 @@ export function normalizeSketch(raw) {
   const frame = f && f[2] > f[0] && f[3] > f[1] ? f : (all.length ? bbox(all) : [0, 0, 100, 100]);
   if (frame[2] - frame[0] < 1) frame[2] = frame[0] + 1;
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
-  // 발표용 스타일은 쓰지 않기로 해서(2026-10-12) 스타일은 도면용 하나로 고정한다
+  // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: 'line', frame, blocks, lines, winds, memos,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos,
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
 
 // ── 4) 렌더 ──────────────────────────────────────────────────
-const W = 1200; const H = 760; const AREA = [70, 150, 780, 640];
+const W = 1200; const H = 760; const AREA = [70, 150, 780, 640]; const AREA_CONCEPT = [70, 190, 1130, 690];
 export const SKETCH_SIZE = [W, H];
 // 다이어그램 좌표(0~100) ↔ 그림 좌표(1200x760). 틀(frame)은 편집해도 바뀌지 않아 요소를 옮겨도 전체가 다시 확대·축소되지 않는다
 export function sketchView(raw) {
-  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame;
-  const K = Math.min((AREA[2] - AREA[0]) / (fx1 - fx0), (AREA[3] - AREA[1]) / (fy1 - fy0));
-  const ox = AREA[0] + (AREA[2] - AREA[0] - (fx1 - fx0) * K) / 2; const oy = AREA[1] + (AREA[3] - AREA[1] - (fy1 - fy0) * K) / 2;
+  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame; const AR = spec.style === 'concept' ? AREA_CONCEPT : AREA;
+  const K = Math.min((AR[2] - AR[0]) / (fx1 - fx0), (AR[3] - AR[1]) / (fy1 - fy0));
+  const ox = AR[0] + (AR[2] - AR[0] - (fx1 - fx0) * K) / 2; const oy = AR[1] + (AR[3] - AR[1] - (fy1 - fy0) * K) / 2;
   return { K, toScreen: ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K], toDiag: ([px, py]) => [fx0 + (px - ox) / K, fy0 + (py - oy) / K] };
 }
 const PALETTE = {
   pres: { bg: '#FAF7F2', slab: '#F6D9B8', slabLine: '#B8742F', core: '#27304F', text: '#222222', sub: '#666666', part: '#B8742F', card: true },
   line: { bg: '#FFFFFF', slab: '#FFFFFF', slabLine: '#222222', core: '#222222', text: '#111111', sub: '#555555', part: '#222222', card: false },
+  concept: { bg: '#FDF8EC', slab: '#FFFFFF', slabLine: '#2B2523', core: '#2B2523', coreFill: '#D9D5CE', text: '#2B2523', sub: '#3A3532', part: '#8A8580', accent: '#E8832A', card: false },
 };
 
 const smoothPath = (Q) => {
@@ -419,6 +420,8 @@ export function renderSketch(raw, opts = {}) {
   const { interactive = false, selected = '' } = opts;
   const C = PALETTE[spec.style];
   const pres = spec.style === 'pres';
+  const concept = spec.style === 'concept';
+  const filledHead = pres || concept;
   const P = sketchView(spec).toScreen;
   const eid = (id) => (interactive ? ` data-eid="${esc(id)}" style="cursor:move"` : '');
   const handles = []; // 선택한 요소의 크기·끝점 조절 점(편집 화면에만 그린다)
@@ -430,11 +433,16 @@ export function renderSketch(raw, opts = {}) {
     : `<circle data-handle="${name}" data-eid="${esc(id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#fff" stroke="#F28C28" stroke-width="2.5" style="cursor:crosshair"/>`);
   const o = []; const sel = [];
   const defs = [`<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fff"/><line x1="0" y1="0" x2="0" y2="6" stroke="${C.core}" stroke-width="2"/></pattern>`];
-  spec.winds.forEach((w) => defs.push(`<marker id="aw_${esc(w.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${pres ? 4 : 5}" markerHeight="${pres ? 4 : 5}" orient="auto-start-reverse"><path d="${pres ? 'M0 0L10 5L0 10Z' : 'M1 1L9 5L1 9'}" fill="${pres ? w.color : 'none'}" stroke="${w.color}" stroke-width="${pres ? 0 : 1.6}" stroke-linejoin="round"/></marker>`));
+  spec.winds.forEach((w) => defs.push(`<marker id="aw_${esc(w.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${concept ? 4.8 : pres ? 4 : 5}" markerHeight="${concept ? 4.8 : pres ? 4 : 5}" orient="auto-start-reverse"><path d="${filledHead ? 'M0 0L10 5L0 10Z' : 'M1 1L9 5L1 9'}" fill="${filledHead ? w.color : 'none'}" stroke="${w.color}" stroke-width="${filledHead ? 0 : 1.6}" stroke-linejoin="round"/></marker>`));
   o.push(`<defs>${defs.join('')}</defs>`);
   if (pres) o.push('<rect x="30" y="100" width="780" height="580" rx="14" fill="#fff" stroke="#E7DFD2"/>');
+  if (concept) {
+    if (spec.title) o.push(`<text x="60" y="86" font-family="${FONT}" font-size="46" font-weight="800" fill="${C.text}">${esc(spec.title)}</text>`);
+    if (spec.subtitle) o.push(`<text x="60" y="136" font-family="${FONT}" font-size="29" font-weight="500" fill="${C.sub}">${esc(spec.subtitle)}</text>`);
+  } else {
   if (spec.title) o.push(`<text x="40" y="52" font-family="${FONT}" font-size="26" font-weight="800" fill="${C.text}">${esc(spec.title)}</text>`);
   if (spec.subtitle) o.push(`<text x="40" y="82" font-family="${FONT}" font-size="14.5" fill="${C.sub}">${esc(spec.subtitle)}</text>`);
+  }
   if (pres && spec.title) o.push('<rect x="0" y="36" width="12" height="22" fill="#1E88C8"/>');
 
   const R = (b) => { const a = P([b.rect[0], b.rect[1]]); const z = P([b.rect[2], b.rect[3]]); return [a[0], a[1], z[0] - a[0], z[1] - a[1]]; };
@@ -446,7 +454,7 @@ export function renderSketch(raw, opts = {}) {
   slabs.forEach((b) => {
     const [x, y, w, h] = R(b);
     if (pres) o.push(`<rect x="${(x + 7).toFixed(1)}" y="${(y + 7).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#000" fill-opacity="0.09"/>`);
-    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || C.slab}" stroke="${C.slabLine}" stroke-width="${pres ? 2.6 : 3}" stroke-linejoin="round"${eid(b.id)}/>`);
+    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || C.slab}" stroke="${C.slabLine}" stroke-width="${pres ? 2.6 : concept ? 3.6 : 3}" stroke-linejoin="round"${eid(b.id)}/>`);
   });
   spec.lines.forEach((l) => {
     const Q = l.pts.map(P); const d = `M${Q.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`; const col = l.color || C.part;
@@ -457,10 +465,29 @@ export function renderSketch(raw, opts = {}) {
   });
   cores.forEach((b) => {
     const [x, y, w, h] = R(b);
-    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || 'url(#hatch)'}" stroke="${C.core}" stroke-width="2.2" stroke-linejoin="round"${eid(b.id)}/>`);
+    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || (concept ? C.coreFill : 'url(#hatch)')}" stroke="${C.core}" stroke-width="${concept ? 2.6 : 2.2}" stroke-linejoin="round"${eid(b.id)}/>`);
   });
+  // 도형 안에 이름 표시(개념도): 코어는 기본으로, 판은 켰을 때만. 도형이 작으면 글자를 줄인다
+  if (concept) {
+    [...slabs, ...cores].forEach((b) => {
+      if (!b.name || !(b.showName ?? b.kind === 'core')) return;
+      const [x, y, w, h] = R(b); const len = [...b.name].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0) || 1;
+      const fs = Math.max(10, Math.min(22, (w - 10) / len, h - 8));
+      o.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="${b.kind === 'core' ? 600 : 500}" fill="${b.kind === 'core' ? C.text : '#8A8580'}" pointer-events="none">${esc(b.name)}</text>`);
+    });
+  }
   openings.forEach((b) => {
     const [x, y, w, h] = R(b);
+    if (concept) { // 열린 벽 안쪽(판 중심 쪽)으로 조금 들여서 이어 가는 둥근 점선
+      const horiz = w >= h; const mx = b.rect[0] + (b.rect[2] - b.rect[0]) / 2; const my = b.rect[1] + (b.rect[3] - b.rect[1]) / 2;
+      const host = slabs.find((s) => mx >= s.rect[0] - 2 && mx <= s.rect[2] + 2 && my >= s.rect[1] - 2 && my <= s.rect[3] + 2);
+      let dx = 0; let dy = 0;
+      if (host) { const cx = (host.rect[0] + host.rect[2]) / 2; const cy = (host.rect[1] + host.rect[3]) / 2; if (horiz) dy = (cy >= my ? 1 : -1) * 9; else dx = (cx >= mx ? 1 : -1) * 9; }
+      const x0 = horiz ? x : x + w / 2; const y0 = horiz ? y + h / 2 : y; const x1 = horiz ? x + w : x + w / 2; const y1 = horiz ? y + h / 2 : y + h;
+      o.push(`<line x1="${(x0 + dx).toFixed(1)}" y1="${(y0 + dy).toFixed(1)}" x2="${(x1 + dx).toFixed(1)}" y2="${(y1 + dy).toFixed(1)}" stroke="${b.stroke || C.accent}" stroke-width="3.8" stroke-linecap="round" stroke-dasharray="${DASHES.dots}"/>`);
+      if (interactive) o.push(`<rect x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="${(w + 8).toFixed(1)}" height="${(h + 8).toFixed(1)}" fill="transparent"${eid(b.id)}/>`);
+      return;
+    }
     o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(Math.min(w, h) / 2).toFixed(1)}" fill="${b.fill || '#ffffff'}" fill-opacity="0.7" stroke="${b.stroke || '#555555'}" stroke-width="1.7" stroke-dasharray="5 4"${eid(b.id)}/>`);
   });
   spec.blocks.forEach((b) => {
@@ -503,14 +530,23 @@ export function renderSketch(raw, opts = {}) {
   // 메모(자유 글자)
   spec.memos.forEach((m) => {
     const [x, y] = P([m.x, m.y]);
-    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${m.size}" font-weight="700" fill="${m.color}" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round"${eid(m.id)}>${esc(m.text)}</text>`);
+    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${m.size}" font-weight="${concept ? 600 : 700}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${eid(m.id)}>${esc(m.text)}</text>`);
     if (selected === m.id) { const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58), 0) + 12; sel.push(`<rect x="${(x - wd / 2).toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`); }
   });
   o.push(...sel);
   o.push(...handles);
-  // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다
+  // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다(도면용). 개념도는 도형 안에 이름을 쓰므로 칼럼이 없다
   let ry = 170; let n = 0;
-  [...slabs, ...cores].forEach((b) => {
+  if (concept) {
+    if (spec.showLegend) {
+      let lx = 60; const ly = H - 62; const put = (icon, text) => { o.push(icon); o.push(`<text x="${lx + 46}" y="${ly + 5}" font-family="${FONT}" font-size="16" fill="${C.text}">${esc(text)}</text>`); lx += 70 + [...text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0); };
+      if (spec.winds.length) put(`<line x1="${lx}" y1="${ly}" x2="${lx + 38}" y2="${ly}" stroke="${spec.winds[0].color}" stroke-width="3.4" stroke-linecap="round"/><path d="M${lx + 38} ${ly - 6} L${lx + 48} ${ly} L${lx + 38} ${ly + 6} Z" fill="${spec.winds[0].color}"/>`, spec.legend.wind);
+      if (openings.length) put(`<line x1="${lx}" y1="${ly}" x2="${lx + 40}" y2="${ly}" stroke="${C.accent}" stroke-width="3.8" stroke-linecap="round" stroke-dasharray="${DASHES.dots}"/>`, spec.legend.opening);
+      if (cores.length) put(`<rect x="${lx}" y="${ly - 9}" width="38" height="18" fill="${C.coreFill}" stroke="${C.core}" stroke-width="2"/>`, spec.legend.core);
+    }
+    if (spec.showNotes) spec.notes.forEach((t, i) => o.push(`<text x="60" y="${H - 22 - (spec.notes.length - 1 - i) * 24}" font-family="${FONT}" font-size="16" fill="${C.text}">${esc(t)}</text>`));
+  }
+  if (!concept) [...slabs, ...cores].forEach((b) => {
     if (!b.name) return;
     n += 1; const dark = b.kind === 'core'; const [x, y, w, h] = R(b);
     const [mx, my] = dark ? [x + w / 2, y + h / 2] : [x + 20, y + 20];
@@ -520,8 +556,8 @@ export function renderSketch(raw, opts = {}) {
     if (b.desc) o.push(`<text x="884" y="${ry + 21}" font-family="${FONT}" font-size="12.5" fill="${C.sub}">${esc(b.desc)}</text>`);
     ry += 58;
   });
-  ry += 8; o.push(`<line x1="850" y1="${ry - 14}" x2="1160" y2="${ry - 14}" stroke="${pres ? '#E2D9CB' : '#cccccc'}"/>`);
-  if (spec.winds.length) {
+  if (!concept) { ry += 8; o.push(`<line x1="850" y1="${ry - 14}" x2="1160" y2="${ry - 14}" stroke="${pres ? '#E2D9CB' : '#cccccc'}"/>`); }
+  if (!concept && spec.winds.length) {
     const tally = {}; spec.winds.forEach((w) => { const k = `${w.color}|${w.dash}|${w.form}`; tally[k] = (tally[k] || 0) + 1; });
     const [bestColor, bestDash, bestForm] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0].split('|');
     const w0 = { color: bestColor, dash: bestDash, form: bestForm };
@@ -533,9 +569,9 @@ export function renderSketch(raw, opts = {}) {
     o.push(`${icon}<text x="896" y="${ry + 12}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.wind)}</text>`);
     ry += 26;
   }
-  if (openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
-  if (cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
-  spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
+  if (!concept && openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
+  if (!concept && cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
+  if (!concept) spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${o.join('')}</svg>`;
   return { svg, width: W, height: H };
 }
