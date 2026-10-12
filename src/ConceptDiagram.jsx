@@ -139,6 +139,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [forcedType, setForcedType] = useState('auto');
   const [model, setModel] = useState(AI_MODELS[0].id);
   const [busy, setBusy] = useState(false);
+  const [staleText, setStaleText] = useState(false); // 소재 이미지를 바꿨는데 설명이 이전 그림에 쓴 것 그대로일 때
+  const [genError, setGenError] = useState('');       // 마지막 생성/읽기 실패 사유(실패하면 이전 그림이 그대로 보이므로 화면에 계속 알린다)
   const [result, setResult] = useState(null); // { type, spec, baseImage? }
   const [subjectKind, setSubjectKind] = useState('auto');
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
@@ -161,9 +163,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const asisMode = !!subjectImage && subjectUse === 'asis';
   const canGenerate = !busy && !reading && !!(userText.trim() || subjectImage || styleImage);
 
+  // 소재 이미지를 바꾸거나 지우면, 이전 이미지로 만든 그림은 지우고 설명이 이전 그림용으로 남았다고 알린다
+  const dropOldResult = () => {
+    if (result && (result.type === 'sketch' || result.isReadPreview)) { setResult(null); if (userText.trim()) setStaleText(true); }
+    setGenError('');
+  };
   const pickSubject = async (file) => {
     if (!file) return;
-    try { setSubjectImage(await readResizedPng(file)); setRead(null); }
+    try { setSubjectImage(await readResizedPng(file)); setRead(null); dropOldResult(); }
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
   const pickStyle = async (file) => {
@@ -239,7 +246,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       return r;
     } catch (e) {
       setRead(null);
-      addToast?.('error', '이미지 읽기 실패', e.message);
+      addToast?.('error', '이미지 읽기 실패', e.message); setGenError(`이미지 읽기 실패: ${e.message}`);
       return null;
     } finally {
       setReading(false);
@@ -292,6 +299,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const generate = async (must) => {
     mustRef.current = Array.isArray(must) ? must : [];
     if (!canGenerate) return;
+    setGenError('');
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
     let readNow = read;
     if (readMode && !readNow) {
@@ -306,7 +314,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : (DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램');
       addToast?.('success', '다이어그램 생성 완료', `${what}${styleImage ? ' + 참고 이미지 스타일' : ''}로 만들었습니다.`);
     } catch (e) {
-      addToast?.('error', '다이어그램 생성 실패', e.message);
+      addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`);
     } finally {
       setBusy(false);
     }
@@ -359,16 +367,23 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>1. 설명</span>
-          <textarea value={userText} onChange={(e) => setUserText(e.target.value)} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
+          <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
             placeholder={'예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
         </div>
+
+        {staleText && userText.trim() && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fdba74', background: '#fff7ed' }} data-testid="stale-text">
+            <span style={{ fontSize: 11.5, color: '#9a3412', lineHeight: 1.5 }}>⚠️ 설명이 <b>이전 그림에 쓴 내용 그대로</b>입니다. 이 문장대로 제목과 이름이 붙으니, 새 그림에 맞게 고치거나 지우세요.</span>
+            <button style={btn(false)} onClick={() => { setUserText(''); setStaleText(false); }}>설명 지우기</button>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>2. 소재 이미지 (선택) — 이 이미지를 다이어그램으로</span>
           {subjectImage ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <img src={subjectImage} alt="소재 이미지" style={thumb} />
-              <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => { setSubjectImage(null); setRead(null); }}>소재 이미지 제거</button>
+              <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => { setSubjectImage(null); setRead(null); dropOldResult(); }}>소재 이미지 제거</button>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[['read', '형태를 읽어서'], ['asis', '이미지 그대로 바탕']].map(([id, label]) => (
                   <button key={id} style={{ ...btn(subjectUse === id, busy || reading), flex: 1, padding: '7px 6px', fontSize: 12 }} disabled={busy || reading} onClick={() => setSubjectUse(id)}>{label}</button>
@@ -491,6 +506,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
               <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
               <button style={{ ...btn(false), fontSize: 12 }} onClick={() => setResult({ type: 'site', spec: EXAMPLE_SPECS.site })}>예시 먼저 보기</button>
+            </div>
+          )}
+          {genError && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fef2f2', color: '#B91C1C', fontSize: 12.5, lineHeight: 1.5 }} data-testid="gen-error">
+              ⚠️ {genError}{result ? ' — 아래에 보이는 그림은 이번 결과가 아니라 이전 결과입니다.' : ''}
             </div>
           )}
           {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
