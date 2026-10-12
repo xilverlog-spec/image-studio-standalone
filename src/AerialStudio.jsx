@@ -291,7 +291,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
       setCommonPrompt(data.prompt); setExtraEn(data.extra_en || ''); setPromptEdited(false); setBuiltFor(promptKey);
       setRefMeta({ roles: data.ref_roles_used || [], hints: data.ref_hints_en || [], notes: data.ref_notes || [] });
-      return { prompt: data.prompt, extraEn: data.extra_en || '' };
+      return { prompt: data.prompt, extraEn: data.extra_en || '', meta: { roles: data.ref_roles_used || [], hints: data.ref_hints_en || [], notes: data.ref_notes || [] } };
     } catch (e) {
       addToast?.('error', '프롬프트 생성 실패', e.message);
       return null;
@@ -306,13 +306,13 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     return data;
   };
 
-  const oneGeneration = (variant, prompt, ex) => postJson('/v1/image/aerial/generate', {
+  const oneGeneration = (variant, prompt, ex, meta = refMeta) => postJson('/v1/image/aerial/generate', {
     mode, variant, depth: activeDepth, common_prompt: prompt, extra_en: ex, provider, aspect_ratio: aspect, keep_form: keepForm,
     input_image_base64: image.dataUrl.split(',').pop(),
     reference_images: refs.map((r) => ({ role: r.role, base64: r.dataUrl.split(',').pop() })),
     external_consent: consent,
     prompt_style: promptEdited ? 'long' : 'auto',   // 사용자가 프롬프트를 직접 고쳤으면 그 글을 그대로 쓰는 긴 방식으로 보낸다
-    ref_roles: refMeta.roles, ref_hints_en: refMeta.hints, ref_notes: refMeta.notes,
+    ref_roles: meta.roles, ref_hints_en: meta.hints, ref_notes: meta.notes,
   });
 
   const addResult = (data, extraFields) => {
@@ -336,11 +336,11 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     }
 
     setBusy(true);
-    let prompt = commonPrompt; let ex = extraEn;
+    let prompt = commonPrompt; let ex = extraEn; let meta = refMeta;
     if (!prompt.trim() || (promptStale && !promptEdited)) {
       const built = await buildCommonPrompt();
       if (!built) { setBusy(false); return; }
-      prompt = built.prompt; ex = built.extraEn;
+      prompt = built.prompt; ex = built.extraEn; meta = built.meta;
     }
     const thumb = await makeThumb(image.dataUrl);
 
@@ -350,10 +350,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     let ok = 0; let lastError = ''; let stop = false;
     for (let i = 0; i < jobs.length && !stop; i++) {
       try {
-        let data = await oneGeneration(jobs[i], prompt, ex);
+        let data = await oneGeneration(jobs[i], prompt, ex, meta);
         let retried = false;
         if (autoRetry && data.form_score != null && data.form_score < AUTO_RETRY_BELOW) {
-          const again = await oneGeneration(jobs[i], prompt, ex);
+          const again = await oneGeneration(jobs[i], prompt, ex, meta);
           retried = true;
           if ((again.form_score ?? -1) >= (data.form_score ?? -1)) data = again;   // 점수가 더 높은 쪽을 남긴다
         }

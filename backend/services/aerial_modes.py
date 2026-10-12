@@ -191,7 +191,10 @@ def kontext_short_ref(mode: str, depth: str, variant_id: str, ref_roles: list, r
     def detail(i: int, fallback: str) -> str:
         hint = (ref_hints[i] if ref_hints and i < len(ref_hints) else "").strip()
         note = (ref_notes[i] if ref_notes and i < len(ref_notes) else "").strip()
-        text = hint or note[:240].rstrip()
+        if not hint and len(note) > 240:   # 문장 중간에서 잘리지 않게 마지막 마침표까지만 쓴다
+            cut = note[:240]
+            note = cut[:cut.rfind('.') + 1] if '.' in cut else cut.rstrip()
+        text = hint or note
         return f" ({text})" if text else f" ({fallback})"
 
     clauses = []

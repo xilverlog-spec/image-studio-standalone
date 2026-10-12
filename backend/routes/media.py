@@ -1122,7 +1122,7 @@ class AerialGenerateRequest(BaseModel):
     external_consent: bool = False
     keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
     keep_site: bool = True                # 짧은 지시문(prompt_style='short')에 부지 유지 문구를 넣을지
-    prompt_style: str = "auto"            # Kontext 지시문: 'auto'(기본: 분위기 렌더·재료만 바꾸기는 BFL 가이드식 짧은 지시문, 나머지는 긴 지시문) | 'short'(강제) | 'long'(강제)
+    prompt_style: str = "auto"            # Kontext 지시문: 'auto'(기본: BFL 가이드식 짧은 지시문. 참조 이미지가 있어도 짧은 지시문) | 'short'(강제) | 'long'(강제)
     ref_roles: List[str] = []             # 참조별 역할(aerial-prompt 의 ref_roles_used). 짧은 참조 지시문용
     ref_hints_en: List[str] = []          # 참조별 '가져올 것'(영어). aerial-prompt 의 ref_hints_en
     ref_notes: List[str] = []             # 참조 자동 분석 요약(aerial-prompt 의 ref_notes)
@@ -1205,15 +1205,15 @@ async def aerial_generate(request: AerialGenerateRequest):
 
     if engine["kind"] == "sdxl":
         prompt = aerial_modes.local_prompt(request.mode, request.extra_en, request.variant, request.depth)
-    elif not refs and (request.prompt_style == "short" or (
-            request.prompt_style == "auto" and request.mode in ("render", "facade"))):
-        # BFL 가이드식 짧은 지시문. 같은 이미지·시드 비교(ALT3, 1-1)에서 분위기 렌더는 긴 지시문과 눈으로 구분되지 않았고, 항공 조감(대안1)은 긴 지시문이 시점을 바꿔 실패한 것을 짧은 지시문이 해결했다.
-        # 입면은 "사진처럼·화창한 오후" 문구와 "주 건물만, 이웃 건물은 그대로" 문구를 넣은 뒤 재료만 바꾸기·재디자인 모두 긴 지시문 수준(1500자 → 약 600자)이었다.
-        # 참조 이미지가 있는 경우(레퍼런스 모드·이지 다중 참조)는 아직 짧게 만들지 않아 긴 지시문을 그대로 쓴다.
-        prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
-    elif refs and request.prompt_style == "short":
+    elif refs and (request.prompt_style == "short" or request.prompt_style == "auto"):
+        # 참조 이미지가 있어도 짧은 지시문이 기본이다. 같은 시드 비교(2026-10-12): 긴 지시문은 참조 건물의 모양을 통째로 베꼈고(ALT3 + 적벽돌 참조, 형태 점수 0),
+        # 짧은 지시문은 내 건물 형태를 지키고 재료·색만 가져왔다. 1-1 쌍은 둘이 눈으로 구분되지 않았다.
         roles = request.ref_roles or [r.role for r in request.reference_images[:len(refs)]]
         prompt = aerial_modes.kontext_short_ref(request.mode, request.depth, request.variant, roles, request.ref_hints_en, request.ref_notes, request.extra_en, request.keep_site)
+    elif request.prompt_style == "short" or (request.prompt_style == "auto" and request.mode in ("render", "facade")):
+        # BFL 가이드식 짧은 지시문. 같은 이미지·시드 비교(ALT3, 1-1)에서 분위기 렌더는 긴 지시문과 눈으로 구분되지 않았고, 항공 조감(대안1)은 긴 지시문이 시점을 바꿔 실패한 것을 짧은 지시문이 해결했다.
+        # 입면은 "사진처럼·화창한 오후" 문구와 "주 건물만, 이웃 건물은 그대로" 문구를 넣은 뒤 재료만 바꾸기·재디자인 모두 긴 지시문 수준(1500자 → 약 600자)이었다.
+        prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
     return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
