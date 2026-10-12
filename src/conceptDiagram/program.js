@@ -53,7 +53,7 @@ function layout(spec) {
         let dx = P[b][0] - P[a][0]; let dy = P[b][1] - P[a][1]; let d = Math.hypot(dx, dy);
         if (d < 0.01) { dx = 0.5 + i; dy = 0.5 + j; d = Math.hypot(dx, dy); }
         const same = spec.nodes[i].group === spec.nodes[j].group;
-        const need = R[a] + R[b] + (same ? 8 : 30);
+        const need = R[a] + R[b] + (same ? 22 : 30);
         if (d < need) { const f = (need - d) * 0.5; F[a][0] -= (dx / d) * f; F[a][1] -= (dy / d) * f; F[b][0] += (dx / d) * f; F[b][1] += (dy / d) * f; }
       }
     }

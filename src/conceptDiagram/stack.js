@@ -53,10 +53,24 @@ export function renderStack(raw) {
   // 층 띠와 프로그램 칸
   spec.floors.forEach((f, i) => {
     const y = yOf(i); const total = f.programs.reduce((s, p) => s + p.width, 0) || 1; let x = BX;
+    // 보이드·코어가 이 층을 지나가는 가로 구간(글자가 가려지지 않게 피한다)
+    const blocked = [
+      ...spec.voids.filter((v) => v.from <= i && i <= v.to).map((v) => [BX + v.x * BW, BX + (v.x + v.w) * BW]),
+      ...spec.cores.map((c) => [BX + c.x * BW - 14, BX + c.x * BW + 14]),
+    ];
     f.programs.forEach((p) => {
       const w = (p.width / total) * BW;
       out.push(`<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${FH}" fill="${TONES[p.tone]}" stroke="#fff" stroke-width="2"/>`);
-      if (p.name) out.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + FH / 2 + 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${w < 90 ? 11 : 13}" font-weight="600" fill="#2b2f36">${esc(p.name.slice(0, 12))}</text>`);
+      if (p.name) {
+        // 칸에서 막힌 구간을 뺀 빈 구간 중 가장 넓은 곳에 글자를 둔다
+        let free = [[x, x + w]];
+        blocked.forEach(([b0, b1]) => { free = free.flatMap(([a0, a1]) => (b1 <= a0 || b0 >= a1 ? [[a0, a1]] : [[a0, Math.min(a1, b0)], [Math.max(a0, b1), a1]].filter(([c0, c1]) => c1 - c0 > 1))); });
+        const [a0, a1] = free.reduce((best, cur) => (cur[1] - cur[0] > best[1] - best[0] ? cur : best), free[0] || [x, x + w]);
+        const room = a1 - a0 - 10; let text = p.name.slice(0, 12); let fs = w < 90 ? 11 : 13;
+        while (text.length * fs * 0.95 > room && fs > 10) fs -= 0.5;
+        if (text.length * fs * 0.95 > room) text = room < fs * 1.9 ? '' : `${text.slice(0, Math.max(1, Math.floor(room / (fs * 0.95)) - 1))}…`;
+        if (text) out.push(`<text x="${((a0 + a1) / 2).toFixed(1)}" y="${(y + FH / 2 + 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs}" font-weight="600" fill="#2b2f36">${esc(text)}</text>`);
+      }
       x += w;
     });
     out.push(`<text x="${BX - 14}" y="${(y + FH / 2 + 5).toFixed(1)}" text-anchor="end" font-family="${FONT}" font-size="14" font-weight="800" fill="#444">${esc(f.name)}</text>`);

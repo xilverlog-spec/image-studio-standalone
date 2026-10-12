@@ -259,7 +259,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const type0 = asisMode ? 'site' : forcedType;
     const images = [...(subjectImage && asisMode ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
     const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, style: !!styleImage }), images);
-    const guessed = parsed.steps ? 'massing' : 'site';
+    const guessed = parsed.steps ? 'massing' : parsed.floors ? 'stack' : parsed.nodes ? 'program' : 'site';
     const type = asisMode ? 'site' : forcedType !== 'auto' ? forcedType : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
     const { type: _drop, ...spec } = parsed;
     return { type, spec, ...(asisMode ? { baseImage: subjectImage } : {}) };

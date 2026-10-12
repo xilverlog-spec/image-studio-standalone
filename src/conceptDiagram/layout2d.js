@@ -59,6 +59,10 @@ const bboxOf = (pts) => {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 };
 
+// 글자 폭 추정(한글·한자는 글자 크기만큼, 영문·숫자는 0.58배)과 라벨 상자 겹침 검사
+const textW = (s, fs) => [...String(s ?? '')].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
+const overlaps = (a, b, m = 2) => a[0] < b[2] + m && a[2] > b[0] - m && a[1] < b[3] + m && a[3] > b[1] - m;
+
 function heading(text, accent) {
   const parts = String(text || '').split(/(\{[^}]*\})/g).filter(Boolean);
   const spans = parts.map((p) => (p.startsWith('{') && p.endsWith('}')
@@ -190,6 +194,8 @@ function renderPanel(shapes, panel, ox, oy, uid, withBase = true) {
   const C = (id) => { const s = byId[id]; return s ? T(centroid(s.pts)) : null; };
   const polyStr = (pts) => pts.map((p) => T(p).map((v) => v.toFixed(1)).join(',')).join(' ');
   const out = [];
+  const placed = []; // 이미 놓인 라벨 상자 [x0,y0,x1,y1] — 겹치지 않게 다음 라벨 위치를 정할 때 쓴다
+  const free = (box) => !placed.some((q) => overlaps(box, q));
 
   // 바탕: 넓은 것부터(도로·대지 → 건물/방) 그려서 겹침이 자연스럽게
   const area = (s) => { const [a, b, c, d] = bboxOf(s.pts); return (c - a) * (d - b); };
@@ -216,9 +222,12 @@ function renderPanel(shapes, panel, ox, oy, uid, withBase = true) {
     });
     if (z.label) {
       const pts = ids.flatMap((id) => byId[id].pts); const [x0, y0, x1] = bboxOf(pts);
-      const [lx, ly] = T([(x0 + x1) / 2, y0]);
-      const w = String(z.label).length * 11 + 16;
-      out.push(`<g><rect x="${(lx - w / 2).toFixed(1)}" y="${(ly + 4).toFixed(1)}" width="${w}" height="20" rx="10" fill="${col}"/><text x="${lx.toFixed(1)}" y="${(ly + 18).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11.5" font-weight="700" fill="#fff">${esc(z.label)}</text></g>`);
+      const [lx0, ly] = T([(x0 + x1) / 2, y0]);
+      const w = textW(z.label, 11.5) + 18;
+      const lx = Math.min(BASE_X + BASE_W - w / 2, Math.max(BASE_X + w / 2, lx0));
+      const dy = [0, 24, -24, 48, -48].find((d) => free([lx - w / 2, ly + 4 + d, lx + w / 2, ly + 24 + d])) ?? 0;
+      placed.push([lx - w / 2, ly + 4 + dy, lx + w / 2, ly + 24 + dy]);
+      out.push(`<g><rect x="${(lx - w / 2).toFixed(1)}" y="${(ly + 4 + dy).toFixed(1)}" width="${w.toFixed(1)}" height="20" rx="10" fill="${col}"/><text x="${lx.toFixed(1)}" y="${(ly + 18 + dy).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11.5" font-weight="700" fill="#fff">${esc(z.label)}</text></g>`);
     }
   });
 
@@ -237,24 +246,42 @@ function renderPanel(shapes, panel, ox, oy, uid, withBase = true) {
     out.push(`<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="4" fill="${col}"/>`);
   });
 
-  // 이름
-  if (withBase) {
-    shapes.forEach((s) => {
-      if (!s.name || !KIND_STYLE[s.kind].name) return;
-      const [cx, cy] = C(s.id);
-      out.push(`<text x="${cx.toFixed(1)}" y="${(cy + 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11" fill="#3a3f45" paint-order="stroke" stroke="#fff" stroke-width="3" stroke-opacity="0.75">${esc(s.name)}</text>`);
-    });
-  }
-
-  // 주석
+  // 주석 상자 위치: 이미 놓인 라벨과 겹치지 않는 후보(위/아래, 좌우로 조금씩 이동)를 고른다
+  const noteDraw = [];
   (Array.isArray(panel.notes) ? panel.notes : []).slice(0, 8).forEach((n, ni) => {
     const c = C(n.target);
     if (!c || !n.text) return;
     const text = String(n.text).slice(0, 22);
-    const w = text.length * 11.5 + 16;
+    const w = textW(text, 11.5) + 16;
     const up = ni % 2 === 0;
-    const lx = Math.min(BASE_X + BASE_W - w / 2, Math.max(BASE_X + w / 2, c[0]));
-    const ly = up ? Math.max(BASE_Y - 4, c[1] - 46) : Math.min(BASE_Y + BASE_H + 14, c[1] + 40);
+    const at = (isUp, dx) => {
+      const lx = Math.min(BASE_X + BASE_W - w / 2, Math.max(BASE_X + w / 2, c[0] + dx));
+      const ly = isUp ? Math.max(BASE_Y - 4, c[1] - 46) : Math.min(BASE_Y + BASE_H + 14, c[1] + 40);
+      return { lx, ly, up: isUp, box: [lx - w / 2, ly - 10, lx + w / 2, ly + 10] };
+    };
+    const cands = [up, !up].flatMap((u) => [0, w * 0.55, -w * 0.55, w * 1.1, -w * 1.1].map((dx) => at(u, dx)));
+    const pick = cands.find((q) => free(q.box)) || cands[0];
+    placed.push(pick.box);
+    noteDraw.push({ c, text, w, ...pick });
+  });
+
+  // 이름: 큰 방부터 놓고, 이미 놓인 라벨과 겹치면 글자를 줄이거나 위아래로 비켜 놓는다(끝내 못 놓으면 생략)
+  if (withBase) {
+    [...shapes].filter((s) => s.name && KIND_STYLE[s.kind].name).sort((p, q) => area(q) - area(p)).forEach((s) => {
+      const [cx, cy] = C(s.id);
+      for (const fs of [11, 10, 9]) {
+        const w = textW(s.name, fs);
+        const dy = [0, -(fs + 2), fs + 2, -2 * (fs + 2), 2 * (fs + 2)].find((d) => free([cx - w / 2, cy + 4 + d - fs, cx + w / 2, cy + 4 + d + 3]));
+        if (dy === undefined) continue;
+        placed.push([cx - w / 2, cy + 4 + dy - fs, cx + w / 2, cy + 4 + dy + 3]);
+        out.push(`<text x="${cx.toFixed(1)}" y="${(cy + 4 + dy).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs}" fill="#3a3f45" paint-order="stroke" stroke="#fff" stroke-width="3" stroke-opacity="0.75">${esc(s.name)}</text>`);
+        break;
+      }
+    });
+  }
+
+  // 주석
+  noteDraw.forEach(({ c, text, w, lx, ly, up }) => {
     out.push(`<line x1="${c[0].toFixed(1)}" y1="${c[1].toFixed(1)}" x2="${lx.toFixed(1)}" y2="${(up ? ly + 10 : ly - 10).toFixed(1)}" stroke="#555" stroke-width="1"/>`);
     out.push(`<g><rect x="${(lx - w / 2).toFixed(1)}" y="${(ly - 10).toFixed(1)}" width="${w.toFixed(1)}" height="20" rx="4" fill="#fff" stroke="#555" stroke-width="1"/><text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11.5" fill="#1f242b">${esc(text)}</text></g>`);
   });
