@@ -11,7 +11,7 @@ const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from ${fwd(sketch)};`);
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -123,7 +123,7 @@ run('기본 위치 표현 읽기: 도형·화살표·호·흐름·칸막이·글
   if (rd.texts.length !== 1 || rd.texts[0].text !== 'OPEN' || rd.edges.length !== 1) throw new Error('글자(빈 글자는 버림)·벽표시 읽기 실패');
   const b0 = rd.blocks[0].rect; if (Math.abs(b0[0] - 30) > 0.01 || Math.abs(b0[1] - 40) > 0.01) throw new Error('0~1000 → 0~100 좌표 변환 오류');
   const sp = m.makeSketchSpec(rd, null);
-  if (sp.blocks.filter((b) => b.kind === 'opening').length !== 1 || sp.memos.length !== 1) throw new Error('벽표시→개구부, 글자→메모 변환 실패');
+  if (!sp.blocks.some((b) => b.openSides.includes('left')) || sp.blocks.filter((b) => b.kind === 'opening').length !== 0 || sp.memos.length !== 1) throw new Error('벽 전체를 덮는 표시→열린 변(left), 글자→메모 변환 실패');
   const first = sp.winds.find((w) => Math.abs(w.pts.at(-1)[0] - 75) < 0.1 && Math.abs(w.pts.at(-1)[1] - 15) < 0.1); // tip [150,750] → x 75, y 15
   const inside = (p) => sp.blocks.some((b) => b.kind !== 'opening' && p[0] > b.rect[0] && p[0] < b.rect[2] && p[1] > b.rect[1] && p[1] < b.rect[3]);
   if (!first || inside(first.pts[0])) throw new Error('건물 안에서 시작하는 화살표 꼬리가 벽 경계로 정리되지 않음');
@@ -139,6 +139,25 @@ run('합의: 한 번 크게 빗나간 읽기를 고르지 않는다', () => {
   const good1 = mk(200); const good2 = mk(205); const bad = mk(550);
   const pick = m.pickConsensusSketch([bad, good1, good2]); if (pick === bad) throw new Error('이탈값을 골랐음');
   return m.renderSketch(m.makeSketchSpec(pick, null));
+});
+run('열린 벽 표시가 도형 외곽선(벽)에 붙고, 벽 길이 안으로 맞춰진다', () => {
+  const slab = [20, 30, 60, 50]; // 윗변 y=30, 아랫변 y=50, 왼변 x=20
+  const near = m.snapSegToWall([22, 31.7 - 1.3, 70, 31.7 + 1.3], [{ rect: slab }]); // 윗변에서 1.7 떨어진 가로 구간, 오른쪽으로 벽을 넘어섬
+  if (Math.abs((near[1] + near[3]) / 2 - 30) > 1e-6) throw new Error('윗변에 붙지 않음'); if (near[2] > 60 + 1e-6 || near[0] < 22 - 1e-6) throw new Error('벽 길이 안으로 맞춰지지 않음');
+  const vert = m.snapSegToWall([58.5 - 1.3, 32, 58.5 + 1.3, 48], [{ rect: slab }, { rect: [50, 35, 59, 45], penalty: 1.5 }]); // 코어 오른변(59)과 판 오른변(60) 사이
+  if (Math.abs((vert[0] + vert[2]) / 2 - 60) > 1e-6 && Math.abs((vert[0] + vert[2]) / 2 - 59) > 1e-6) throw new Error('세로 구간이 벽에 붙지 않음');
+  const far = m.snapSegToWall([30, 70, 50, 72], [{ rect: slab }]); if (far[1] !== 70) throw new Error('멀리 있는 표시는 그대로여야 함');
+  const none = m.snapSegToWall([22, 10, 40, 12], [{ rect: slab }]); if (none[1] !== 10) throw new Error('벽과 겹치지 않는 구간은 붙이지 않아야 함');
+  const t = m.makeSketchSpec(m.normalizeSketchRead({ blocks: [{ box_2d: [300, 200, 500, 600], hatched: false }], edges: [{ from: [313, 220], to: [313, 580], color: 'red' }] }, null), null);
+  if (!t.blocks[0].openSides.includes('top')) throw new Error('벽의 절반 이상을 덮는 표시는 그 변 전체가 열린 변이 되어야 함');
+  const t2 = m.makeSketchSpec(m.normalizeSketchRead({ blocks: [{ box_2d: [300, 200, 500, 600], hatched: false }], edges: [{ from: [313, 220], to: [313, 300], color: 'red' }] }, null), null); // 벽의 20% 만 덮는 짧은 표시
+  const op = t2.blocks.find((b) => b.kind === 'opening'); if (!op || Math.abs((op.rect[1] + op.rect[3]) / 2 - 30) > 1e-6) throw new Error('짧은 표시가 윗변(y=30)에 붙은 개구부로 남지 않음');
+  if (t2.blocks[0].openSides.length) throw new Error('짧은 표시는 변 전체로 합치면 안 됨');
+  const op2 = m.sketchUpdate(t2, op.id, { rect: [op.rect[0], op.rect[1] + 3, op.rect[2], op.rect[3] + 3] });
+  const back = m.sketchSnapToWall(op2, op.id).blocks.find((b) => b.id === op.id); if (Math.abs((back.rect[1] + back.rect[3]) / 2 - 30) > 1e-6) throw new Error('붙이기 버튼 동작 실패');
+  const sides = m.renderSketch({ ...t, style: 'concept' }).svg; if (!sides.includes('stroke-dasharray="0.1 8.5"')) throw new Error('열린 변 점선이 그려지지 않음');
+  const ob = m.sketchUpdate(t, t.blocks[0].id, { openSides: ['top', 'left', 'bogus'], inset: 0 }); const lines = (m.renderSketch(ob).svg.match(/stroke-dasharray="0.1 8.5"/g) || []).length; if (lines !== 2) throw new Error('유효한 열린 변 2개만 그려야 함(없는 변 이름은 무시)');
+  return m.renderSketch(t);
 });
 run('복사·붙여넣기·복제: 새 id, 비껴 놓임, 원본 유지, 모든 종류', () => {
   let t = m.makeSketchSpec(m.normalizeSketchRead(rawRead, [1256, 1131]), { items: [{ target: 'b1', name: 'A' }] });

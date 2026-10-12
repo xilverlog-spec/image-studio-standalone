@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapshot, sketchPaste, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -251,6 +251,29 @@ export default function SketchEditor({ spec, onChange, disabled }) {
               </label>
               <label style={lab}>이름<input style={input} value={sel.el.name} onChange={(e) => set({ name: e.target.value }, 'name')} /></label>
               <label style={lab}>설명<input style={input} value={sel.el.desc} onChange={(e) => set({ desc: e.target.value }, 'desc')} /></label>
+              {sel.el.kind === 'opening' && (<>
+                <label style={lab}>벽에서 안쪽 간격(개념도) {sel.el.inset ?? 6}
+                  <input type="range" min="0" max="20" step="1" value={sel.el.inset ?? 6} onChange={(e) => set({ inset: Number(e.target.value) }, 'inset')} data-testid="opening-inset" />
+                </label>
+                <button style={smallBtn(false)} onClick={() => commit(sketchSnapToWall(norm, selected))} data-testid="snap-wall" title="이 표시를 가장 가까운 도형 외곽선(벽)에 붙입니다">가까운 벽에 붙이기</button>
+              </>)}
+              {sel.el.kind !== 'opening' && (<>
+                <div style={lab}>열린 변(주황 점선이 외곽선을 따라 그려짐)
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {SIDES.map((sd) => (
+                      <label key={sd} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--text-secondary)' }}>
+                        <input type="checkbox" checked={(sel.el.openSides || []).includes(sd)} data-testid={`side-${sd}`}
+                          onChange={(e) => set({ openSides: e.target.checked ? [...(sel.el.openSides || []), sd] : (sel.el.openSides || []).filter((x) => x !== sd) })} />{SIDE_LABEL[sd]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {(sel.el.openSides || []).length > 0 && (
+                  <label style={lab}>벽에서 안쪽 간격(0 = 외곽선과 겹침) {sel.el.inset ?? 6}
+                    <input type="range" min="0" max="20" step="1" value={sel.el.inset ?? 6} onChange={(e) => set({ inset: Number(e.target.value) }, 'inset')} data-testid="side-inset" />
+                  </label>
+                )}
+              </>)}
               {sel.el.kind !== 'opening' && (
                 <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <input type="checkbox" checked={sel.el.showName ?? sel.el.kind === 'core'} onChange={(e) => set({ showName: e.target.checked })} data-testid="show-name" />도형 안에 이름 표시(개념도)

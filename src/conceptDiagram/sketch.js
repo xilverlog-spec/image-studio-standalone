@@ -36,7 +36,7 @@ export function buildSketchReadPrompt() {
 스키마:
 {
  "summary": "무엇이 그려져 있는지 한국어 두세 문장(도형·화살표·글자가 몇 개씩 있는지 포함)",
- "blocks": [ {"id":"b1", "box_2d":[ymin,xmin,ymax,xmax], "hatched": true|false, "color":"black|blue|red|green|other", "note":"한 줄"} ],
+ "blocks": [ {"id":"b1", "box_2d":[ymin,xmin,ymax,xmax], "hatched": true|false, "color":"black|blue|red|green|other", "open_sides":["top","bottom","left","right" 중 해당하는 것], "note":"한 줄"} ],
  "arrows": [ {"id":"a1", "tail":[y,x], "tip":[y,x], "color":"...", "note":"한 줄(양쪽에 화살촉이면 '양쪽')"} ],
  "flows": [ {"id":"f1", "points":[[y,x],...선을 따라 5~10개], "color":"...", "note":"한 줄"} ],
  "arcs": [ {"id":"c1", "points":[[y,x],...3~6개], "color":"..."} ],
@@ -49,7 +49,8 @@ export function buildSketchReadPrompt() {
 - arrows: 화살촉이 있는 선(직선·곡선) 하나당 하나, **하나도 빠뜨리지 않는다.** tail 은 화살대가 시작하는 끝, tip 은 화살촉이 있는 끝이다.
 - flows: 화살촉 없이 도형을 가로지르는 물결·곡선 흐름선. arcs: 화살표 여러 개를 묶거나 글자 옆에 붙여 그린 괄호 같은 호(화살촉 없음).
 - partitions: 도형 안쪽을 나누는 가는 직선. texts: 손으로 쓴 글자·단어·숫자를 보이는 그대로(같은 글자가 여러 곳이면 각각), point 는 글자의 중심.
-- edges: 벽이나 도형의 변을 따라 붙여 그린 짧은 빗금·눈금·톱니 표시(열린 면·개구부 표시)가 이어진 구간의 양 끝(꺾이면 구간을 나눠 적는다). 도형 안을 채운 빗금은 edges 가 아니다.
+- open_sides: 그 도형의 변 중에서 **빨간 빗금·눈금·톱니 표시가 변을 따라 붙어 있는 변**(열린 면·개구부 표시)을 위(top)·아래(bottom)·왼쪽(left)·오른쪽(right)으로 적는다. 변의 일부에만 붙어 있어도 그 변을 적는다. 표시가 없으면 빈 배열.
+- edges: (open_sides 로 담기 어려운 짧은 표시만) 벽이나 도형의 변을 따라 붙여 그린 짧은 빗금·눈금·톱니 표시(열린 면·개구부 표시)가 이어진 구간의 양 끝(꺾이면 구간을 나눠 적는다). 도형 안을 채운 빗금은 edges 가 아니다.
 - 펜 색을 color 로 구분한다(빨간 펜은 대개 건물이 아닌 방향·개방 같은 주석). 이름을 짓지 않는다. 그려진 것만 적는다.`;
 }
 
@@ -59,6 +60,8 @@ const SNAP_TOL = 3.2;
 export const PEN = { black: '#222222', blue: '#1E4FA0', red: '#E8832A', green: '#3E8E41', other: '#555555' }; // 빨간 펜 표시는 개념도의 주황 강조색으로 옮긴다
 const penOf = (c) => (PEN[c] ? c : 'other');
 const LINE_KINDS = ['partition', 'arrow', 'flow', 'arc', 'other'];
+export const SIDES = ['top', 'bottom', 'left', 'right'];
+export const SIDE_LABEL = { top: '위', bottom: '아래', left: '왼쪽', right: '오른쪽' };
 const ARROWS = ['end', 'start', 'both', 'none'];
 
 // AI 응답 → 정리된 읽기 결과. dims = [이미지 가로 px, 세로 px] 이면 가로세로 비율을 되살린다(AI 좌표는 가로·세로를 따로 0~1000 으로 준다).
@@ -74,7 +77,8 @@ export function normalizeSketchRead(parsed, dims) {
     if (Array.isArray(b.box_2d) && b.box_2d.length === 4) { const [y0, x0, y1, x1] = b.box_2d.map((v) => num(v, 0, 0, 1000)); rect = [Math.min(x0, x1) / 10 * sx, Math.min(y0, y1) / 10 * sy, Math.max(x0, x1) / 10 * sx, Math.max(y0, y1) / 10 * sy]; }
     else { const pts = (Array.isArray(b.pts) ? b.pts : []).map(fix); if (pts.length < 3) return null; rect = bbox(pts); }
     if (rect[2] - rect[0] < 0.5 || rect[3] - rect[1] < 0.5) return null;
-    return { id: `b${i + 1}`, hatched: !!b.hatched, rect, color: penOf(b.color), note: String(b.note ?? '') };
+    const openSides = [...new Set((Array.isArray(b.open_sides) ? b.open_sides : []).map((v) => String(v).toLowerCase()).filter((v) => SIDES.includes(v)))];
+    return { id: `b${i + 1}`, hatched: !!b.hatched, rect, color: penOf(b.color), openSides, note: String(b.note ?? '') };
   }).filter(Boolean);
   if (!blocks.length) throw new Error('스케치에서 도형(상자)을 찾지 못했습니다.');
   // 가까운 모서리 좌표끼리 같은 값으로 맞춘다(손떨림 제거)
@@ -129,6 +133,27 @@ export function pickConsensusSketch(reads) {
   return best;
 }
 
+// 열린 벽 표시(구간 하나)를 가장 가까운 도형 외곽(벽)에 붙인다. seg = [x0,y0,x1,y1](얇은 직사각형), solids = 벽이 될 도형들의 rect 목록(판 우선, 코어는 뒤로).
+// 구간이 벽과 겹치는 부분만 남기고, 벽에서 tol(다이어그램 단위)보다 멀면 붙이지 않는다.
+export function findWall(seg, solids, tol = 6) {
+  const horiz = (seg[2] - seg[0]) >= (seg[3] - seg[1]);
+  const m = horiz ? (seg[1] + seg[3]) / 2 : (seg[0] + seg[2]) / 2; const a = horiz ? seg[0] : seg[1]; const b = horiz ? seg[2] : seg[3];
+  let best = null;
+  solids.forEach(({ rect, penalty = 0 }, i) => {
+    const edges = horiz ? [['top', rect[1], rect[0], rect[2]], ['bottom', rect[3], rect[0], rect[2]]] : [['left', rect[0], rect[1], rect[3]], ['right', rect[2], rect[1], rect[3]]]; // [변, 좌표, 시작, 끝]
+    edges.forEach(([side, c, lo, hi]) => {
+      const ov = Math.min(b, hi) - Math.max(a, lo); if (ov < (b - a) * 0.2 || ov <= 0) return;
+      const d = Math.abs(m - c) + penalty; if (Math.abs(m - c) <= tol && (!best || d < best.d)) best = { d, i, side, horiz, c, lo: Math.max(a, lo), hi: Math.min(b, hi), wallLen: hi - lo };
+    });
+  });
+  return best;
+}
+export function snapSegToWall(seg, solids, tol = 6) {
+  const best = findWall(seg, solids, tol); if (!best) return seg;
+  const th = (best.horiz ? seg[3] - seg[1] : seg[2] - seg[0]) / 2 || 1.3;
+  return best.horiz ? [best.lo, best.c - th, best.hi, best.c + th] : [best.c - th, best.lo, best.c + th, best.hi];
+}
+
 // 손떨림 제거: 모서리를 깎는 Chaikin 을 두 번 적용하고, 호 길이를 따라 일정 간격으로 다시 뽑는다
 const chaikin = (pts, it = 2) => {
   let p = pts;
@@ -179,12 +204,22 @@ export function makeSketchSpec(read, ann, style = 'concept') {
   const items = Object.fromEntries((Array.isArray(a.items) ? a.items : []).map((i) => [String(i.target), i]));
   const blocks = [...slabs, ...cores].map((b, i) => ({
     id: `b${i + 1}`, kind: b.hatched ? 'core' : 'slab', rect: b.rect.map((v) => Math.round(v * 10) / 10),
-    name: String(items[b.id]?.name ?? ''), desc: String(items[b.id]?.desc ?? ''),
+    name: String(items[b.id]?.name ?? ''), desc: String(items[b.id]?.desc ?? ''), openSides: [...(b.openSides || [])], inset: 6,
   }));
   // 벽을 따라 붙은 표시(열린 면) → 그 벽 위의 개구부(점선 캡슐). 펜 색을 그대로 쓴다
-  (read.edges || []).forEach((e) => {
+  const wallSolids = [...slabs, ...cores].map((b, i) => ({ rect: b.rect.map((v) => Math.round(v * 10) / 10), penalty: b.hatched ? 1.5 : 0 }));
+  // 벽 표시 조각: 같은 벽에 붙은 조각이 그 벽 길이의 절반 이상을 덮으면 그 변 전체가 열린 것으로 보고 도형의 openSides 에 합친다. 나머지 짧은 조각은 벽에 붙인 개구부로 둔다
+  const frags = (read.edges || []).map((e) => {
     const [x0, y0, x1, y1] = bbox(e.pts); const horiz = (x1 - x0) >= (y1 - y0); const th = 1.3;
-    blocks.push({ id: `b${blocks.length + 1}`, kind: 'opening', rect: horiz ? [x0, (y0 + y1) / 2 - th, x1, (y0 + y1) / 2 + th] : [(x0 + x1) / 2 - th, y0, (x0 + x1) / 2 + th, y1], name: '', desc: '', fill: '', stroke: PEN[e.color] });
+    const raw = horiz ? [x0, (y0 + y1) / 2 - th, x1, (y0 + y1) / 2 + th] : [(x0 + x1) / 2 - th, y0, (x0 + x1) / 2 + th, y1];
+    return { e, raw, wall: findWall(raw, wallSolids) };
+  });
+  const cover = {};
+  frags.forEach(({ wall }) => { if (wall) { const k = `${wall.i}:${wall.side}`; cover[k] = (cover[k] || 0) + (wall.hi - wall.lo) / (wall.wallLen || 1); } });
+  Object.entries(cover).forEach(([k, v]) => { if (v >= 0.5) { const [i, side] = k.split(':'); const blk = blocks[Number(i)]; if (blk && !blk.openSides.includes(side)) blk.openSides.push(side); } });
+  frags.forEach(({ e, raw, wall }) => {
+    if (wall && cover[`${wall.i}:${wall.side}`] >= 0.5) return; // 변 전체로 합쳐진 조각
+    blocks.push({ id: `b${blocks.length + 1}`, kind: 'opening', rect: snapSegToWall(raw, wallSolids), name: '', desc: '', fill: '', stroke: PEN[e.color], inset: 6, openSides: [] });
   });
   // 칸막이: 가로/세로로 반듯하게, 슬래브 안쪽으로 맞춘다(슬래브 밖 선은 버린다)
   const inside = (r, x, y, m = 1.5) => x >= r[0] - m && x <= r[2] + m && y >= r[1] - m && y <= r[3] + m;
@@ -241,7 +276,8 @@ export function normalizeSketch(raw) {
   const pt = (p) => [num(p?.[0], 0), num(p?.[1], 0)];
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
-    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null };
+    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null, inset: num(b.inset, 6, 0, 20),
+      openSides: [...new Set((Array.isArray(b.openSides) ? b.openSides : []).filter((v) => SIDES.includes(v)))] };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
     id: uid(l.id, `p${i + 1}`), pts: (Array.isArray(l.pts) && l.pts.length >= 2 ? l.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt),
@@ -483,13 +519,22 @@ export function renderSketch(raw, opts = {}) {
       const horiz = w >= h; const mx = b.rect[0] + (b.rect[2] - b.rect[0]) / 2; const my = b.rect[1] + (b.rect[3] - b.rect[1]) / 2;
       const host = slabs.find((s) => mx >= s.rect[0] - 2 && mx <= s.rect[2] + 2 && my >= s.rect[1] - 2 && my <= s.rect[3] + 2);
       let dx = 0; let dy = 0;
-      if (host) { const cx = (host.rect[0] + host.rect[2]) / 2; const cy = (host.rect[1] + host.rect[3]) / 2; if (horiz) dy = (cy >= my ? 1 : -1) * 9; else dx = (cx >= mx ? 1 : -1) * 9; }
+      const ins = b.inset ?? 6; if (host && ins > 0) { const cx = (host.rect[0] + host.rect[2]) / 2; const cy = (host.rect[1] + host.rect[3]) / 2; if (horiz) dy = (cy >= my ? 1 : -1) * ins; else dx = (cx >= mx ? 1 : -1) * ins; }
       const x0 = horiz ? x : x + w / 2; const y0 = horiz ? y + h / 2 : y; const x1 = horiz ? x + w : x + w / 2; const y1 = horiz ? y + h / 2 : y + h;
       o.push(`<line x1="${(x0 + dx).toFixed(1)}" y1="${(y0 + dy).toFixed(1)}" x2="${(x1 + dx).toFixed(1)}" y2="${(y1 + dy).toFixed(1)}" stroke="${b.stroke || C.accent}" stroke-width="3.8" stroke-linecap="round" stroke-dasharray="${DASHES.dots}"/>`);
       if (interactive) o.push(`<rect x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="${(w + 8).toFixed(1)}" height="${(h + 8).toFixed(1)}" fill="transparent"${eid(b.id)}/>`);
       return;
     }
     o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(Math.min(w, h) / 2).toFixed(1)}" fill="${b.fill || '#ffffff'}" fill-opacity="0.7" stroke="${b.stroke || '#555555'}" stroke-width="1.7" stroke-dasharray="5 4"${eid(b.id)}/>`);
+  });
+  // 도형의 열린 변(openSides): 변을 따라 안쪽으로 inset 만큼 들여서 점선을 긋는다(0 이면 외곽선과 정확히 겹친다)
+  [...slabs, ...cores].forEach((b) => {
+    if (!b.openSides.length) return;
+    const [x, y, w, h] = R(b); const ins = b.inset ?? 6; const col = b.stroke || (concept ? C.accent : '#555555');
+    b.openSides.forEach((side) => {
+      const seg = { top: [x, y + ins, x + w, y + ins], bottom: [x, y + h - ins, x + w, y + h - ins], left: [x + ins, y, x + ins, y + h], right: [x + w - ins, y, x + w - ins, y + h] }[side];
+      o.push(`<line x1="${seg[0].toFixed(1)}" y1="${seg[1].toFixed(1)}" x2="${seg[2].toFixed(1)}" y2="${seg[3].toFixed(1)}" stroke="${col}" stroke-width="${concept ? 3.8 : 2}" stroke-linecap="round" stroke-dasharray="${concept ? DASHES.dots : '5 4'}" pointer-events="none"/>`);
+    });
   });
   spec.blocks.forEach((b) => {
     if (selected !== b.id) return;
@@ -671,6 +716,13 @@ export function sketchPaste(spec, snap, dx = 3, dy = 3) {
   while ((spec[snap.list] || []).some((e) => e.id === `${pre}${n}`)) n += 1;
   const id = `${pre}${n}`; const el = { ...JSON.parse(JSON.stringify(snap.el)), id };
   return { spec: sketchMoveBy({ ...spec, [snap.list]: [...(spec[snap.list] || []), el] }, id, dx, dy), id };
+}
+
+// 선택한 개구부(열린 벽 표시)를 가까운 벽(외곽선)에 붙인다
+export function sketchSnapToWall(spec, id, tol = 10) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks' || f.el.kind !== 'opening') return spec;
+  const solids = spec.blocks.filter((b) => b.kind !== 'opening').map((b) => ({ rect: b.rect, penalty: b.kind === 'core' ? 1.5 : 0 }));
+  return sketchUpdate(spec, id, { rect: snapSegToWall(f.el.rect, solids, tol) });
 }
 
 // 다른 도형의 모서리 좌표에 가까우면 달라붙는다(tol 은 다이어그램 좌표 단위)
