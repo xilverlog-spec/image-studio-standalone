@@ -170,6 +170,7 @@ export function normalizeSketch(raw) {
     id: uid(w.id, `w${i + 1}`), pts: (Array.isArray(w.pts) && w.pts.length >= 2 ? w.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt), smooth: w.smooth !== false,
     head: HEADS.includes(w.head) ? w.head : 'end', dash: DASHES[w.dash] !== undefined ? w.dash : 'solid', width: num(w.width, 4.5, 0.5, 14),
     form: FORMS.includes(w.form) ? w.form : 'line', shape: SHAPES.includes(w.shape) ? w.shape : 'read', bend: num(w.bend, 0.65, 0, 1.6), amp: num(w.amp, 0.45, -1.2, 1.2),
+    via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
   const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222' }));
@@ -231,7 +232,18 @@ function windGeom(w, P) {
   if (w.shape === 's') {
     const c1 = [A[0] + (Z[0] - A[0]) * 0.3 + nx * w.amp * L * 0.35, A[1] + (Z[1] - A[1]) * 0.3 + ny * w.amp * L * 0.35];
     const c2 = [A[0] + (Z[0] - A[0]) * 0.7 - nx * w.amp * L * 0.35, A[1] + (Z[1] - A[1]) * 0.7 - ny * w.amp * L * 0.35];
-    return { d: `M${f1(A[0])} ${f1(A[1])} C${f1(c1[0])} ${f1(c1[1])} ${f1(c2[0])} ${f1(c2[1])} ${f1(Z[0])} ${f1(Z[1])}`, dense: bez3(A, c1, c2, Z, 56) };
+    // 기본 S자의 한가운데(변곡점)와 그 점에서의 진행 방향. 변곡점을 옮겨도 시작·끝 방향과 이 방향은 유지해서 S 모양이 이어진다
+    const V0 = [(A[0] + 3 * c1[0] + 3 * c2[0] + Z[0]) / 8, (A[1] + 3 * c1[1] + 3 * c2[1] + Z[1]) / 8];
+    const V = w.via ? P(w.via) : V0;
+    const TA = [3 * (c1[0] - A[0]), 3 * (c1[1] - A[1])]; const TZ = [3 * (Z[0] - c2[0]), 3 * (Z[1] - c2[1])];
+    const TV = [0.75 * (Z[0] + c2[0] - c1[0] - A[0]), 0.75 * (Z[1] + c2[1] - c1[1] - A[1])];
+    const k = 0.5 / 3;
+    const a1 = [A[0] + TA[0] * k, A[1] + TA[1] * k]; const a2 = [V[0] - TV[0] * k, V[1] - TV[1] * k];
+    const b1 = [V[0] + TV[0] * k, V[1] + TV[1] * k]; const b2 = [Z[0] - TZ[0] * k, Z[1] - TZ[1] * k];
+    return {
+      d: `M${f1(A[0])} ${f1(A[1])} C${f1(a1[0])} ${f1(a1[1])} ${f1(a2[0])} ${f1(a2[1])} ${f1(V[0])} ${f1(V[1])} C${f1(b1[0])} ${f1(b1[1])} ${f1(b2[0])} ${f1(b2[1])} ${f1(Z[0])} ${f1(Z[1])}`,
+      dense: [...bez3(A, a1, a2, V, 30), ...bez3(V, b1, b2, Z, 30).slice(1)], via: V,
+    };
   }
   if (w.shape === 'arc') {
     const c = [(A[0] + Z[0]) / 2 + nx * w.amp * L * 0.5, (A[1] + Z[1]) / 2 + ny * w.amp * L * 0.5];
@@ -319,7 +331,9 @@ export function renderSketch(raw, opts = {}) {
   const eid = (id) => (interactive ? ` data-eid="${esc(id)}" style="cursor:move"` : '');
   const handles = []; // 선택한 요소의 크기·끝점 조절 점(편집 화면에만 그린다)
   const sq = (id, name, x, y, cur) => handles.push(`<rect data-handle="${name}" data-eid="${esc(id)}" x="${(x - 5.5).toFixed(1)}" y="${(y - 5.5).toFixed(1)}" width="11" height="11" rx="2" fill="#fff" stroke="#F28C28" stroke-width="2" style="cursor:${cur}"/>`);
-  const dot = (id, name, x, y, shape) => handles.push(shape === 'diamond'
+  const dot = (id, name, x, y, shape) => handles.push(shape === 'small'
+    ? `<path data-handle="${name}" data-eid="${esc(id)}" d="M${x.toFixed(1)} ${(y - 6).toFixed(1)} L${(x + 6).toFixed(1)} ${y.toFixed(1)} L${x.toFixed(1)} ${(y + 6).toFixed(1)} L${(x - 6).toFixed(1)} ${y.toFixed(1)} Z" fill="#fff" stroke="#F28C28" stroke-width="2" style="cursor:ns-resize"/>`
+    : shape === 'diamond'
     ? `<path data-handle="${name}" data-eid="${esc(id)}" d="M${(x).toFixed(1)} ${(y - 8).toFixed(1)} L${(x + 8).toFixed(1)} ${y.toFixed(1)} L${x.toFixed(1)} ${(y + 8).toFixed(1)} L${(x - 8).toFixed(1)} ${y.toFixed(1)} Z" fill="#F28C28" stroke="#fff" stroke-width="2" style="cursor:grab"/>`
     : `<circle data-handle="${name}" data-eid="${esc(id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#fff" stroke="#F28C28" stroke-width="2.5" style="cursor:crosshair"/>`);
   const o = []; const sel = [];
@@ -382,7 +396,8 @@ export function renderSketch(raw, opts = {}) {
     if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, thick + 10)}" style="cursor:move"/>`);
     if (interactive && selected === w.id) {
       dot(w.id, 'start', D[0][0], D[0][1]); dot(w.id, 'end', D[D.length - 1][0], D[D.length - 1][1]);
-      if (w.shape === 's' || w.shape === 'arc') { const mi = w.shape === 'arc' ? Math.round((D.length - 1) / 2) : Math.round((D.length - 1) / 4); dot(w.id, 'amp', D[mi][0], D[mi][1], 'diamond'); }
+      if (w.shape === 's' || w.shape === 'arc') { const mi = w.shape === 'arc' ? Math.round((D.length - 1) / 2) : Math.round((D.length - 1) / 4); dot(w.id, 'amp', D[mi][0], D[mi][1], w.shape === 's' ? 'small' : 'diamond'); }
+      if (w.shape === 's' && geo.via) dot(w.id, 'via', geo.via[0], geo.via[1], 'diamond');
     }
     const s0 = D[0]; const e0 = D[D.length - 1];
     const pill = (pt, text, below) => {
@@ -458,14 +473,15 @@ export function sketchSetEnds(spec, id, a, z) {
   const pts = f.el.pts; const a0 = pts[0]; const z0 = pts[pts.length - 1];
   const dx0 = z0[0] - a0[0]; const dy0 = z0[1] - a0[1]; const len0 = Math.hypot(dx0, dy0);
   const dx1 = z[0] - a[0]; const dy1 = z[1] - a[1]; const len1 = Math.hypot(dx1, dy1) || 0.01;
-  let next;
-  if (len0 < 0.01) next = pts.map((p, i) => (i === 0 ? a : i === pts.length - 1 ? z : [a[0] + (z[0] - a[0]) * (i / (pts.length - 1)), a[1] + (z[1] - a[1]) * (i / (pts.length - 1))]));
+  let next; let via = f.el.via || null;
+  if (len0 < 0.01) { next = pts.map((p, i) => (i === 0 ? a : i === pts.length - 1 ? z : [a[0] + (z[0] - a[0]) * (i / (pts.length - 1)), a[1] + (z[1] - a[1]) * (i / (pts.length - 1))])); via = null; }
   else {
     const s = len1 / len0; const ang = Math.atan2(dy1, dx1) - Math.atan2(dy0, dx0); const c = Math.cos(ang); const sn = Math.sin(ang);
-    next = pts.map((p) => { const rx = p[0] - a0[0]; const ry = p[1] - a0[1]; return [a[0] + s * (rx * c - ry * sn), a[1] + s * (rx * sn + ry * c)]; });
+    const tf = (p) => { const rx = p[0] - a0[0]; const ry = p[1] - a0[1]; return [a[0] + s * (rx * c - ry * sn), a[1] + s * (rx * sn + ry * c)]; };
+    next = pts.map(tf); if (via) via = tf(via);
     next[0] = a; next[next.length - 1] = z;
   }
-  return sketchUpdate(spec, id, { pts: next });
+  return sketchUpdate(spec, id, { pts: next, via });
 }
 export function sketchAdd(spec, kind) {
   const [x0, y0, x1, y1] = spec.frame; const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2; const w = x1 - x0; const h = y1 - y0;
@@ -484,7 +500,7 @@ export function sketchMoveBy(spec, id, dx, dy) {
   const f = sketchFind(spec, id); if (!f) return spec; const e = f.el;
   if (f.list === 'blocks') return sketchUpdate(spec, id, { rect: [e.rect[0] + dx, e.rect[1] + dy, e.rect[2] + dx, e.rect[3] + dy] });
   if (f.list === 'memos') return sketchUpdate(spec, id, { x: e.x + dx, y: e.y + dy });
-  return sketchUpdate(spec, id, { pts: e.pts.map((p) => [p[0] + dx, p[1] + dy]) });
+  return sketchUpdate(spec, id, { pts: e.pts.map((p) => [p[0] + dx, p[1] + dy]), ...(e.via ? { via: [e.via[0] + dx, e.via[1] + dy] } : {}) });
 }
 export function sketchResizeRect(spec, id, handle, x, y) {
   const f = sketchFind(spec, id); if (!f || f.list !== 'blocks') return spec;
@@ -503,10 +519,17 @@ export function sketchSetAmp(spec, id, pt) {
   const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || !['s', 'arc'].includes(f.el.shape)) return spec;
   const a = f.el.pts[0]; const z = f.el.pts[f.el.pts.length - 1]; const L = Math.hypot(z[0] - a[0], z[1] - a[1]) || 1;
   const nx = -(z[1] - a[1]) / L; const ny = (z[0] - a[0]) / L;
-  const h = f.el.shape === 'arc' ? 0.5 : 0.25; const base = [a[0] + (z[0] - a[0]) * h, a[1] + (z[1] - a[1]) * h];
-  const d = (pt[0] - base[0]) * nx + (pt[1] - base[1]) * ny;
-  const per = f.el.shape === 'arc' ? 0.25 : 0.0984; // 곡선이 중심선에서 벗어나는 정도 = amp × L × per
-  return sketchUpdate(spec, id, { amp: clampN(Math.round((d / (L * per)) * 100) / 100, -1.2, 1.2) });
+  const dist = (p) => (p[0] - a[0]) * nx + (p[1] - a[1]) * ny; // 중심선(시작→끝)에서 수직으로 떨어진 거리(부호 있음)
+  const D = windGeom(f.el, (p) => p).dense; const hp = D[f.el.shape === 'arc' ? Math.round((D.length - 1) / 2) : Math.round((D.length - 1) / 4)];
+  const dOld = dist(hp); const dNew = dist(pt);
+  const per = f.el.shape === 'arc' ? 0.25 : 0.0984; // 변곡점이 기본 위치일 때 amp 와 거리의 관계
+  const amp = Math.abs(dOld) > 0.3 ? f.el.amp * (dNew / dOld) : dNew / (L * per);
+  return sketchUpdate(spec, id, { amp: clampN(Math.round(amp * 100) / 100, -1.2, 1.2) });
+}
+// S자의 변곡점(꺾이는 가운데 지점)을 끌어 놓은 곳으로 옮긴다. 곡선은 그 점을 지난다. via=null 이면 기본(가운데)으로 되돌린다
+export function sketchSetVia(spec, id, pt) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 's') return spec;
+  return sketchUpdate(spec, id, { via: pt ? [Math.round(pt[0] * 10) / 10, Math.round(pt[1] * 10) / 10] : null });
 }
 // 다른 도형의 모서리 좌표에 가까우면 달라붙는다(tol 은 다이어그램 좌표 단위)
 function snapAxis(v, cands, tol) { let best = null; cands.forEach((c) => { const d = Math.abs(c - v); if (d <= tol && (best === null || d < best.d)) best = { d, c }; }); return best ? best.c : v; }

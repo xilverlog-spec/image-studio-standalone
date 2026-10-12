@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -101,6 +101,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
       next = sketchMoveBy(o, d.id, dx, dy);
     } else if (d.handle === 'start' || d.handle === 'end') next = sketchSetEnd(o, d.id, d.handle, snap ? sketchSnapPoint(o, d.id, pt) : pt);
     else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
+    else if (d.handle === 'via') next = sketchSetVia(o, d.id, pt);
     else next = sketchResizeRect(o, d.id, d.handle, ...(snap ? sketchSnapPoint(o, d.id, pt) : pt));
     onChange(next); tick((n) => n + 1);
   };
@@ -154,7 +155,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
         {!sel && (
           <div style={sec}>
             <span style={title}>전체</span>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>마름모는 곡선 휨</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <label style={lab}>제목<input style={input} value={norm.title} onChange={(e) => setGlobal({ title: e.target.value }, 'title')} /></label>
             <label style={lab}>부제<input style={input} value={norm.subtitle} onChange={(e) => setGlobal({ subtitle: e.target.value }, 'subtitle')} /></label>
             <label style={lab}>범례: 화살표<input style={input} value={norm.legend.wind} onChange={(e) => setGlobal({ legend: { ...norm.legend, wind: e.target.value } }, 'lgw')} /></label>
@@ -194,6 +195,9 @@ export default function SketchEditor({ spec, onChange, disabled }) {
                 <label style={lab}>휘는 정도(음수는 반대쪽) {sel.el.amp}
                   <input type="range" min="-1.2" max="1.2" step="0.05" value={sel.el.amp} onChange={(e) => set({ amp: Number(e.target.value) }, 'amp')} />
                 </label>
+              )}
+              {sel.el.shape === 's' && (
+                <button style={smallBtn(false)} disabled={!sel.el.via} onClick={() => commit(sketchSetVia(norm, selected, null))} title="큰 마름모(변곡점)를 끌어 옮긴 것을 기본 위치로 되돌립니다">변곡점 가운데로 되돌리기</button>
               )}
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
                             <label style={lab}>시작 쪽 문구<input style={input} value={sel.el.inLabel} onChange={(e) => set({ inLabel: e.target.value }, 'in')} /></label>
