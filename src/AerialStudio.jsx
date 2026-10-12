@@ -150,6 +150,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const [sideBySide, setSideBySide] = useState(false);
   const [editText, setEditText] = useState({});
   const [editBusy, setEditBusy] = useState('');
+  const ticketRef = useRef('');   // 지금 서버에 보낸 요청의 대기 번호표
+  const [queue, setQueue] = useState({ position: 0, total: 0 });
   const [nowTick, setNowTick] = useState(0);
 
   // 이지 모드에서는 프로 설정(작업 방식, 참조 사진, 입면·분위기 선택, 엔진, 부지 옵션)을 전부 무시하고 기본값으로 만든다.
@@ -214,6 +216,22 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   // 결과 목록은 새로고침해도 남긴다(파일은 서버 보관함에 있으므로 이름과 설정만 저장).
   useEffect(() => { writeSaved(results); }, [results]);
+
+  // 생성·수정 중에는 4초마다 내 순서를 묻는다(다른 직원이 먼저 누른 작업이 있으면 그만큼 기다린다)
+  useEffect(() => {
+    if (!busy && !editBusy) { setQueue({ position: 0, total: 0 }); return undefined; }
+    let alive = true;
+    const poll = async () => {
+      if (!ticketRef.current) return;
+      try {
+        const res = await apiFetch(`/v1/image/aerial/queue?ticket=${encodeURIComponent(ticketRef.current)}`);
+        if (res.ok && alive) setQueue(await res.json());
+      } catch { /* 다음 주기에 다시 */ }
+    };
+    const id = setInterval(poll, 4000);
+    poll();
+    return () => { alive = false; clearInterval(id); };
+  }, [busy, editBusy, apiFetch]);
 
   const setConsentSaved = (v) => {
     setConsent(v);
@@ -306,7 +324,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     return data;
   };
 
+  const newTicket = () => { ticketRef.current = `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; return ticketRef.current; };
+
   const oneGeneration = (variant, prompt, ex, meta = refMeta) => postJson('/v1/image/aerial/generate', {
+    ticket: newTicket(),
     mode, variant, depth: activeDepth, common_prompt: prompt, extra_en: ex, provider, aspect_ratio: aspect, keep_form: keepForm,
     input_image_base64: image.dataUrl.split(',').pop(),
     reference_images: refs.map((r) => ({ role: r.role, base64: r.dataUrl.split(',').pop() })),
@@ -386,7 +407,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     try {
       const img = await urlToDataUrl(`/generated/${r.filename}`);
       const data = await postJson('/v1/image/aerial/edit', {
-        image_base64: img.split(',').pop(), instruction: text, provider: editProvider, aspect_ratio: aspect, external_consent: consent,
+        image_base64: img.split(',').pop(), instruction: text, provider: editProvider, aspect_ratio: aspect, external_consent: consent, ticket: newTicket(),
       });
       const entry = addResult(data, { label: `수정: ${text.slice(0, 14)}`, parent: r.id });
       const th = await makeThumb(img);
@@ -481,6 +502,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           ? `생성 중… (${progress.current}/${progress.total})${elapsedHint}`
           : `✨ 조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
       </button>
+      {busy && queue.position > 1 && <p style={{ ...hint, color: '#B45309' }}>다른 작업이 먼저 진행 중입니다. 내 앞에 {queue.position - 1}건 대기 중이며, 앞 작업이 끝나면 자동으로 시작합니다. 창을 닫지 마세요.</p>}
+      {busy && queue.position === 1 && queue.total > 1 && <p style={hint}>지금 내 작업을 만들고 있습니다. 뒤에 {queue.total - 1}건이 기다리고 있습니다.</p>}
       {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: '#B91C1C', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
       {easy && !providerInfo && opts && <p style={{ ...hint, color: '#B91C1C' }}>사용할 수 있는 무료 이미지 엔진이 없습니다(ComfyUI가 꺼져 있을 수 있습니다). 관리자에게 알려 주세요.</p>}
     </>

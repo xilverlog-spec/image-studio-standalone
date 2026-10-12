@@ -1123,6 +1123,7 @@ class AerialGenerateRequest(BaseModel):
     keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
     keep_site: bool = True                # 짧은 지시문(prompt_style='short')에 부지 유지 문구를 넣을지
     prompt_style: str = "auto"            # Kontext 지시문: 'auto'(기본: BFL 가이드식 짧은 지시문. 참조 이미지가 있어도 짧은 지시문) | 'short'(강제) | 'long'(강제)
+    ticket: str = ""                      # 대기 번호표(화면이 만든 임의 문자열). /image/aerial/queue 로 내 순서를 묻는 데 쓴다
     ref_roles: List[str] = []             # 참조별 역할(aerial-prompt 의 ref_roles_used). 짧은 참조 지시문용
     ref_hints_en: List[str] = []          # 참조별 '가져올 것'(영어). aerial-prompt 의 ref_hints_en
     ref_notes: List[str] = []             # 참조 자동 분석 요약(aerial-prompt 의 ref_notes)
@@ -1143,6 +1144,27 @@ def _decode_b64(data: str, what: str) -> bytes:
         return base64.b64decode(data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"{what} 디코딩 실패: {e}")
+
+
+# 로컬 GPU(ComfyUI)는 한 번에 한 장씩만 만든다. 여러 직원이 동시에 누르면 먼저 온 순서대로 줄을 서므로, 번호표 순서를 화면에 알려 준다.
+_GPU_TICKETS: list = []
+
+
+async def _local_aerial_queued(ticket: str, *args):
+    t = ticket.strip()[:64] or os.urandom(6).hex()
+    _GPU_TICKETS.append(t)
+    try:
+        return await _local_aerial(*args)
+    finally:
+        if t in _GPU_TICKETS:
+            _GPU_TICKETS.remove(t)
+
+
+@router.get("/image/aerial/queue")
+async def aerial_queue(ticket: str = ""):
+    """내 번호표의 순서(1 = 지금 만드는 중)와 줄 전체 길이. 번호표가 없으면 position 0."""
+    pos = _GPU_TICKETS.index(ticket) + 1 if ticket in _GPU_TICKETS else 0
+    return {"position": pos, "total": len(_GPU_TICKETS)}
 
 
 async def _local_aerial(request: AerialGenerateRequest, engine: dict, instruction_or_prompt: str, input_bytes: bytes, refs: list, seed: int,
@@ -1216,10 +1238,11 @@ async def aerial_generate(request: AerialGenerateRequest):
         prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
-    return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
+    return await _local_aerial_queued(request.ticket, request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
 
 
 class AerialEditRequest(BaseModel):
+    ticket: str = ""
     image_base64: str                     # 방금 나온 결과 이미지
     instruction: str                      # "창을 더 크게", "나무를 늘려줘" 등(한글 가능)
     provider: str = "local_kontext"
@@ -1251,7 +1274,7 @@ async def aerial_edit(request: AerialEditRequest):
     if engine["kind"] != "kontext":
         engine = LOCAL_ENGINES["local_kontext"]   # SDXL 은 지시문 편집이 안 되므로 Kontext 로 보낸다
     req = AerialGenerateRequest(input_image_base64=request.image_base64, provider="local_kontext", project=request.project)
-    return await _local_aerial(req, engine, prompt, img_bytes, [], seed, output_path, filename, request.project, "수정")
+    return await _local_aerial_queued(request.ticket, req, engine, prompt, img_bytes, [], seed, output_path, filename, request.project, "수정")
 
 
 @router.get("/image/checkpoints")
