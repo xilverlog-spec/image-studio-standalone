@@ -53,7 +53,7 @@ function layout(spec) {
         let dx = P[b][0] - P[a][0]; let dy = P[b][1] - P[a][1]; let d = Math.hypot(dx, dy);
         if (d < 0.01) { dx = 0.5 + i; dy = 0.5 + j; d = Math.hypot(dx, dy); }
         const same = spec.nodes[i].group === spec.nodes[j].group;
-        const need = R[a] + R[b] + (same ? 22 : 30);
+        const need = R[a] + R[b] + (same ? 22 : 62);
         if (d < need) { const f = (need - d) * 0.5; F[a][0] -= (dx / d) * f; F[a][1] -= (dy / d) * f; F[b][0] += (dx / d) * f; F[b][1] += (dy / d) * f; }
       }
     }
@@ -80,7 +80,7 @@ export function renderProgram(raw) {
   const ox = (W - (x1 - x0) * k) / 2 - x0 * k; const oy = TOP + (H - TOP - (y1 - y0) * k) / 2 - y0 * k + 6;
   const T = (id) => [P[id][0] * k + ox, P[id][1] * k + oy];
   const gcol = Object.fromEntries(spec.groups.map((g) => [g.id, g.color]));
-  const out = [];
+  const out = []; const labels = []; // 글자는 선·원 위에 얹어야 가려지지 않으므로 마지막에 그린다
 
   // 묶음 바탕(부드러운 타원) + 이름
   spec.groups.forEach((g) => {
@@ -89,7 +89,7 @@ export function renderProgram(raw) {
     mem.forEach((n) => { const [x, y] = T(n.id); const r = R[n.id] * k; a0 = Math.min(a0, x - r); b0 = Math.min(b0, y - r); a1 = Math.max(a1, x + r); b1 = Math.max(b1, y + r); });
     const cx = (a0 + a1) / 2; const cy = (b0 + b1) / 2; const rx = (a1 - a0) / 2 + 26; const ry = (b1 - b0) / 2 + 26;
     out.push(`<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="${g.color}" fill-opacity="0.10" stroke="${g.color}" stroke-opacity="0.55" stroke-width="1.4" stroke-dasharray="6 5"/>`);
-    if (g.name) out.push(`<text x="${cx.toFixed(1)}" y="${(cy - ry - 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="15" font-weight="800" fill="${g.color}">${esc(g.name)}</text>`);
+    if (g.name) labels.push(`<text x="${cx.toFixed(1)}" y="${(cy - ry - 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="15" font-weight="800" fill="${g.color}" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round">${esc(g.name)}</text>`);
   });
   // 연결선
   spec.links.forEach((l) => {
@@ -97,7 +97,11 @@ export function renderProgram(raw) {
     const ra = R[l.from] * k; const rb = R[l.to] * k;
     const sx = a[0] + (dx / d) * ra; const sy = a[1] + (dy / d) * ra; const ex = b[0] - (dx / d) * rb; const ey = b[1] - (dy / d) * rb;
     out.push(`<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#555" stroke-width="${l.kind === 'weak' ? 1.3 : 2.6}" stroke-linecap="round"${l.kind === 'weak' ? ' stroke-dasharray="4 4"' : ''} opacity="0.75"/>`);
-    if (l.label) out.push(`<text x="${((sx + ex) / 2).toFixed(1)}" y="${((sy + ey) / 2 - 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="10.5" fill="#444" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(l.label)}</text>`);
+    // 연결선 라벨: 원 사이 선이 글자보다 길 때만 단다(짧으면 원 위에 글자가 얹혀 지저분해진다)
+    const segLen = Math.hypot(ex - sx, ey - sy); const lw = [...l.label].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 255 ? 10.5 : 6), 0);
+    const mx = (sx + ex) / 2; const my = (sy + ey) / 2;
+    const onBubble = spec.nodes.some((n) => { const [bx, by] = T(n.id); return Math.hypot(bx - mx, by - my) < R[n.id] * k + 8; });
+    if (l.label && segLen > lw + 14 && !onBubble) labels.push(`<text x="${((sx + ex) / 2).toFixed(1)}" y="${((sy + ey) / 2 - 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="10.5" fill="#444" paint-order="stroke" stroke="#fff" stroke-width="3.5" stroke-linejoin="round">${esc(l.label)}</text>`);
   });
   // 버블
   spec.nodes.forEach((n) => {
@@ -107,6 +111,7 @@ export function renderProgram(raw) {
     const lines = label.length > 5 && label.length <= 12 ? [label.slice(0, Math.ceil(label.length / 2)), label.slice(Math.ceil(label.length / 2))] : [label.slice(0, 12)];
     lines.forEach((ln, i) => out.push(`<text x="${x.toFixed(1)}" y="${(y + fs * 0.35 + (i - (lines.length - 1) / 2) * fs * 1.15).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="700" fill="#fff">${esc(ln)}</text>`));
   });
+  out.push(...labels);
   const title = spec.title ? `<text x="28" y="42" font-family="${FONT}" font-size="22" font-weight="800" fill="#1f242b">${esc(spec.title)}</text>` : '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${title}${out.join('')}</svg>`;
   return { svg, width: W, height: H };
