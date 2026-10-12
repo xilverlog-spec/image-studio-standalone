@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -14,6 +14,12 @@ const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, bor
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222'];
 const r1 = (v) => Math.round(v * 10) / 10;
+// 선 표현: 선(실선·파선·점선·일점쇄선)과 모양 자체가 다른 표현을 한 목록으로 고른다
+const LINE_OPTIONS = [
+  ['line:solid', '실선'], ['line:dashed', '파선'], ['line:dotted', '점선'], ['line:dashdot', '일점쇄선'],
+  ['double:solid', '이중선'], ['ribbon:solid', '리본(붓 띠)'], ['soft:solid', '번짐(끝이 흐려지는 띠)'], ['chevron:solid', '화살표 반복'], ['zigzag:solid', '물결 장식선'],
+];
+const formValue = (el) => `${el.form || 'line'}:${(el.form || 'line') === 'line' ? el.dash : 'solid'}`;
 
 function Num({ label, value, onChange, step = 0.5, testid }) {
   return (
@@ -79,7 +85,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const setRect = (i, v) => { const r = [...sel.el.rect]; r[i] = v; set({ rect: r }, 'rect'); };
 
   const title = { fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' };
-  const kindName = { block: sel?.el?.kind === 'core' ? '코어(빗금 도형)' : '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: '글자 메모' }[kind];
+  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: '글자 메모' }[kind];
 
   return (
     <div tabIndex={0} onKeyDown={onKey} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', outline: 'none' }} data-testid="sketch-editor">
@@ -98,6 +104,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
             <button style={smallBtn(false)} onClick={() => add('wind')} data-testid="add-wind">＋ 화살표</button>
             <button style={smallBtn(false)} onClick={() => add('line')}>＋ 선</button>
             <button style={smallBtn(false)} onClick={() => add('slab')}>＋ 도형</button>
+            <button style={smallBtn(false)} onClick={() => add('opening')}>＋ 개구부</button>
             <button style={smallBtn(false)} onClick={() => add('memo')}>＋ 글자</button>
           </div>
         </div>
@@ -112,6 +119,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
             <label style={lab}>제목<input style={input} value={norm.title} onChange={(e) => setGlobal({ title: e.target.value }, 'title')} /></label>
             <label style={lab}>부제<input style={input} value={norm.subtitle} onChange={(e) => setGlobal({ subtitle: e.target.value }, 'subtitle')} /></label>
             <label style={lab}>범례: 화살표<input style={input} value={norm.legend.wind} onChange={(e) => setGlobal({ legend: { ...norm.legend, wind: e.target.value } }, 'lgw')} /></label>
+            <label style={lab}>범례: 개구부<input style={input} value={norm.legend.opening} onChange={(e) => setGlobal({ legend: { ...norm.legend, opening: e.target.value } }, 'lgo')} /></label>
             <label style={lab}>범례: 코어<input style={input} value={norm.legend.core} onChange={(e) => setGlobal({ legend: { ...norm.legend, core: e.target.value } }, 'lgc')} /></label>
             {[0, 1].map((i) => (
               <label key={i} style={lab}>핵심 메시지 {i + 1}
@@ -129,15 +137,27 @@ export default function SketchEditor({ spec, onChange, disabled }) {
               <label style={lab}>화살촉
                 <select style={input} value={sel.el.head} onChange={(e) => set({ head: e.target.value })} data-testid="prop-head">{Object.entries(HEAD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
               </label>
-              <label style={lab}>선 종류
-                <select style={input} value={sel.el.dash} onChange={(e) => set({ dash: e.target.value })} data-testid="prop-dash">{Object.keys(DASHES).map((k) => <option key={k} value={k}>{DASH_LABEL[k]}</option>)}</select>
+              <label style={lab}>선 표현
+                <select style={input} value={formValue(sel.el)} onChange={(e) => { const [form, dash] = e.target.value.split(':'); set({ form, dash }); }} data-testid="prop-form">{LINE_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
               </label>
               <label style={lab}>굵기 {sel.el.width}
-                <input type="range" min="1" max="12" step="0.5" value={sel.el.width} onChange={(e) => set({ width: Number(e.target.value) }, 'w')} />
+                <input type="range" min="1" max="14" step="0.5" value={sel.el.width} onChange={(e) => set({ width: Number(e.target.value) }, 'w')} />
               </label>
+              <label style={lab}>곡선 모양
+                <select style={input} value={sel.el.shape} onChange={(e) => set({ shape: e.target.value })} data-testid="prop-shape">{SHAPES.map((k) => <option key={k} value={k}>{SHAPE_LABEL[k]}</option>)}</select>
+              </label>
+              {sel.el.shape === 'read' && (
+                <label style={lab}>곡선 세기(읽은 흔들림 정도) {sel.el.bend}
+                  <input type="range" min="0" max="1.6" step="0.05" value={sel.el.bend} onChange={(e) => set({ bend: Number(e.target.value) }, 'bend')} />
+                </label>
+              )}
+              {(sel.el.shape === 's' || sel.el.shape === 'arc') && (
+                <label style={lab}>휘는 정도(음수는 반대쪽) {sel.el.amp}
+                  <input type="range" min="-1.2" max="1.2" step="0.05" value={sel.el.amp} onChange={(e) => set({ amp: Number(e.target.value) }, 'amp')} />
+                </label>
+              )}
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
-              <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={sel.el.smooth} onChange={(e) => set({ smooth: e.target.checked })} />부드러운 곡선</label>
-              <label style={lab}>시작 쪽 문구<input style={input} value={sel.el.inLabel} onChange={(e) => set({ inLabel: e.target.value }, 'in')} /></label>
+                            <label style={lab}>시작 쪽 문구<input style={input} value={sel.el.inLabel} onChange={(e) => set({ inLabel: e.target.value }, 'in')} /></label>
               <label style={lab}>끝 쪽 문구<input style={input} value={sel.el.outLabel} onChange={(e) => set({ outLabel: e.target.value }, 'out')} /></label>
             </>)}
 
@@ -163,7 +183,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
 
             {kind === 'block' && (<>
               <label style={lab}>종류
-                <select style={input} value={sel.el.kind} onChange={(e) => set({ kind: e.target.value })}><option value="slab">판(큰 도형)</option><option value="core">코어(빗금)</option></select>
+                <select style={input} value={sel.el.kind} onChange={(e) => set({ kind: e.target.value })}><option value="slab">판(큰 도형)</option><option value="core">코어(빗금)</option><option value="opening">개구부(점선 캡슐)</option></select>
               </label>
               <label style={lab}>이름<input style={input} value={sel.el.name} onChange={(e) => set({ name: e.target.value }, 'name')} /></label>
               <label style={lab}>설명<input style={input} value={sel.el.desc} onChange={(e) => set({ desc: e.target.value }, 'desc')} /></label>

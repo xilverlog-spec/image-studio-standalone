@@ -17,8 +17,14 @@ const isHex = (c) => /^#[0-9a-fA-F]{6}$/.test(c || '');
 const num = (v, d, lo = -50, hi = 150) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const bbox = (pts) => { const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
 
-export const DASHES = { solid: '', dashed: '9 6', dotted: '1.5 6' };
-export const DASH_LABEL = { solid: '실선', dashed: '파선', dotted: '점선' };
+export const DASHES = { solid: '', dashed: '9 6', dotted: '1.5 6', dashdot: '14 5 2 5' };
+export const DASH_LABEL = { solid: '실선', dashed: '파선', dotted: '점선', dashdot: '일점쇄선' };
+// 선 표현(form): line = 선(실선·파선·점선·일점쇄선), 나머지는 모양 자체가 다른 표현
+export const FORMS = ['line', 'ribbon', 'soft', 'double', 'chevron', 'zigzag'];
+export const FORM_LABEL = { line: '선', ribbon: '리본(붓 띠)', soft: '번짐(끝이 흐려지는 띠)', double: '이중선', chevron: '화살표 반복', zigzag: '물결 장식선' };
+// 곡선 모양(shape): read = 읽은 모양을 다듬음, straight = 직선, s = S자, arc = 호
+export const SHAPES = ['read', 's', 'arc', 'straight'];
+export const SHAPE_LABEL = { read: '읽은 모양(다듬음)', s: 'S자 곡선', arc: '호(활 모양)', straight: '직선' };
 export const HEAD_LABEL = { end: '끝에 화살촉', start: '시작에 화살촉', both: '양쪽', none: '없음' };
 const HEADS = Object.keys(HEAD_LABEL);
 
@@ -69,6 +75,27 @@ export function normalizeSketchRead(parsed, dims) {
   return { kind: 'sketch', summary: String(parsed.summary ?? ''), blocks, lines };
 }
 
+// 손떨림 제거: 모서리를 깎는 Chaikin 을 두 번 적용하고, 호 길이를 따라 일정 간격으로 다시 뽑는다
+const chaikin = (pts, it = 2) => {
+  let p = pts;
+  for (let k = 0; k < it; k++) {
+    const n = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) { const a = p[i]; const b = p[i + 1]; n.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
+    n.push(p[p.length - 1]); p = n;
+  }
+  return p;
+};
+const resample = (pts, n) => {
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = cum[cum.length - 1] || 1; const out = []; let j = 0;
+  for (let k = 0; k < n; k++) {
+    const t = (total * k) / (n - 1); while (j < pts.length - 2 && cum[j + 1] < t) j++;
+    const seg = cum[j + 1] - cum[j] || 1; const u = Math.min(1, Math.max(0, (t - cum[j]) / seg));
+    out.push([pts[j][0] + (pts[j + 1][0] - pts[j][0]) * u, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * u]);
+  }
+  return out;
+};
+
 // ── 2) 이름·설명·바람 방향(AI) ───────────────────────────────
 export function buildSketchAnnotatePrompt(read, userText) {
   const r0 = (v) => Math.round(v);
@@ -112,17 +139,15 @@ export function makeSketchSpec(read, ann, style = 'pres') {
   });
   const windNote = Object.fromEntries((Array.isArray(a.winds) ? a.winds : []).map((w) => [String(w.id), w]));
   const winds = read.lines.filter((l) => l.style === 'wavy').map((l, i) => {
-    const n = l.pts.length; const p0 = l.pts[0]; const pz = l.pts[n - 1];
-    // 손떨림이 큰 물결은 흔들림을 65% 로 줄여 부드럽게 한다
-    const pts = l.pts.map((p, k) => { const t = k / (n - 1); const cx = p0[0] + (pz[0] - p0[0]) * t; const cy = p0[1] + (pz[1] - p0[1]) * t; return [cx + (p[0] - cx) * 0.65, cy + (p[1] - cy) * 0.65]; });
+    const pts = resample(chaikin(l.pts, 2), 9);
     const w = windNote[l.id] || {};
-    return { id: `w${i + 1}`, pts, smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
+    return { id: `w${i + 1}`, pts, smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 'read', bend: 0.65, amp: 0.45, inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
   });
   const all = [...blocks.map((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]).flat(), ...winds.flatMap((w) => w.pts)];
   const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.04; const padY = (y1 - y0) * 0.04;
   return {
     title: String(a.title ?? ''), subtitle: String(a.subtitle ?? ''), style, frame: [x0 - padX, y0 - padY, x1 + padX, y1 + padY],
-    blocks, lines, winds, memos: [], legend: { wind: String(a.legend?.wind ?? '기류(흐름)'), core: String(a.legend?.core ?? '코어(계단·승강기)') },
+    blocks, lines, winds, memos: [], legend: { wind: String(a.legend?.wind ?? '기류(흐름)'), core: String(a.legend?.core ?? '코어(계단·승강기)'), opening: '개구부(창)' },
     notes: (Array.isArray(a.notes) ? a.notes : []).slice(0, 2).map(String),
   };
 }
@@ -135,7 +160,7 @@ export function normalizeSketch(raw) {
   const pt = (p) => [num(p?.[0], 0), num(p?.[1], 0)];
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
-    return { id: uid(b.id, `b${i + 1}`), kind: b.kind === 'core' ? 'core' : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '' };
+    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '' };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
     id: uid(l.id, `p${i + 1}`), pts: (Array.isArray(l.pts) && l.pts.length >= 2 ? l.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt),
@@ -144,6 +169,7 @@ export function normalizeSketch(raw) {
   const winds = (Array.isArray(s.winds) ? s.winds : []).slice(0, 30).map((w, i) => ({
     id: uid(w.id, `w${i + 1}`), pts: (Array.isArray(w.pts) && w.pts.length >= 2 ? w.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt), smooth: w.smooth !== false,
     head: HEADS.includes(w.head) ? w.head : 'end', dash: DASHES[w.dash] !== undefined ? w.dash : 'solid', width: num(w.width, 4.5, 0.5, 14),
+    form: FORMS.includes(w.form) ? w.form : 'line', shape: SHAPES.includes(w.shape) ? w.shape : 'read', bend: num(w.bend, 0.65, 0, 1.6), amp: num(w.amp, 0.45, -1.2, 1.2),
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
   const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222' }));
@@ -154,7 +180,7 @@ export function normalizeSketch(raw) {
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   return {
     title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'pres', frame, blocks, lines, winds, memos,
-    legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
+    legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
 
@@ -174,6 +200,101 @@ const smoothPath = (Q) => {
   }
   return d;
 };
+
+const f1 = (v) => v.toFixed(1);
+const bez3 = (a, c1, c2, z, n) => Array.from({ length: n }, (_, i) => { const t = i / (n - 1); const u = 1 - t; return [u * u * u * a[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * z[0], u * u * u * a[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * z[1]]; });
+const bez2 = (a, c, z, n) => Array.from({ length: n }, (_, i) => { const t = i / (n - 1); const u = 1 - t; return [u * u * a[0] + 2 * u * t * c[0] + t * t * z[0], u * u * a[1] + 2 * u * t * c[1] + t * t * z[1]]; });
+const catmullDense = (Q, steps = 10) => {
+  if (Q.length < 3) return Q;
+  const out = [Q[0]];
+  for (let i = 0; i < Q.length - 1; i++) {
+    const p0 = Q[i - 1] || Q[i]; const p1 = Q[i]; const p2 = Q[i + 1]; const p3 = Q[i + 2] || p2;
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6]; const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    out.push(...bez3(p1, c1, c2, p2, steps + 1).slice(1));
+  }
+  return out;
+};
+// 바람 한 줄의 중심선: d = 편집 가능한 곡선 경로, dense = 촘촘한 점(리본·물결 등 모양 만들기용), 화면 좌표
+function windGeom(w, P) {
+  const A = P(w.pts[0]); const Z = P(w.pts[w.pts.length - 1]);
+  const L = Math.hypot(Z[0] - A[0], Z[1] - A[1]) || 1; const nx = -(Z[1] - A[1]) / L; const ny = (Z[0] - A[0]) / L;
+  if (w.shape === 'straight') return { d: `M${f1(A[0])} ${f1(A[1])} L${f1(Z[0])} ${f1(Z[1])}`, dense: bez2(A, [(A[0] + Z[0]) / 2, (A[1] + Z[1]) / 2], Z, 48) };
+  if (w.shape === 's') {
+    const c1 = [A[0] + (Z[0] - A[0]) * 0.3 + nx * w.amp * L * 0.35, A[1] + (Z[1] - A[1]) * 0.3 + ny * w.amp * L * 0.35];
+    const c2 = [A[0] + (Z[0] - A[0]) * 0.7 - nx * w.amp * L * 0.35, A[1] + (Z[1] - A[1]) * 0.7 - ny * w.amp * L * 0.35];
+    return { d: `M${f1(A[0])} ${f1(A[1])} C${f1(c1[0])} ${f1(c1[1])} ${f1(c2[0])} ${f1(c2[1])} ${f1(Z[0])} ${f1(Z[1])}`, dense: bez3(A, c1, c2, Z, 56) };
+  }
+  if (w.shape === 'arc') {
+    const c = [(A[0] + Z[0]) / 2 + nx * w.amp * L * 0.5, (A[1] + Z[1]) / 2 + ny * w.amp * L * 0.5];
+    return { d: `M${f1(A[0])} ${f1(A[1])} Q${f1(c[0])} ${f1(c[1])} ${f1(Z[0])} ${f1(Z[1])}`, dense: bez2(A, c, Z, 48) };
+  }
+  const Q0 = w.pts.map(P); const n = Q0.length;
+  const Q = Q0.map((q, i) => { const t = i / (n - 1); const cx = A[0] + (Z[0] - A[0]) * t; const cy = A[1] + (Z[1] - A[1]) * t; return [cx + (q[0] - cx) * w.bend, cy + (q[1] - cy) * w.bend]; });
+  return { d: w.smooth ? smoothPath(Q) : `M${Q.map((p) => p.map(f1).join(' ')).join(' L')}`, dense: catmullDense(Q, 8) };
+}
+const unit = (a, b) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d]; };
+// 점마다 진행 방향(앞뒤 점으로)과 호 길이
+const frames = (D) => D.map((p, i) => { const t = unit(D[Math.max(0, i - 2)], D[Math.min(D.length - 1, i + 2)]); return { p, t, n: [-t[1], t[0]] }; });
+const arcLen = (D) => { const c = [0]; for (let i = 1; i < D.length; i++) c.push(c[i - 1] + Math.hypot(D[i][0] - D[i - 1][0], D[i][1] - D[i - 1][1])); return c; };
+const polyD = (pts, close) => `M${pts.map((p) => p.map(f1).join(' ')).join(' L')}${close ? ' Z' : ''}`;
+// 호 길이 s 에서의 중심선 위치·접선·법선(점 사이를 보간해 계단이 생기지 않게 한다)
+const atArc = (F, cum, s) => {
+  let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
+  const u = Math.min(1, Math.max(0, (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1)));
+  const a = F[i - 1]; const b = F[i];
+  const t = unit([0, 0], [a.t[0] + (b.t[0] - a.t[0]) * u, a.t[1] + (b.t[1] - a.t[1]) * u]);
+  return { p: [a.p[0] + (b.p[0] - a.p[0]) * u, a.p[1] + (b.p[1] - a.p[1]) * u], t, n: [-t[1], t[0]] };
+};
+const smoothstep = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+// 화살촉(채운 삼각형 또는 열린 V)
+const headShape = (p, dir, size, color, filled) => {
+  const n = [-dir[1], dir[0]]; const tip = [p[0] + dir[0] * size * 0.9, p[1] + dir[1] * size * 0.9];
+  const l = [p[0] - dir[0] * size * 0.25 + n[0] * size * 0.7, p[1] - dir[1] * size * 0.25 + n[1] * size * 0.7]; const r = [p[0] - dir[0] * size * 0.25 - n[0] * size * 0.7, p[1] - dir[1] * size * 0.25 - n[1] * size * 0.7];
+  return filled ? `<path d="${polyD([l, tip, r], true)}" fill="${color}" stroke="none"/>` : `<path d="${polyD([l, tip, r], false)}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
+};
+
+// 선 표현별 그리기. 반환: SVG 조각(문자열)과 defs 조각
+function drawWindForm(w, geo, pres, dashAttr) {
+  const D = geo.dense; const F = frames(D); const cum = arcLen(D); const total = cum[cum.length - 1] || 1;
+  const headEnd = w.head === 'end' || w.head === 'both'; const headStart = w.head === 'start' || w.head === 'both';
+  const color = w.color; const out = []; let defs = '';
+  const W = w.width * 4.2;
+  const heads = (size, filled = true) => {
+    if (headEnd) out.push(headShape(F[F.length - 1].p, F[F.length - 1].t, size, color, filled));
+    if (headStart) out.push(headShape(F[0].p, [-F[0].t[0], -F[0].t[1]], size, color, filled));
+  };
+  if (w.form === 'ribbon' || w.form === 'soft') {
+    const prof = (t, k = 1) => Math.max(0.04, Math.min(headStart ? 1 : smoothstep(0.08 + t / 0.42), headEnd ? 1 : smoothstep(0.08 + (1 - t) / 0.42)) * k);
+    const poly = (k) => { const L = []; const Rr = []; F.forEach((fr, i) => { const t = cum[i] / total; const hw = (W / 2) * prof(t, k); L.push([fr.p[0] + fr.n[0] * hw, fr.p[1] + fr.n[1] * hw]); Rr.push([fr.p[0] - fr.n[0] * hw, fr.p[1] - fr.n[1] * hw]); }); return polyD([...L, ...Rr.reverse()], true); };
+    if (w.form === 'soft') {
+      const a = D[0]; const z = D[D.length - 1];
+      defs += `<linearGradient id="sg_${esc(w.id)}" gradientUnits="userSpaceOnUse" x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(z[0])}" y2="${f1(z[1])}"><stop offset="0" stop-color="${color}" stop-opacity="0"/><stop offset="0.3" stop-color="${color}" stop-opacity="0.78"/><stop offset="${headEnd ? 1 : 0.7}" stop-color="${color}" stop-opacity="${headEnd ? 0.85 : 0.78}"/>${headEnd ? '' : `<stop offset="1" stop-color="${color}" stop-opacity="0"/>`}</linearGradient>`;
+      out.push(`<path d="${poly(1.7)}" fill="url(#sg_${esc(w.id)})" fill-opacity="0.35" stroke="none"/>`);
+      out.push(`<path d="${poly(1)}" fill="url(#sg_${esc(w.id)})" stroke="none"/>`);
+    } else out.push(`<path d="${poly(1)}" fill="${color}" fill-opacity="${pres ? 0.82 : 0.92}" stroke="none"/>`);
+    heads(W * 0.95 + 6);
+  } else if (w.form === 'double') {
+    const off = w.width * 0.95 + 1; const mk = (sgn) => polyD(F.map((fr) => [fr.p[0] + fr.n[0] * off * sgn, fr.p[1] + fr.n[1] * off * sgn]));
+    [1, -1].forEach((sg) => out.push(`<path d="${mk(sg)}" fill="none" stroke="${color}" stroke-width="${Math.max(1.4, w.width * 0.45)}" stroke-linecap="round" stroke-linejoin="round"${dashAttr}/>`));
+    heads(w.width * 2.4 + 8);
+  } else if (w.form === 'chevron') {
+    const step = Math.max(13, w.width * 5); const size = w.width * 1.5 + 4; const sw = Math.max(1.6, w.width * 0.55);
+    // 처음과 끝(화살촉 앞)에 맞춰 간격을 고르게 나눈다
+    const s0 = headStart ? size * 1.6 : step * 0.5; const s1 = total - (headEnd ? size * 1.5 : step * 0.5);
+    const count = Math.max(1, Math.round((s1 - s0) / step)); const st = count > 0 ? (s1 - s0) / count : step;
+    for (let k = 0; k <= count; k++) {
+      const fr = atArc(F, cum, Math.min(total, s0 + k * st)); const back = [fr.p[0] - fr.t[0] * size, fr.p[1] - fr.t[1] * size];
+      out.push(`<path d="M${f1(back[0] + fr.n[0] * size * 0.85)} ${f1(back[1] + fr.n[1] * size * 0.85)} L${f1(fr.p[0])} ${f1(fr.p[1])} L${f1(back[0] - fr.n[0] * size * 0.85)} ${f1(back[1] - fr.n[1] * size * 0.85)}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    }
+    heads(w.width * 2.4 + 8);
+  } else if (w.form === 'zigzag') {
+    const amp = w.width * 0.9 + 1.5; const lam = w.width * 5 + 14; const pts = [];
+    for (let s = 0; s <= total; s += 2) { const fr = atArc(F, cum, s); const k = Math.sin((2 * Math.PI * s) / lam) * amp; pts.push([fr.p[0] + fr.n[0] * k, fr.p[1] + fr.n[1] * k]); }
+    out.push(`<path d="${polyD(pts)}" fill="none" stroke="${color}" stroke-width="${Math.max(1.6, w.width * 0.5)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    heads(w.width * 2.4 + 8);
+  }
+  return { svg: out.join(''), defs };
+}
 
 // opts.interactive: 클릭으로 요소를 고를 수 있게 data-eid 와 넉넉한 클릭 영역을 넣는다(저장할 때는 false). opts.selected: 고른 요소 id
 export function renderSketch(raw, opts = {}) {
@@ -198,6 +319,7 @@ export function renderSketch(raw, opts = {}) {
   const R = (b) => { const a = P([b.rect[0], b.rect[1]]); const z = P([b.rect[2], b.rect[3]]); return [a[0], a[1], z[0] - a[0], z[1] - a[1]]; };
   const slabs = spec.blocks.filter((b) => b.kind === 'slab').sort((p, q) => (q.rect[2] - q.rect[0]) * (q.rect[3] - q.rect[1]) - (p.rect[2] - p.rect[0]) * (p.rect[3] - p.rect[1]));
   const cores = spec.blocks.filter((b) => b.kind === 'core');
+  const openings = spec.blocks.filter((b) => b.kind === 'opening');
   const dash = (d) => (DASHES[d] ? ` stroke-dasharray="${DASHES[d]}"` : '');
   const cap = (d) => (d === 'dotted' ? 'round' : 'round');
   slabs.forEach((b) => {
@@ -215,27 +337,38 @@ export function renderSketch(raw, opts = {}) {
     const [x, y, w, h] = R(b);
     o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || 'url(#hatch)'}" stroke="${C.core}" stroke-width="2.2" stroke-linejoin="round"${eid(b.id)}/>`);
   });
+  openings.forEach((b) => {
+    const [x, y, w, h] = R(b);
+    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(Math.min(w, h) / 2).toFixed(1)}" fill="${b.fill || '#ffffff'}" fill-opacity="0.7" stroke="#555555" stroke-width="1.7" stroke-dasharray="5 4"${eid(b.id)}/>`);
+  });
   spec.blocks.forEach((b) => {
     if (selected !== b.id) return;
     const [x, y, w, h] = R(b);
     sel.push(`<rect x="${(x - 5).toFixed(1)}" y="${(y - 5).toFixed(1)}" width="${(w + 10).toFixed(1)}" height="${(h + 10).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2.5" stroke-dasharray="7 4" rx="3"/>`);
   });
-  // 바람(흐름): 발표용은 굵은 반투명 띠 + 선, 도면용은 선만. 유입/유출 문구는 시작/끝 바깥에 둔다
+  // 바람(흐름): 선 표현(form)에 따라 선 / 리본 / 번짐 / 이중선 / 화살표 반복 / 물결 장식. 유입/유출 문구는 시작/끝 바깥에 둔다
+  const extraDefs = [];
   spec.winds.forEach((w) => {
-    const Q = w.pts.map(P); const d = w.smooth ? smoothPath(Q) : `M${Q.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`;
-    if (selected === w.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${w.width + 16}" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round"/>`);
-    if (pres) o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-opacity="0.22" stroke-width="${(w.width * 4.6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    const mk = (w.head === 'end' || w.head === 'both' ? ` marker-end="url(#aw_${esc(w.id)})"` : '') + (w.head === 'start' || w.head === 'both' ? ` marker-start="url(#aw_${esc(w.id)})"` : '');
-    o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-width="${w.width}" stroke-linecap="round" stroke-linejoin="round"${dash(w.dash)}${mk}/>`);
-    if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, w.width * 4)}" style="cursor:pointer"/>`);
-    const s0 = Q[0]; const e0 = Q[Q.length - 1];
+    const geo = windGeom(w, P); const d = geo.d; const D = geo.dense;
+    const ribbonLike = w.form === 'ribbon' || w.form === 'soft'; const thick = ribbonLike ? w.width * 4.2 : w.width;
+    if (selected === w.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${(thick + 14).toFixed(1)}" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round"/>`);
+    if (w.form === 'line') {
+      if (pres) o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-opacity="0.22" stroke-width="${(w.width * 4.6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      const mk = (w.head === 'end' || w.head === 'both' ? ` marker-end="url(#aw_${esc(w.id)})"` : '') + (w.head === 'start' || w.head === 'both' ? ` marker-start="url(#aw_${esc(w.id)})"` : '');
+      o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-width="${w.width}" stroke-linecap="round" stroke-linejoin="round"${dash(w.dash)}${mk}/>`);
+    } else {
+      const r = drawWindForm(w, geo, pres, dash(w.dash)); o.push(r.svg); if (r.defs) extraDefs.push(r.defs);
+    }
+    if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, thick + 10)}" style="cursor:pointer"/>`);
+    const s0 = D[0]; const e0 = D[D.length - 1];
     const pill = (pt, text, below) => {
       if (!text) return;
-      const wd = [...text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 12 : 7), 0) + 16; const y = pt[1] + (below ? 24 : -20);
+      const wd = [...text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 12 : 7), 0) + 16; const y = pt[1] + (below ? 24 + thick / 2 : -20 - thick / 2);
       o.push(`<rect x="${(pt[0] - wd / 2).toFixed(1)}" y="${(y - 15).toFixed(1)}" width="${wd}" height="20" rx="10" fill="${pres ? w.color : '#fff'}" stroke="${w.color}" stroke-width="1.4"/><text x="${pt[0].toFixed(1)}" y="${(y - 1).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11.5" font-weight="700" fill="${pres ? '#fff' : w.color}">${esc(text)}</text>`);
     };
     pill(s0, w.inLabel, !(s0[1] < e0[1])); pill(e0, w.outLabel, s0[1] < e0[1]);
   });
+  if (extraDefs.length) o[0] = o[0].replace('</defs>', `${extraDefs.join('')}</defs>`);
   // 메모(자유 글자)
   spec.memos.forEach((m) => {
     const [x, y] = P([m.x, m.y]);
@@ -257,12 +390,18 @@ export function renderSketch(raw, opts = {}) {
   });
   ry += 8; o.push(`<line x1="850" y1="${ry - 14}" x2="1160" y2="${ry - 14}" stroke="${pres ? '#E2D9CB' : '#cccccc'}"/>`);
   if (spec.winds.length) {
-    const tally = {}; spec.winds.forEach((w) => { const k = `${w.color}|${w.dash}`; tally[k] = (tally[k] || 0) + 1; });
-    const [bestColor, bestDash] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0].split('|');
-    const w0 = { color: bestColor, dash: bestDash };
-    o.push(`<path d="M852 ${ry + 8} q 9 -11 18 0 t 18 0" fill="none" stroke="${w0.color}" stroke-width="3.2"${dash(w0.dash)}/><text x="896" y="${ry + 12}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.wind)}</text>`);
+    const tally = {}; spec.winds.forEach((w) => { const k = `${w.color}|${w.dash}|${w.form}`; tally[k] = (tally[k] || 0) + 1; });
+    const [bestColor, bestDash, bestForm] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0].split('|');
+    const w0 = { color: bestColor, dash: bestDash, form: bestForm };
+    const icon = w0.form === 'ribbon' || w0.form === 'soft' ? `<path d="M852 ${ry + 8} q 9 -9 18 0 t 18 0 q -9 5 -18 0 t -18 0 Z" fill="${w0.color}" fill-opacity="0.85"/>`
+      : w0.form === 'double' ? `<path d="M852 ${ry + 5} q 9 -9 18 0 t 18 0 M852 ${ry + 11} q 9 -9 18 0 t 18 0" fill="none" stroke="${w0.color}" stroke-width="1.8"/>`
+        : w0.form === 'chevron' ? `<path d="M856 ${ry + 3} l 5 5 l -5 5 M866 ${ry + 3} l 5 5 l -5 5 M876 ${ry + 3} l 5 5 l -5 5" fill="none" stroke="${w0.color}" stroke-width="2" stroke-linecap="round"/>`
+          : w0.form === 'zigzag' ? `<path d="M852 ${ry + 8} l 4 -5 l 6 10 l 6 -10 l 6 10 l 6 -10 l 4 5" fill="none" stroke="${w0.color}" stroke-width="2" stroke-linejoin="round"/>`
+            : `<path d="M852 ${ry + 8} q 9 -11 18 0 t 18 0" fill="none" stroke="${w0.color}" stroke-width="3.2"${dash(w0.dash)}/>`;
+    o.push(`${icon}<text x="896" y="${ry + 12}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.wind)}</text>`);
     ry += 26;
   }
+  if (openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
   if (cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
   spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${o.join('')}</svg>`;
@@ -306,10 +445,12 @@ export function sketchSetEnds(spec, id, a, z) {
 export function sketchAdd(spec, kind) {
   const [x0, y0, x1, y1] = spec.frame; const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2; const w = x1 - x0; const h = y1 - y0;
   const nextId = (pre, list) => { let n = 1; while ((spec[list] || []).some((e) => e.id === `${pre}${n}`)) n += 1; return `${pre}${n}`; };
-  if (kind === 'wind') { const id = nextId('w', 'winds'); const pts = Array.from({ length: 5 }, (_, i) => [cx - w * 0.2 + (w * 0.4 * i) / 4, cy - h * 0.12 + Math.sin((i / 4) * Math.PI * 2) * h * 0.03]); return { spec: { ...spec, winds: [...spec.winds, { id, pts, smooth: true, head: 'end', dash: 'solid', width: 4.5, color: '#1E88C8', inLabel: '', outLabel: '' }] }, id }; }
+  if (kind === 'wind') { const id = nextId('w', 'winds'); const pts = Array.from({ length: 5 }, (_, i) => [cx - w * 0.2 + (w * 0.4 * i) / 4, cy - h * 0.12 + Math.sin((i / 4) * Math.PI * 2) * h * 0.03]); return { spec: { ...spec, winds: [...spec.winds, { id, pts, smooth: true, head: 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.45, inLabel: '', outLabel: '' }] }, id }; }
   if (kind === 'line') { const id = nextId('p', 'lines'); return { spec: { ...spec, lines: [...spec.lines, { id, pts: [[cx - w * 0.15, cy + h * 0.15], [cx + w * 0.15, cy + h * 0.15]], dash: 'solid', width: 2, color: '' }] }, id }; }
   if (kind === 'memo') { const id = nextId('m', 'memos'); return { spec: { ...spec, memos: [...spec.memos, { id, x: cx, y: cy + h * 0.3, text: '메모', size: 14, color: '#222222' }] }, id }; }
-  const id = nextId('b', 'blocks'); return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: kind === 'core' ? 'core' : 'slab', rect: [cx - w * 0.08, cy - h * 0.08, cx + w * 0.08, cy + h * 0.08], name: '', desc: '', fill: '' }] }, id };
+  const id = nextId('b', 'blocks');
+  const rect = kind === 'opening' ? [cx - w * 0.09, cy - h * 0.016, cx + w * 0.09, cy + h * 0.016] : [cx - w * 0.08, cy - h * 0.08, cx + w * 0.08, cy + h * 0.08];
+  return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: ['core', 'opening'].includes(kind) ? kind : 'slab', rect, name: '', desc: '', fill: '' }] }, id };
 }
 
 export function getSketchTextFields(spec) {
@@ -317,7 +458,7 @@ export function getSketchTextFields(spec) {
   if (!spec) return out;
   out.push({ path: ['title'], label: '제목', value: spec.title || '' });
   out.push({ path: ['subtitle'], label: '부제', value: spec.subtitle || '' });
-  (spec.blocks || []).forEach((b, i) => { out.push({ path: ['blocks', i, 'name'], label: `${b.kind === 'core' ? '코어' : '판'} ${i + 1} 이름`, value: b.name || '' }); out.push({ path: ['blocks', i, 'desc'], label: `${b.kind === 'core' ? '코어' : '판'} ${i + 1} 설명`, value: b.desc || '' }); });
+  (spec.blocks || []).forEach((b, i) => { out.push({ path: ['blocks', i, 'name'], label: `${{ core: '코어', opening: '개구부' }[b.kind] || '판'} ${i + 1} 이름`, value: b.name || '' }); out.push({ path: ['blocks', i, 'desc'], label: `${{ core: '코어', opening: '개구부' }[b.kind] || '판'} ${i + 1} 설명`, value: b.desc || '' }); });
   (spec.notes || []).forEach((n, i) => out.push({ path: ['notes', i], label: `핵심 메시지 ${i + 1}`, value: n }));
   return out;
 }
