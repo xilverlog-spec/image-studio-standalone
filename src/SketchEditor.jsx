@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from './conceptDiagram/sketch';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -45,6 +45,10 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const lastKey = useRef(''); const lastAt = useRef(0);
   const [, tick] = useState(0);
   const norm = useMemo(() => normalizeSketch(spec), [spec]);
+  const specRef = useRef(norm); specRef.current = norm;
+  const canvasRef = useRef(null);
+  const drag = useRef(null);
+  const [dragging, setDragging] = useState(false);
 
   // 글자·숫자를 칠 때 한 글자마다 되돌리기 칸이 생기지 않도록, 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
   const commit = (next, key = '') => {
@@ -67,13 +71,51 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const add = (k) => { const r = sketchAdd(norm, k); commit(r.spec); setSelected(r.id); };
   const setGlobal = (patch, key) => commit({ ...norm, ...patch }, key);
 
-  const onPick = (e) => { const el = e.target.closest?.('[data-eid]'); setSelected(el ? el.getAttribute('data-eid') : ''); };
+  // 그림 좌표(1200x760) ← 화면 좌표 → 다이어그램 좌표
+  const toDiag = (clientX, clientY) => {
+    const el = canvasRef.current?.querySelector('svg'); if (!el) return null;
+    const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null; // 그림 영역이 접혀 있으면 계산하지 않는다
+    return sketchView(specRef.current).toDiag([((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height]);
+  };
+  const onDown = (e) => {
+    if (e.button !== 0 || disabled) return;
+    const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
+    if (!el) { setSelected(''); return; }
+    e.preventDefault();
+    const id = el.getAttribute('data-eid'); setSelected(id);
+    const start = toDiag(e.clientX, e.clientY); if (!start) return;
+    drag.current = { id, handle: h ? h.getAttribute('data-handle') : '', start, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+  };
+  const onMove = (e) => {
+    const d = drag.current; if (!d) return;
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; // 살짝 눌렀다 떼면 선택만
+      d.moved = true; past.current = [...past.current.slice(-49), d.orig]; future.current = []; lastKey.current = ''; setDragging(true);
+    }
+    const pt = toDiag(e.clientX, e.clientY); if (!pt) return; const snap = !e.altKey; const o = d.orig; const kind0 = sketchKind(o, d.id); let next = o;
+    if (!d.handle) {
+      let dx = pt[0] - d.start[0]; let dy = pt[1] - d.start[1];
+      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // Shift: 수평·수직으로만
+      if (snap && kind0 === 'block') [dx, dy] = sketchSnapMove(o, d.id, dx, dy);
+      next = sketchMoveBy(o, d.id, dx, dy);
+    } else if (d.handle === 'start' || d.handle === 'end') next = sketchSetEnd(o, d.id, d.handle, snap ? sketchSnapPoint(o, d.id, pt) : pt);
+    else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
+    else next = sketchResizeRect(o, d.id, d.handle, ...(snap ? sketchSnapPoint(o, d.id, pt) : pt));
+    onChange(next); tick((n) => n + 1);
+  };
+  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); tick((n) => n + 1); };
+  useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const onKey = (e) => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
     if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
     else if (!typing && selected && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); remove(); }
-    else if (e.key === 'Escape') setSelected('');
+    else if (!typing && selected && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { // 방향키로 조금씩 옮긴다(Shift 는 더 크게)
+      e.preventDefault(); const st = e.shiftKey ? 2 : 0.5;
+      const dx = e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0; const dy = e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0;
+      commit(sketchMoveBy(norm, selected, dx, dy), `nudge:${selected}`);
+    } else if (e.key === 'Escape') setSelected('');
   };
 
   const ends = sel?.el?.pts ? [sel.el.pts[0], sel.el.pts[sel.el.pts.length - 1]] : null;
@@ -89,8 +131,8 @@ export default function SketchEditor({ spec, onChange, disabled }) {
 
   return (
     <div tabIndex={0} onKeyDown={onKey} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', outline: 'none' }} data-testid="sketch-editor">
-      <div style={{ flex: 1, minWidth: 0, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
-        <div onClick={onPick} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" />
+      <div style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+        <div ref={canvasRef} onPointerDown={onDown} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default' }} />
       </div>
 
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
@@ -112,10 +154,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
         {!sel && (
           <div style={sec}>
             <span style={title}>전체</span>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>그림의 화살표·선·도형·글자를 클릭하면 여기서 속성을 바꿀 수 있습니다. (Delete 로 삭제, Ctrl+Z 되돌리기)</p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[['pres', '발표용'], ['line', '도면용']].map(([id, label]) => <button key={id} style={{ ...smallBtn(norm.style === id), flex: 1 }} onClick={() => setGlobal({ style: id })}>{label}</button>)}
-            </div>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>마름모는 곡선 휨</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <label style={lab}>제목<input style={input} value={norm.title} onChange={(e) => setGlobal({ title: e.target.value }, 'title')} /></label>
             <label style={lab}>부제<input style={input} value={norm.subtitle} onChange={(e) => setGlobal({ subtitle: e.target.value }, 'subtitle')} /></label>
             <label style={lab}>범례: 화살표<input style={input} value={norm.legend.wind} onChange={(e) => setGlobal({ legend: { ...norm.legend, wind: e.target.value } }, 'lgw')} /></label>

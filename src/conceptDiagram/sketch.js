@@ -4,7 +4,7 @@
 // 3) 구조(spec)를 코드가 SVG 로 그린다(발표용·도면용 두 스타일) — renderSketch
 // 4) 화면에서 요소를 고르면 속성(화살표 방향·선 종류·굵기·색·글자·위치)을 바꾸고 다시 그린다 — sketchUpdate 등
 //
-// spec = { title, subtitle, style:'pres'|'line', frame:[x0,y0,x1,y1],
+// spec = { title, subtitle, style:'line'(도면용 하나뿐), frame:[x0,y0,x1,y1],
 //   blocks:[{id, kind:'slab'|'core', rect:[x0,y0,x1,y1], name, desc, fill}],
 //   lines:[{id, pts:[[x,y],[x,y]], dash, width, color}],                                   // 칸막이 등 직선
 //   winds:[{id, pts:[[x,y],...], smooth, head:'end|start|both|none', dash, width, color, inLabel, outLabel}],
@@ -115,7 +115,7 @@ export function buildSketchAnnotatePrompt(read, userText) {
 }
 
 // 읽기 결과 + AI 이름 → 편집 가능한 spec
-export function makeSketchSpec(read, ann, style = 'pres') {
+export function makeSketchSpec(read, ann, style = 'line') {
   const a = ann && typeof ann === 'object' ? ann : {};
   const area = (b) => (b.rect[2] - b.rect[0]) * (b.rect[3] - b.rect[1]);
   const slabs = read.blocks.filter((b) => !b.hatched).sort((p, q) => area(q) - area(p));
@@ -141,7 +141,7 @@ export function makeSketchSpec(read, ann, style = 'pres') {
   const winds = read.lines.filter((l) => l.style === 'wavy').map((l, i) => {
     const pts = resample(chaikin(l.pts, 2), 9);
     const w = windNote[l.id] || {};
-    return { id: `w${i + 1}`, pts, smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 'read', bend: 0.65, amp: 0.45, inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
+    return { id: `w${i + 1}`, pts, smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
   });
   const all = [...blocks.map((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]).flat(), ...winds.flatMap((w) => w.pts)];
   const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.04; const padY = (y1 - y0) * 0.04;
@@ -178,14 +178,23 @@ export function normalizeSketch(raw) {
   const frame = f && f[2] > f[0] && f[3] > f[1] ? f : (all.length ? bbox(all) : [0, 0, 100, 100]);
   if (frame[2] - frame[0] < 1) frame[2] = frame[0] + 1;
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
+  // 발표용 스타일은 쓰지 않기로 해서(2026-10-12) 스타일은 도면용 하나로 고정한다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'pres', frame, blocks, lines, winds, memos,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: 'line', frame, blocks, lines, winds, memos,
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
 
 // ── 4) 렌더 ──────────────────────────────────────────────────
 const W = 1200; const H = 760; const AREA = [70, 150, 780, 640];
+export const SKETCH_SIZE = [W, H];
+// 다이어그램 좌표(0~100) ↔ 그림 좌표(1200x760). 틀(frame)은 편집해도 바뀌지 않아 요소를 옮겨도 전체가 다시 확대·축소되지 않는다
+export function sketchView(raw) {
+  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame;
+  const K = Math.min((AREA[2] - AREA[0]) / (fx1 - fx0), (AREA[3] - AREA[1]) / (fy1 - fy0));
+  const ox = AREA[0] + (AREA[2] - AREA[0] - (fx1 - fx0) * K) / 2; const oy = AREA[1] + (AREA[3] - AREA[1] - (fy1 - fy0) * K) / 2;
+  return { K, toScreen: ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K], toDiag: ([px, py]) => [fx0 + (px - ox) / K, fy0 + (py - oy) / K] };
+}
 const PALETTE = {
   pres: { bg: '#FAF7F2', slab: '#F6D9B8', slabLine: '#B8742F', core: '#27304F', text: '#222222', sub: '#666666', part: '#B8742F', card: true },
   line: { bg: '#FFFFFF', slab: '#FFFFFF', slabLine: '#222222', core: '#222222', text: '#111111', sub: '#555555', part: '#222222', card: false },
@@ -258,21 +267,25 @@ function drawWindForm(w, geo, pres, dashAttr) {
   const D = geo.dense; const F = frames(D); const cum = arcLen(D); const total = cum[cum.length - 1] || 1;
   const headEnd = w.head === 'end' || w.head === 'both'; const headStart = w.head === 'start' || w.head === 'both';
   const color = w.color; const out = []; let defs = '';
-  const W = w.width * 4.2;
+  const W = w.width * 5.6;
   const heads = (size, filled = true) => {
     if (headEnd) out.push(headShape(F[F.length - 1].p, F[F.length - 1].t, size, color, filled));
     if (headStart) out.push(headShape(F[0].p, [-F[0].t[0], -F[0].t[1]], size, color, filled));
   };
   if (w.form === 'ribbon' || w.form === 'soft') {
-    const prof = (t, k = 1) => Math.max(0.04, Math.min(headStart ? 1 : smoothstep(0.08 + t / 0.42), headEnd ? 1 : smoothstep(0.08 + (1 - t) / 0.42)) * k);
+    // 폭: 양 끝도 일정 폭(0.42)은 남기고 가운데가 가장 넓다(불꽃처럼 뾰족해지지 않게). 화살촉이 있는 쪽은 끝까지 같은 폭으로 이어 간다
+    const soft = w.form === 'soft';
+    const floor = soft ? 0.3 : 0.42;
+    const prof = (t, k = 1) => { const mid = Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, t))), 0.65); const base = floor + (1 - floor) * mid; return (headEnd && t > 0.5) || (headStart && t < 0.5) ? Math.max(base, 0.9) * k : base * k; };
     const poly = (k) => { const L = []; const Rr = []; F.forEach((fr, i) => { const t = cum[i] / total; const hw = (W / 2) * prof(t, k); L.push([fr.p[0] + fr.n[0] * hw, fr.p[1] + fr.n[1] * hw]); Rr.push([fr.p[0] - fr.n[0] * hw, fr.p[1] - fr.n[1] * hw]); }); return polyD([...L, ...Rr.reverse()], true); };
-    if (w.form === 'soft') {
-      const a = D[0]; const z = D[D.length - 1];
-      defs += `<linearGradient id="sg_${esc(w.id)}" gradientUnits="userSpaceOnUse" x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(z[0])}" y2="${f1(z[1])}"><stop offset="0" stop-color="${color}" stop-opacity="0"/><stop offset="0.3" stop-color="${color}" stop-opacity="0.78"/><stop offset="${headEnd ? 1 : 0.7}" stop-color="${color}" stop-opacity="${headEnd ? 0.85 : 0.78}"/>${headEnd ? '' : `<stop offset="1" stop-color="${color}" stop-opacity="0"/>`}</linearGradient>`;
-      out.push(`<path d="${poly(1.7)}" fill="url(#sg_${esc(w.id)})" fill-opacity="0.35" stroke="none"/>`);
-      out.push(`<path d="${poly(1)}" fill="url(#sg_${esc(w.id)})" stroke="none"/>`);
-    } else out.push(`<path d="${poly(1)}" fill="${color}" fill-opacity="${pres ? 0.82 : 0.92}" stroke="none"/>`);
-    heads(W * 0.95 + 6);
+    const a0 = D[0]; const z0 = D[D.length - 1];
+    const endA = soft ? 0 : 0.5; // 끝 투명도: 리본은 반쯤 흐리게, 번짐은 완전히 투명하게
+    defs += `<linearGradient id="sg_${esc(w.id)}" gradientUnits="userSpaceOnUse" x1="${f1(a0[0])}" y1="${f1(a0[1])}" x2="${f1(z0[0])}" y2="${f1(z0[1])}">`
+      + `<stop offset="0" stop-color="${color}" stop-opacity="${headStart ? 0.9 : endA}"/><stop offset="0.35" stop-color="${color}" stop-opacity="0.9"/><stop offset="0.65" stop-color="${color}" stop-opacity="0.9"/>`
+      + `<stop offset="1" stop-color="${color}" stop-opacity="${headEnd ? 0.9 : endA}"/></linearGradient>`;
+    out.push(`<path d="${poly(1.55)}" fill="url(#sg_${esc(w.id)})" fill-opacity="0.28" stroke="none"/>`); // 가장자리 번짐
+    out.push(`<path d="${poly(1)}" fill="url(#sg_${esc(w.id)})" stroke="none"/>`);
+    heads(W * 0.8 + 8);
   } else if (w.form === 'double') {
     const off = w.width * 0.95 + 1; const mk = (sgn) => polyD(F.map((fr) => [fr.p[0] + fr.n[0] * off * sgn, fr.p[1] + fr.n[1] * off * sgn]));
     [1, -1].forEach((sg) => out.push(`<path d="${mk(sg)}" fill="none" stroke="${color}" stroke-width="${Math.max(1.4, w.width * 0.45)}" stroke-linecap="round" stroke-linejoin="round"${dashAttr}/>`));
@@ -302,11 +315,13 @@ export function renderSketch(raw, opts = {}) {
   const { interactive = false, selected = '' } = opts;
   const C = PALETTE[spec.style];
   const pres = spec.style === 'pres';
-  const [fx0, fy0, fx1, fy1] = spec.frame;
-  const K = Math.min((AREA[2] - AREA[0]) / (fx1 - fx0), (AREA[3] - AREA[1]) / (fy1 - fy0));
-  const ox = AREA[0] + (AREA[2] - AREA[0] - (fx1 - fx0) * K) / 2; const oy = AREA[1] + (AREA[3] - AREA[1] - (fy1 - fy0) * K) / 2;
-  const P = ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K];
-  const eid = (id) => (interactive ? ` data-eid="${esc(id)}" style="cursor:pointer"` : '');
+  const P = sketchView(spec).toScreen;
+  const eid = (id) => (interactive ? ` data-eid="${esc(id)}" style="cursor:move"` : '');
+  const handles = []; // 선택한 요소의 크기·끝점 조절 점(편집 화면에만 그린다)
+  const sq = (id, name, x, y, cur) => handles.push(`<rect data-handle="${name}" data-eid="${esc(id)}" x="${(x - 5.5).toFixed(1)}" y="${(y - 5.5).toFixed(1)}" width="11" height="11" rx="2" fill="#fff" stroke="#F28C28" stroke-width="2" style="cursor:${cur}"/>`);
+  const dot = (id, name, x, y, shape) => handles.push(shape === 'diamond'
+    ? `<path data-handle="${name}" data-eid="${esc(id)}" d="M${(x).toFixed(1)} ${(y - 8).toFixed(1)} L${(x + 8).toFixed(1)} ${y.toFixed(1)} L${x.toFixed(1)} ${(y + 8).toFixed(1)} L${(x - 8).toFixed(1)} ${y.toFixed(1)} Z" fill="#F28C28" stroke="#fff" stroke-width="2" style="cursor:grab"/>`
+    : `<circle data-handle="${name}" data-eid="${esc(id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#fff" stroke="#F28C28" stroke-width="2.5" style="cursor:crosshair"/>`);
   const o = []; const sel = [];
   const defs = [`<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fff"/><line x1="0" y1="0" x2="0" y2="6" stroke="${C.core}" stroke-width="2"/></pattern>`];
   spec.winds.forEach((w) => defs.push(`<marker id="aw_${esc(w.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${pres ? 4 : 5}" markerHeight="${pres ? 4 : 5}" orient="auto-start-reverse"><path d="${pres ? 'M0 0L10 5L0 10Z' : 'M1 1L9 5L1 9'}" fill="${pres ? w.color : 'none'}" stroke="${w.color}" stroke-width="${pres ? 0 : 1.6}" stroke-linejoin="round"/></marker>`));
@@ -331,7 +346,8 @@ export function renderSketch(raw, opts = {}) {
     const Q = l.pts.map(P); const d = `M${Q.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`; const col = l.color || C.part;
     if (selected === l.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${l.width + 9}" stroke-opacity="0.4" stroke-linecap="round"/>`);
     o.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${l.width}" stroke-linecap="${cap(l.dash)}" stroke-opacity="${pres && !l.color ? 0.75 : 1}"${dash(l.dash)}/>`);
-    if (interactive) o.push(`<path class="hit" data-eid="${esc(l.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="16" style="cursor:pointer"/>`);
+    if (interactive) o.push(`<path class="hit" data-eid="${esc(l.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="16" style="cursor:move"/>`);
+    if (interactive && selected === l.id) { dot(l.id, 'start', Q[0][0], Q[0][1]); dot(l.id, 'end', Q[Q.length - 1][0], Q[Q.length - 1][1]); }
   });
   cores.forEach((b) => {
     const [x, y, w, h] = R(b);
@@ -345,12 +361,16 @@ export function renderSketch(raw, opts = {}) {
     if (selected !== b.id) return;
     const [x, y, w, h] = R(b);
     sel.push(`<rect x="${(x - 5).toFixed(1)}" y="${(y - 5).toFixed(1)}" width="${(w + 10).toFixed(1)}" height="${(h + 10).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2.5" stroke-dasharray="7 4" rx="3"/>`);
+    if (interactive) {
+      const mx = x + w / 2; const my = y + h / 2;
+      [['nw', x, y, 'nwse-resize'], ['n', mx, y, 'ns-resize'], ['ne', x + w, y, 'nesw-resize'], ['e', x + w, my, 'ew-resize'], ['se', x + w, y + h, 'nwse-resize'], ['s', mx, y + h, 'ns-resize'], ['sw', x, y + h, 'nesw-resize'], ['w', x, my, 'ew-resize']].forEach(([nm, hx, hy, cur]) => sq(b.id, nm, hx, hy, cur));
+    }
   });
   // 바람(흐름): 선 표현(form)에 따라 선 / 리본 / 번짐 / 이중선 / 화살표 반복 / 물결 장식. 유입/유출 문구는 시작/끝 바깥에 둔다
   const extraDefs = [];
   spec.winds.forEach((w) => {
     const geo = windGeom(w, P); const d = geo.d; const D = geo.dense;
-    const ribbonLike = w.form === 'ribbon' || w.form === 'soft'; const thick = ribbonLike ? w.width * 4.2 : w.width;
+    const ribbonLike = w.form === 'ribbon' || w.form === 'soft'; const thick = ribbonLike ? w.width * 5.6 : w.width;
     if (selected === w.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${(thick + 14).toFixed(1)}" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round"/>`);
     if (w.form === 'line') {
       if (pres) o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-opacity="0.22" stroke-width="${(w.width * 4.6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`);
@@ -359,7 +379,11 @@ export function renderSketch(raw, opts = {}) {
     } else {
       const r = drawWindForm(w, geo, pres, dash(w.dash)); o.push(r.svg); if (r.defs) extraDefs.push(r.defs);
     }
-    if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, thick + 10)}" style="cursor:pointer"/>`);
+    if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, thick + 10)}" style="cursor:move"/>`);
+    if (interactive && selected === w.id) {
+      dot(w.id, 'start', D[0][0], D[0][1]); dot(w.id, 'end', D[D.length - 1][0], D[D.length - 1][1]);
+      if (w.shape === 's' || w.shape === 'arc') { const mi = w.shape === 'arc' ? Math.round((D.length - 1) / 2) : Math.round((D.length - 1) / 4); dot(w.id, 'amp', D[mi][0], D[mi][1], 'diamond'); }
+    }
     const s0 = D[0]; const e0 = D[D.length - 1];
     const pill = (pt, text, below) => {
       if (!text) return;
@@ -376,6 +400,7 @@ export function renderSketch(raw, opts = {}) {
     if (selected === m.id) { const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58), 0) + 12; sel.push(`<rect x="${(x - wd / 2).toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`); }
   });
   o.push(...sel);
+  o.push(...handles);
   // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다
   let ry = 170; let n = 0;
   [...slabs, ...cores].forEach((b) => {
@@ -451,6 +476,48 @@ export function sketchAdd(spec, kind) {
   const id = nextId('b', 'blocks');
   const rect = kind === 'opening' ? [cx - w * 0.09, cy - h * 0.016, cx + w * 0.09, cy + h * 0.016] : [cx - w * 0.08, cy - h * 0.08, cx + w * 0.08, cy + h * 0.08];
   return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: ['core', 'opening'].includes(kind) ? kind : 'slab', rect, name: '', desc: '', fill: '' }] }, id };
+}
+
+// ── 끌어서 편집: 이동·크기 조절·끝점·휘는 정도·자석 맞춤 ──
+const clampN = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+export function sketchMoveBy(spec, id, dx, dy) {
+  const f = sketchFind(spec, id); if (!f) return spec; const e = f.el;
+  if (f.list === 'blocks') return sketchUpdate(spec, id, { rect: [e.rect[0] + dx, e.rect[1] + dy, e.rect[2] + dx, e.rect[3] + dy] });
+  if (f.list === 'memos') return sketchUpdate(spec, id, { x: e.x + dx, y: e.y + dy });
+  return sketchUpdate(spec, id, { pts: e.pts.map((p) => [p[0] + dx, p[1] + dy]) });
+}
+export function sketchResizeRect(spec, id, handle, x, y) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks') return spec;
+  const r = [...f.el.rect]; const MIN = 0.8;
+  if (handle.includes('w')) r[0] = Math.min(x, r[2] - MIN); if (handle.includes('e')) r[2] = Math.max(x, r[0] + MIN);
+  if (handle.includes('n')) r[1] = Math.min(y, r[3] - MIN); if (handle.includes('s')) r[3] = Math.max(y, r[1] + MIN);
+  return sketchUpdate(spec, id, { rect: r });
+}
+export function sketchSetEnd(spec, id, which, pt) {
+  const f = sketchFind(spec, id); if (!f || !f.el.pts) return spec;
+  const a = f.el.pts[0]; const z = f.el.pts[f.el.pts.length - 1];
+  return sketchSetEnds(spec, id, which === 'start' ? pt : a, which === 'end' ? pt : z);
+}
+// 휘는 정도 조절점을 끌면 그 점이 놓인 위치에 맞춰 amp 를 다시 계산한다(S자는 4분의 1 지점, 호는 가운데)
+export function sketchSetAmp(spec, id, pt) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || !['s', 'arc'].includes(f.el.shape)) return spec;
+  const a = f.el.pts[0]; const z = f.el.pts[f.el.pts.length - 1]; const L = Math.hypot(z[0] - a[0], z[1] - a[1]) || 1;
+  const nx = -(z[1] - a[1]) / L; const ny = (z[0] - a[0]) / L;
+  const h = f.el.shape === 'arc' ? 0.5 : 0.25; const base = [a[0] + (z[0] - a[0]) * h, a[1] + (z[1] - a[1]) * h];
+  const d = (pt[0] - base[0]) * nx + (pt[1] - base[1]) * ny;
+  const per = f.el.shape === 'arc' ? 0.25 : 0.0984; // 곡선이 중심선에서 벗어나는 정도 = amp × L × per
+  return sketchUpdate(spec, id, { amp: clampN(Math.round((d / (L * per)) * 100) / 100, -1.2, 1.2) });
+}
+// 다른 도형의 모서리 좌표에 가까우면 달라붙는다(tol 은 다이어그램 좌표 단위)
+function snapAxis(v, cands, tol) { let best = null; cands.forEach((c) => { const d = Math.abs(c - v); if (d <= tol && (best === null || d < best.d)) best = { d, c }; }); return best ? best.c : v; }
+const edgesOf = (spec, skip) => { const xs = []; const ys = []; spec.blocks.forEach((b) => { if (b.id === skip) return; xs.push(b.rect[0], b.rect[2]); ys.push(b.rect[1], b.rect[3]); }); return { xs, ys }; };
+export function sketchSnapPoint(spec, id, pt, tol = 1.4) { const e = edgesOf(spec, id); return [snapAxis(pt[0], e.xs, tol), snapAxis(pt[1], e.ys, tol)]; }
+export function sketchSnapMove(spec, id, dx, dy, tol = 1.4) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks') return [dx, dy];
+  const e = edgesOf(spec, id); const r = f.el.rect;
+  const adj = (vals, cands) => { let best = null; vals.forEach((v) => cands.forEach((c) => { const d = c - v; if (Math.abs(d) <= tol && (best === null || Math.abs(d) < Math.abs(best))) best = d; })); return best; };
+  const ax = adj([r[0] + dx, r[2] + dx], e.xs); const ay = adj([r[1] + dy, r[3] + dy], e.ys);
+  return [ax === null ? dx : dx + ax, ay === null ? dy : dy + ay];
 }
 
 export function getSketchTextFields(spec) {
