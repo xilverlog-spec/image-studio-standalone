@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
 import SketchEditor from './SketchEditor';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
@@ -199,15 +199,17 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!subjectImage || reading) return null;
     setReading(true);
     try {
-      const useGrid = subjectKind !== 'form';
+      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
-        let sk = null; let skErr = null;
-        for (let attempt = 0; attempt < 2 && !sk; attempt++) {
-          try { sk = normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; }
-        }
-        if (!sk) throw skErr;
+        // 같은 스케치를 3번 동시에 읽고 서로 가장 일치하는 결과를 쓴다(가끔 도형 하나를 크게 빗나가게 읽는 것을 피한다)
+        let skErr = null;
+        const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; return null; } };
+        let reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
+        if (!reads.length) reads = [await one()].filter(Boolean); // 모두 실패하면 한 번 더
+        const sk = pickConsensusSketch(reads);
+        if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
         setRead(sk); setReadOrig(sk); setSelBox(0);
         setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
         addToast?.('success', '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);

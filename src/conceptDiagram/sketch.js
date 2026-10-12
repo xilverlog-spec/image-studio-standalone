@@ -30,33 +30,51 @@ const HEADS = Object.keys(HEAD_LABEL);
 
 // ── 1) 읽기 ──────────────────────────────────────────────────
 export function buildSketchReadPrompt() {
-  return `당신은 건축가의 손 스케치를 읽는 보조자다. 첨부 이미지는 종이에 펜으로 그린 개념 스케치다. 스케치를 **해석하거나 이름을 짓지 말고, 그려진 도형을 있는 그대로** JSON으로만 출력한다(설명/코드펜스 금지).
-이미지에는 위치를 재기 위한 붉은 눈금선이 10 단위(0~100)로 그려져 있다. 모든 좌표는 이 눈금(이미지 전체 = 0~100, 왼쪽 위 [0,0])으로 읽는다.
+  return `당신은 건축가의 손 스케치를 읽는 보조자다. 첨부 이미지는 종이에 펜으로 그린 개념 스케치다. 스케치를 **해석하거나 이름을 짓지 말고, 그려진 것을 있는 그대로** JSON으로만 출력한다(설명/코드펜스 금지).
+모든 위치는 이미지 전체를 0~1000으로 정규화한 좌표다. 점은 [y, x], 상자는 [ymin, xmin, ymax, xmax] 순서다(이미지 왼쪽 위가 [0,0]).
 
 스키마:
 {
- "summary": "무엇이 그려져 있는지 한국어 두세 문장(예: 가로로 긴 직사각형 띠 하나와 세로로 긴 띠 하나, 빗금 친 상자 2개, 띠를 가로지르는 물결선 4개)",
- "blocks": [ {"id":"b1", "pts":[[x,y],...꼭짓점 4개 이상, 시계방향], "hatched": true|false, "note": "그림에서 보이는 특징 한 줄"} ],
- "lines": [ {"id":"l1", "pts":[[x,y], ... 곡선을 따라 6~12개 점, 시작에서 끝 순서], "style":"wavy|straight", "note":"예: 띠를 위에서 아래로 가로지르는 물결선"} ]
+ "summary": "무엇이 그려져 있는지 한국어 두세 문장(도형·화살표·글자가 몇 개씩 있는지 포함)",
+ "blocks": [ {"id":"b1", "box_2d":[ymin,xmin,ymax,xmax], "hatched": true|false, "color":"black|blue|red|green|other", "note":"한 줄"} ],
+ "arrows": [ {"id":"a1", "tail":[y,x], "tip":[y,x], "color":"...", "note":"한 줄(양쪽에 화살촉이면 '양쪽')"} ],
+ "flows": [ {"id":"f1", "points":[[y,x],...선을 따라 5~10개], "color":"...", "note":"한 줄"} ],
+ "arcs": [ {"id":"c1", "points":[[y,x],...3~6개], "color":"..."} ],
+ "partitions": [ {"from":[y,x], "to":[y,x]} ],
+ "texts": [ {"text":"손글씨 그대로", "point":[y,x], "color":"..."} ],
+ "edges": [ {"from":[y,x], "to":[y,x], "color":"...", "note":"한 줄"} ]
 }
 규칙:
-- blocks: 닫힌 사각형/다각형. 서로 겹쳐 그려진 것은 따로 적는다. 빗금(해칭)으로 칠한 것은 hatched true. 긴 띠는 하나의 직사각형으로 적는다(칸막이 선은 lines 로).
-- lines: 닫힌 도형이 아닌 선(칸막이, 물결선, 가로지르는 선). 휘어진 선은 휘어진 모양이 보이도록 점을 충분히 찍는다.
-- 글자가 없으면 이름을 짓지 않는다. 그려진 것만 적는다.`;
+- blocks: 닫힌 도형 하나당 바깥 윤곽 전체를 감싸는 상자 하나. 도형 안쪽을 가르는 가는 선으로 생긴 칸은 따로 적지 않는다(그 선은 partitions). 안을 빗금으로 칠한 도형은 hatched true. 기울어진 도형도 가장 바깥을 감싸는 상자로 적는다. 서로 겹쳐 그려진 도형은 각각 적는다.
+- arrows: 화살촉이 있는 선(직선·곡선) 하나당 하나, **하나도 빠뜨리지 않는다.** tail 은 화살대가 시작하는 끝, tip 은 화살촉이 있는 끝이다.
+- flows: 화살촉 없이 도형을 가로지르는 물결·곡선 흐름선. arcs: 화살표 여러 개를 묶거나 글자 옆에 붙여 그린 괄호 같은 호(화살촉 없음).
+- partitions: 도형 안쪽을 나누는 가는 직선. texts: 손으로 쓴 글자·단어·숫자를 보이는 그대로(같은 글자가 여러 곳이면 각각), point 는 글자의 중심.
+- edges: 벽이나 도형의 변을 따라 붙여 그린 짧은 빗금·눈금·톱니 표시(열린 면·개구부 표시)가 이어진 구간의 양 끝(꺾이면 구간을 나눠 적는다). 도형 안을 채운 빗금은 edges 가 아니다.
+- 펜 색을 color 로 구분한다(빨간 펜은 대개 건물이 아닌 방향·개방 같은 주석). 이름을 짓지 않는다. 그려진 것만 적는다.`;
 }
 
 const SNAP_TOL = 3.2;
 
-// AI 응답 → 정리된 읽기 결과. dims = [이미지 가로 px, 세로 px] 이면 가로세로 비율을 되살린다(AI 좌표는 가로·세로를 따로 0~100 으로 준다).
+// 펜 색 → 화면 색
+export const PEN = { black: '#222222', blue: '#1E4FA0', red: '#D6453D', green: '#3E8E41', other: '#555555' };
+const penOf = (c) => (PEN[c] ? c : 'other');
+const LINE_KINDS = ['partition', 'arrow', 'flow', 'arc', 'other'];
+const ARROWS = ['end', 'start', 'both', 'none'];
+
+// AI 응답 → 정리된 읽기 결과. dims = [이미지 가로 px, 세로 px] 이면 가로세로 비율을 되살린다(AI 좌표는 가로·세로를 따로 0~1000 으로 준다).
+// 기본 위치 표현([y,x] / [ymin,xmin,ymax,xmax], 0~1000)을 쓰고, 옛 형식(눈금 0~100 의 pts)도 그대로 읽는다.
 export function normalizeSketchRead(parsed, dims) {
   if (!parsed || typeof parsed !== 'object') throw new Error('스케치를 읽은 결과가 비어 있습니다.');
   const long = dims ? Math.max(dims[0], dims[1]) : 1;
   const sx = dims ? dims[0] / long : 1; const sy = dims ? dims[1] / long : 1;
-  const fix = (p) => [num(p?.[0], 0, 0, 100) * sx, num(p?.[1], 0, 0, 100) * sy];
+  const fix = (p) => [num(p?.[0], 0, 0, 100) * sx, num(p?.[1], 0, 0, 100) * sy];          // 옛 형식: [x,y] 0~100
+  const yx = (p) => [num(p?.[1], 0, 0, 1000) / 10 * sx, num(p?.[0], 0, 0, 1000) / 10 * sy]; // 기본 형식: [y,x] 0~1000 → [x,y] 0~100
   const blocks = (Array.isArray(parsed.blocks) ? parsed.blocks : []).slice(0, 12).map((b, i) => {
-    const pts = (Array.isArray(b.pts) ? b.pts : []).map(fix);
-    if (pts.length < 3) return null;
-    return { id: `b${i + 1}`, hatched: !!b.hatched, rect: bbox(pts), note: String(b.note ?? '') };
+    let rect;
+    if (Array.isArray(b.box_2d) && b.box_2d.length === 4) { const [y0, x0, y1, x1] = b.box_2d.map((v) => num(v, 0, 0, 1000)); rect = [Math.min(x0, x1) / 10 * sx, Math.min(y0, y1) / 10 * sy, Math.max(x0, x1) / 10 * sx, Math.max(y0, y1) / 10 * sy]; }
+    else { const pts = (Array.isArray(b.pts) ? b.pts : []).map(fix); if (pts.length < 3) return null; rect = bbox(pts); }
+    if (rect[2] - rect[0] < 0.5 || rect[3] - rect[1] < 0.5) return null;
+    return { id: `b${i + 1}`, hatched: !!b.hatched, rect, color: penOf(b.color), note: String(b.note ?? '') };
   }).filter(Boolean);
   if (!blocks.length) throw new Error('스케치에서 도형(상자)을 찾지 못했습니다.');
   // 가까운 모서리 좌표끼리 같은 값으로 맞춘다(손떨림 제거)
@@ -67,12 +85,48 @@ export function normalizeSketchRead(parsed, dims) {
     const mapTo = (v) => { const g = groups.find((gr) => gr.includes(v)); return g.reduce((a, c) => a + c, 0) / g.length; };
     blocks.forEach((b) => { b.rect[idx] = mapTo(b.rect[idx]); b.rect[idx + 2] = mapTo(b.rect[idx + 2]); });
   });
-  const lines = (Array.isArray(parsed.lines) ? parsed.lines : []).slice(0, 24).map((l, i) => {
-    const pts = (Array.isArray(l.pts) ? l.pts : []).map(fix);
-    if (pts.length < 2) return null;
-    return { id: `l${i + 1}`, style: l.style === 'wavy' ? 'wavy' : 'straight', pts, note: String(l.note ?? '') };
+  const lines = []; const addLine = (l) => { if (lines.length < 48) lines.push({ id: `l${lines.length + 1}`, ...l }); };
+  // 옛 형식의 lines(kind/style/pts)
+  (Array.isArray(parsed.lines) ? parsed.lines : []).forEach((l) => {
+    const pts = (Array.isArray(l.pts) ? l.pts : []).map(fix); if (pts.length < 2) return;
+    const kind = LINE_KINDS.includes(l.kind) ? l.kind : (l.style === 'wavy' ? 'flow' : 'partition');
+    let arrow = ARROWS.includes(l.arrow) ? l.arrow : (kind === 'arrow' ? 'end' : 'none');
+    if (kind === 'arrow' && /양쪽/.test(String(l.note ?? ''))) arrow = 'both';
+    else if (kind === 'arrow' && Array.isArray(l.tip) && l.tip.length === 2) { const tip = fix(l.tip); const d = (p) => Math.hypot(p[0] - tip[0], p[1] - tip[1]); if (d(pts[0]) < d(pts[pts.length - 1])) pts.reverse(); arrow = 'end'; }
+    else if (kind === 'arrow' && arrow === 'none') arrow = 'end';
+    addLine({ kind, style: kind === 'flow' || kind === 'arc' ? 'wavy' : 'straight', arrow, color: penOf(l.color), pts, note: String(l.note ?? '') });
+  });
+  // 기본 형식: 화살표(꼬리→화살촉), 흐름선, 호, 칸막이
+  (Array.isArray(parsed.arrows) ? parsed.arrows : []).forEach((a) => {
+    if (!Array.isArray(a?.tail) || !Array.isArray(a?.tip)) return;
+    addLine({ kind: 'arrow', style: 'straight', arrow: /양쪽/.test(String(a.note ?? '')) ? 'both' : 'end', color: penOf(a.color), pts: [yx(a.tail), yx(a.tip)], note: String(a.note ?? '') });
+  });
+  (Array.isArray(parsed.flows) ? parsed.flows : []).forEach((f) => { const pts = (Array.isArray(f?.points) ? f.points : []).map(yx); if (pts.length >= 2) addLine({ kind: 'flow', style: 'wavy', arrow: 'none', color: penOf(f.color), pts, note: String(f.note ?? '') }); });
+  (Array.isArray(parsed.arcs) ? parsed.arcs : []).forEach((f) => { const pts = (Array.isArray(f?.points) ? f.points : []).map(yx); if (pts.length >= 2) addLine({ kind: 'arc', style: 'wavy', arrow: 'none', color: penOf(f.color), pts, note: '' }); });
+  (Array.isArray(parsed.partitions) ? parsed.partitions : []).forEach((f) => { if (Array.isArray(f?.from) && Array.isArray(f?.to)) addLine({ kind: 'partition', style: 'straight', arrow: 'none', color: 'black', pts: [yx(f.from), yx(f.to)], note: '' }); });
+  const texts = (Array.isArray(parsed.texts) ? parsed.texts : []).slice(0, 24).map((t, i) => {
+    const text = String(t?.text ?? '').trim().slice(0, 24); const pos = Array.isArray(t?.point) ? yx(t.point) : Array.isArray(t?.pos) ? fix(t.pos) : null;
+    return text && pos ? { id: `t${i + 1}`, text, pos, color: penOf(t.color) } : null;
   }).filter(Boolean);
-  return { kind: 'sketch', summary: String(parsed.summary ?? ''), blocks, lines };
+  const edges = (Array.isArray(parsed.edges) ? parsed.edges : []).slice(0, 24).map((e, i) => {
+    const pts = Array.isArray(e?.from) && Array.isArray(e?.to) ? [yx(e.from), yx(e.to)] : (Array.isArray(e?.pts) ? e.pts.map(fix) : []);
+    return pts.length >= 2 ? { id: `e${i + 1}`, pts, color: penOf(e.color), note: String(e.note ?? '') } : null;
+  }).filter(Boolean);
+  return { kind: 'sketch', summary: String(parsed.summary ?? ''), blocks, lines, texts, edges };
+}
+
+// 여러 번 읽은 결과 중 서로 가장 일치하는 것을 고른다(가끔 도형 하나를 크게 빗나가게 읽는 이탈값을 피한다)
+export function pickConsensusSketch(reads) {
+  const ok = reads.filter(Boolean);
+  if (ok.length <= 2) return ok[0];
+  const iou = (a, c) => { const x0 = Math.max(a[0], c[0]); const y0 = Math.max(a[1], c[1]); const x1 = Math.min(a[2], c[2]); const y1 = Math.min(a[3], c[3]); const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); const u = (a[2] - a[0]) * (a[3] - a[1]) + (c[2] - c[0]) * (c[3] - c[1]) - i; return u > 0 ? i / u : 0; };
+  const sim = (A, B) => { // A 의 도형마다 B 에서 가장 겹치는 도형의 IoU 평균(도형 수가 다르면 불리하게)
+    const m = A.blocks.reduce((acc, b) => acc + Math.max(0, ...B.blocks.map((c) => iou(b.rect, c.rect))), 0) / A.blocks.length;
+    return m * Math.min(A.blocks.length, B.blocks.length) / Math.max(A.blocks.length, B.blocks.length);
+  };
+  let best = ok[0]; let bestScore = -1;
+  ok.forEach((r, i) => { const sc = ok.reduce((acc, o, j) => (j === i ? acc : acc + (sim(r, o) + sim(o, r)) / 2), 0); if (sc > bestScore) { bestScore = sc; best = r; } });
+  return best;
 }
 
 // 손떨림 제거: 모서리를 깎는 Chaikin 을 두 번 적용하고, 호 길이를 따라 일정 간격으로 다시 뽑는다
@@ -101,17 +155,19 @@ export function buildSketchAnnotatePrompt(read, userText) {
   const r0 = (v) => Math.round(v);
   const slabs = read.blocks.filter((b) => !b.hatched).map((b) => ({ id: b.id, rect: b.rect.map(r0), note: b.note }));
   const cores = read.blocks.filter((b) => b.hatched).map((b) => ({ id: b.id, rect: b.rect.map(r0), note: b.note }));
-  const winds = read.lines.filter((l) => l.style === 'wavy').map((l) => ({ id: l.id, from: l.pts[0].map(r0), to: l.pts[l.pts.length - 1].map(r0) }));
-  return `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래는 건축가의 손 스케치에서 읽어 정리한 도형이다(좌표 0~100, 왼쪽 위가 [0,0], y 는 아래로 커진다). 도형의 모양·위치는 고정이다. 요청의 개념에 맞는 이름·설명·바람(흐름) 방향만 정해 JSON 으로만 출력한다(설명/코드펜스 금지).
-도형: ${JSON.stringify({ slabs, cores, winds })}
+  const winds = read.lines.filter((l) => ['flow', 'arrow', 'arc'].includes(l.kind)).map((l) => ({ id: l.id, kind: l.kind, color: l.color, arrow: l.arrow, from: l.pts[0].map(r0), to: l.pts[l.pts.length - 1].map(r0), note: l.note }));
+  const texts = (read.texts || []).map((t) => ({ text: t.text, pos: t.pos.map(r0), color: t.color }));
+  const edges = (read.edges || []).map((e) => ({ id: e.id, from: e.pts[0].map(r0), to: e.pts[e.pts.length - 1].map(r0), color: e.color }));
+  return `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래는 건축가의 손 스케치에서 읽어 정리한 요소다(좌표 0~100, 왼쪽 위가 [0,0], y 는 아래로 커진다). 도형·화살표·글자의 모양과 위치는 이미 읽은 그대로 고정이며 바꿀 수 없다. 요청의 개념에 맞는 이름·설명·화살표 양끝에 붙일 짧은 말만 정해 JSON 으로만 출력한다(설명/코드펜스 금지).
+요소: ${JSON.stringify({ slabs, cores, winds, texts, edges })}
 요청: ${userText || '(요청 없음 — 스케치에 그려진 것만 간단히 이름 붙인다)'}
 스키마:
 { "title":"제목(20자 이내)", "subtitle":"부제(30자 이내)",
   "items":[{"target":"슬래브/코어 id","name":"이름(12자 이내)","desc":"한 줄 설명(30자 이내)"}],
-  "winds":[{"id":"물결선 id","head":"end|start|both|none","in":"시작 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)","out":"끝 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)"}],
-  "legend":{"wind":"물결선 범례 문구(20자 이내)","core":"빗금 도형 범례 문구(20자 이내)"},
+  "winds":[{"id":"winds 의 id","head":"end|start|both|none","in":"시작 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)","out":"끝 쪽에 쓸 말(8자 이내, 없으면 빈 문자열)"}],
+  "legend":{"wind":"화살표·흐름선 범례 문구(20자 이내)","core":"빗금 도형 범례 문구(20자 이내)","opening":"edges(벽에 붙은 표시) 범례 문구(20자 이내)"},
   "notes":["핵심 메시지 문장 1~2개(각 40자 이내)"] }
-규칙: 모든 슬래브와 코어에 items 를 하나씩 순서대로 쓴다. 물결선은 요청의 개념(예: 맞통풍은 한쪽 면의 개구부로 들어온 바람이 반대쪽 면으로 빠져나감)에 맞게 같은 방향으로 판을 통과하도록 head 를 정한다. from→to 가 진행 방향이면 head "end". 읽은 목록에 없는 id 는 쓰지 않는다. 손스케치에 없는 내용을 지어내지 않는다. 모든 글자는 한국어.`;
+규칙: 모든 슬래브와 코어에 items 를 하나씩 순서대로 쓴다. winds 에서 kind 가 arrow 인 것은 스케치에 화살촉이 이미 그려져 있으므로 head 를 바꾸지 않고(arrow 값을 그대로), in/out 은 꼭 필요할 때만 짧게 쓴다. kind 가 flow 이면 요청의 개념(예: 맞통풍은 한쪽 면의 개구부로 들어온 바람이 반대쪽 면으로 빠져나감)에 맞게 head 를 정한다. 이미 읽은 글자(texts)를 다시 쓰거나 바꾸지 않는다. 읽은 목록에 없는 id 는 쓰지 않는다. 손스케치에 없는 내용을 지어내지 않는다. 모든 글자는 한국어(스케치에서 읽은 글자는 제외).`;
 }
 
 // 읽기 결과 + AI 이름 → 편집 가능한 spec
@@ -125,10 +181,15 @@ export function makeSketchSpec(read, ann, style = 'line') {
     id: `b${i + 1}`, kind: b.hatched ? 'core' : 'slab', rect: b.rect.map((v) => Math.round(v * 10) / 10),
     name: String(items[b.id]?.name ?? ''), desc: String(items[b.id]?.desc ?? ''),
   }));
+  // 벽을 따라 붙은 표시(열린 면) → 그 벽 위의 개구부(점선 캡슐). 펜 색을 그대로 쓴다
+  (read.edges || []).forEach((e) => {
+    const [x0, y0, x1, y1] = bbox(e.pts); const horiz = (x1 - x0) >= (y1 - y0); const th = 1.3;
+    blocks.push({ id: `b${blocks.length + 1}`, kind: 'opening', rect: horiz ? [x0, (y0 + y1) / 2 - th, x1, (y0 + y1) / 2 + th] : [(x0 + x1) / 2 - th, y0, (x0 + x1) / 2 + th, y1], name: '', desc: '', fill: '', stroke: PEN[e.color] });
+  });
   // 칸막이: 가로/세로로 반듯하게, 슬래브 안쪽으로 맞춘다(슬래브 밖 선은 버린다)
   const inside = (r, x, y, m = 1.5) => x >= r[0] - m && x <= r[2] + m && y >= r[1] - m && y <= r[3] + m;
   const lines = [];
-  read.lines.filter((l) => l.style !== 'wavy').forEach((l) => {
+  read.lines.filter((l) => l.kind === 'partition').forEach((l) => {
     const [x0, y0, x1, y1] = bbox(l.pts); const vertical = (x1 - x0) < (y1 - y0) * 0.35; const horizontal = (y1 - y0) < (x1 - x0) * 0.35;
     if (!vertical && !horizontal) return;
     const mx = (x0 + x1) / 2; const my = (y0 + y1) / 2;
@@ -137,17 +198,36 @@ export function makeSketchSpec(read, ann, style = 'line') {
     const r = host.rect;
     lines.push({ id: `p${lines.length + 1}`, pts: vertical ? [[mx, r[1]], [mx, r[3]]] : [[r[0], my], [r[2], my]], dash: 'solid', width: 1.6 });
   });
+  // 화살표의 꼬리를 모델이 건물 안쪽(예: 건물 한가운데)에 잘못 찍는 일이 잦다. 꼬리가 건물 안이고 화살촉이 건물 밖이면, 건물 벽(경계)에서 시작하도록 자른다
+  const solid = blocks.filter((b) => b.kind !== 'opening');
+  const inAny = (x, y) => solid.some((b) => x > b.rect[0] && x < b.rect[2] && y > b.rect[1] && y < b.rect[3]);
+  const trimTail = (pts) => {
+    if (pts.length !== 2) return pts;
+    const [a, z] = pts; if (!inAny(a[0], a[1]) || inAny(z[0], z[1])) return pts;
+    let tExit = 0; for (let i = 1; i <= 200; i++) { const t = i / 200; if (inAny(a[0] + (z[0] - a[0]) * t, a[1] + (z[1] - a[1]) * t)) tExit = t; }
+    const t = Math.min(0.9, tExit + 0.01); return [[a[0] + (z[0] - a[0]) * t, a[1] + (z[1] - a[1]) * t], z];
+  };
+  // 흐름선(화살촉 없는 물결)은 리본으로, 화살표는 스케치의 방향·펜 색 그대로 화살표로, 호는 얇은 곡선으로
   const windNote = Object.fromEntries((Array.isArray(a.winds) ? a.winds : []).map((w) => [String(w.id), w]));
-  const winds = read.lines.filter((l) => l.style === 'wavy').map((l, i) => {
-    const pts = resample(chaikin(l.pts, 2), 9);
-    const w = windNote[l.id] || {};
-    return { id: `w${i + 1}`, pts, smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
+  const winds = [];
+  read.lines.filter((l) => ['flow', 'arrow', 'arc'].includes(l.kind)).forEach((l) => {
+    const w = windNote[l.id] || {}; const color = l.color === 'other' || l.color === 'black' ? '#1E88C8' : PEN[l.color];
+    const labels = { inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
+    if (l.kind === 'flow') {
+      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, ...labels });
+    } else if (l.kind === 'arrow') {
+      winds.push({ id: `w${winds.length + 1}`, pts: trimTail(l.pts.length > 4 ? resample(chaikin(l.pts, 1), 5) : l.pts), smooth: true, head: l.arrow, dash: 'solid', width: 3.2, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
+    } else {
+      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: 'none', dash: 'solid', width: 2.2, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
+    }
   });
-  const all = [...blocks.map((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]).flat(), ...winds.flatMap((w) => w.pts)];
+  // 손글씨는 읽은 그대로 글자 메모로(위치 편집 가능)
+  const memos = (read.texts || []).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 18, color: PEN[t.color] }));
+  const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...memos.map((m) => [m.x, m.y])];
   const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.04; const padY = (y1 - y0) * 0.04;
   return {
     title: String(a.title ?? ''), subtitle: String(a.subtitle ?? ''), style, frame: [x0 - padX, y0 - padY, x1 + padX, y1 + padY],
-    blocks, lines, winds, memos: [], legend: { wind: String(a.legend?.wind ?? '기류(흐름)'), core: String(a.legend?.core ?? '코어(계단·승강기)'), opening: '개구부(창)' },
+    blocks, lines, winds, memos, legend: { wind: String(a.legend?.wind ?? '기류(흐름)'), core: String(a.legend?.core ?? '코어(계단·승강기)'), opening: String(a.legend?.opening ?? '개구부(창)') },
     notes: (Array.isArray(a.notes) ? a.notes : []).slice(0, 2).map(String),
   };
 }
@@ -160,7 +240,7 @@ export function normalizeSketch(raw) {
   const pt = (p) => [num(p?.[0], 0), num(p?.[1], 0)];
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
-    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '' };
+    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '' };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
     id: uid(l.id, `p${i + 1}`), pts: (Array.isArray(l.pts) && l.pts.length >= 2 ? l.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt),
@@ -381,7 +461,7 @@ export function renderSketch(raw, opts = {}) {
   });
   openings.forEach((b) => {
     const [x, y, w, h] = R(b);
-    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(Math.min(w, h) / 2).toFixed(1)}" fill="${b.fill || '#ffffff'}" fill-opacity="0.7" stroke="#555555" stroke-width="1.7" stroke-dasharray="5 4"${eid(b.id)}/>`);
+    o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(Math.min(w, h) / 2).toFixed(1)}" fill="${b.fill || '#ffffff'}" fill-opacity="0.7" stroke="${b.stroke || '#555555'}" stroke-width="1.7" stroke-dasharray="5 4"${eid(b.id)}/>`);
   });
   spec.blocks.forEach((b) => {
     if (selected !== b.id) return;
