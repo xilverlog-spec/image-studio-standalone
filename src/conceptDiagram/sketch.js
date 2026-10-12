@@ -212,7 +212,8 @@ export function makeSketchSpec(read, ann, style = 'concept') {
   const winds = [];
   read.lines.filter((l) => ['flow', 'arrow', 'arc'].includes(l.kind)).forEach((l) => {
     const w = windNote[l.id] || {}; const color = l.color === 'other' || l.color === 'black' ? '#1E88C8' : PEN[l.color];
-    const labels = { inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') };
+    // 스케치에 그려진 화살표·호에는 말풍선을 기본으로 붙이지 않는다(참고 개념도처럼 깔끔하게). 흐름선만 AI 가 정한 유입/유출 문구를 쓴다
+    const labels = l.kind === 'flow' ? { inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') } : { inLabel: '', outLabel: '' };
     if (l.kind === 'flow') {
       winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, ...labels });
     } else if (l.kind === 'arrow') {
