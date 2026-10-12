@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
+import { buildSketchReadPrompt, normalizeSketchRead, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
+import SketchEditor from './SketchEditor';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -192,6 +194,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     try {
       const useGrid = subjectKind !== 'form';
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
+      if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
+        const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
+        let sk = null; let skErr = null;
+        for (let attempt = 0; attempt < 2 && !sk; attempt++) {
+          try { sk = normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; }
+        }
+        if (!sk) throw skErr;
+        setRead(sk); setReadOrig(sk); setSelBox(0);
+        setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
+        addToast?.('success', '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);
+        return sk;
+      }
       let r = null; let lastErr = null;
       for (let attempt = 0; attempt < 2 && !r; attempt++) { // 잘못 읽히면(뭉개짐 등) 한 번 더 읽는다
         try { r = normalizeRead(await callAI(buildReadPrompt(subjectKind, { grid: useGrid }), [gridded]), subjectKind); }
@@ -234,6 +248,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
+    if (read.kind === 'sketch') {
+      let ann;
+      try { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); }
+      catch { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); } // 응답을 해석하지 못하면 한 번 더
+      return { type: 'sketch', spec: makeSketchSpec(read, ann), ver: Date.now() };
+    }
     const askPrompt = buildSubjectPrompt(read, askText(), !!styleImage);
     let parsed;
     try { parsed = await callAI(askPrompt, styleImage ? [styleImage] : []); }
@@ -360,6 +380,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <option value="auto">이미지 종류: 자동 판단</option>
                     {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
+                  {subjectKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={readImage}>
                     {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
@@ -444,7 +465,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </div>
         )}
 
-        {result && fields.length > 0 && (
+        {result && result.type !== 'sketch' && fields.length > 0 && (
           <details>
             <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>글자 수정 (AI 재호출 없이 즉시 반영)</summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
@@ -473,7 +494,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             </div>
           )}
           {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
-          {rendered?.svg && <img src={previewSrc} alt="다이어그램 미리보기" style={{ width: '100%', maxWidth: rendered.width, display: 'block', margin: '0 auto' }} />}
+          {result?.type === 'sketch' && rendered?.svg && (
+            <SketchEditor key={result.ver} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} />
+          )}
+          {result?.type !== 'sketch' && rendered?.svg && <img src={previewSrc} alt="다이어그램 미리보기" style={{ width: '100%', maxWidth: rendered.width, display: 'block', margin: '0 auto' }} />}
         </div>
       </div>
     </div>

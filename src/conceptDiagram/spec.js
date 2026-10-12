@@ -4,6 +4,7 @@ import { renderLayout2d, normalizeLayoutPanels } from './layout2d';
 import { ICON_NAMES, ICON_LABEL } from './icons';
 import { renderProgram, normalizeProgram } from './program';
 import { renderStack, normalizeStack } from './stack';
+import { renderSketch, normalizeSketch, getSketchTextFields } from './sketch';
 
 export const DIAGRAM_TYPES = {
   site: { label: '배치 개념도 (흐름·정원·순환)', hint: '배치도 위에 흐름선, 해칭 구역, 아이콘 칩을 얹는 개념도' },
@@ -244,6 +245,7 @@ export function normalizeSpec(type, spec) {
     if (!Array.isArray(spec.steps) || !spec.steps.length) throw new Error('steps 가 비어 있습니다.');
     return spec;
   }
+  if (type === 'sketch') return normalizeSketch(spec);
   if (type === 'program') return normalizeProgram(spec);
   if (type === 'stack') return normalizeStack(spec);
   if (!Array.isArray(spec.panels) || !spec.panels.length) throw new Error('panels 가 비어 있습니다.');
@@ -272,6 +274,7 @@ export function normalizeSpec(type, spec) {
 export function renderSpec(type, spec, opts) {
   if (type === 'layout') return renderLayout2d(normalizeLayoutPanels(spec));
   const n = normalizeSpec(type, spec);
+  if (type === 'sketch') return renderSketch(n);
   if (type === 'program') return renderProgram(n);
   if (type === 'stack') return renderStack(n);
   return type === 'massing' ? renderMassing(n) : renderSiteConcept(n, opts);
@@ -281,6 +284,7 @@ export function renderSpec(type, spec, opts) {
 export function getTextFields(type, spec) {
   const out = [];
   if (!spec) return out;
+  if (type === 'sketch') return getSketchTextFields(spec);
   if (spec.title !== undefined) out.push({ path: ['title'], label: '전체 제목', value: spec.title || '' });
   if (type === 'massing') {
     (spec.steps || []).forEach((s, i) => out.push({ path: ['steps', i, 'label'], label: `단계 ${i + 1} 이름`, value: s.label || '' }));

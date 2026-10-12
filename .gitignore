@@ -79,3 +79,7 @@ public/aerial_test/
 ah_test.html
 src/__ahMain.jsx
 vite.ah.config.mjs
+
+cd_h.html
+src/__cdMain.jsx
+vite.cd.config.mjs

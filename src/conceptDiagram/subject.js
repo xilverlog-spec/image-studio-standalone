@@ -7,6 +7,7 @@ export const SUBJECT_KINDS = {
   form: '건물 형태(외관·조감·매스)',
   plan: '평면도',
   site: '배치도·대지',
+  sketch: '손스케치(펜으로 그린 개념 스케치)',
   other: '그 외(지원 안 함)',
 };
 
