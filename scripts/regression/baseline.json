@@ -1,0 +1,42 @@
+{
+ "render_s11": {
+  "score": 53,
+  "prompt_chars": 395
+ },
+ "render_alt3": {
+  "score": 52,
+  "prompt_chars": 395
+ },
+ "render_big": {
+  "score": 34,
+  "prompt_chars": 395
+ },
+ "render_c3": {
+  "score": 23,
+  "prompt_chars": 395
+ },
+ "facade_s11_redbrick": {
+  "score": 58,
+  "prompt_chars": 406
+ },
+ "facade_alt3_timber": {
+  "score": 54,
+  "prompt_chars": 418
+ },
+ "redesign_s11_metal": {
+  "score": 45,
+  "prompt_chars": 601
+ },
+ "redesign_alt3_glass": {
+  "score": 61,
+  "prompt_chars": 620
+ },
+ "ref_apply_s11": {
+  "score": 52,
+  "prompt_chars": 639
+ },
+ "ref_propose_alt3": {
+  "score": 58,
+  "prompt_chars": 744
+ }
+}
