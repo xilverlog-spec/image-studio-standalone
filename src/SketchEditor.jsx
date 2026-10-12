@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapshot, sketchPaste, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -14,6 +14,8 @@ const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, bor
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222'];
 const r1 = (v) => Math.round(v * 10) / 10;
+// 복사해 둔 요소(같은 페이지 안에서 다른 그림으로도 붙일 수 있게 모듈에 둔다)와 연속 붙여넣기 횟수
+let CLIP = null; let PASTE_N = 0;
 // 선 표현: 선(실선·파선·점선·일점쇄선)과 모양 자체가 다른 표현을 한 목록으로 고른다
 const LINE_OPTIONS = [
   ['line:solid', '실선'], ['line:dashed', '파선'], ['line:dotted', '점선'], ['line:dashdot', '일점쇄선'],
@@ -49,6 +51,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const canvasRef = useRef(null);
   const drag = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const keyRef = useRef(null);
 
   // 글자·숫자를 칠 때 한 글자마다 되돌리기 칸이 생기지 않도록, 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
   const commit = (next, key = '') => {
@@ -107,9 +110,20 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   };
   const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); tick((n) => n + 1); };
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
+  useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
+  // 복사(Ctrl+C)·잘라내기(Ctrl+X)·붙여넣기(Ctrl+V)·복제(Ctrl+D). 붙인 요소는 3칸씩 비껴 놓이고 곧바로 선택된다
+  const copySel = () => { const sn = selected ? sketchSnapshot(norm, selected) : null; if (sn) { CLIP = sn; PASTE_N = 0; tick((n) => n + 1); } return !!sn; };
+  const pasteClip = (offset) => { if (!CLIP) return; PASTE_N += 1; const k = offset ?? 3 * PASTE_N; const r = sketchPaste(norm, CLIP, k, k); if (r.id) { commit(r.spec); setSelected(r.id); } };
   const onKey = (e) => {
-    const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
-    if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    const tag = e.target?.tagName || '';
+    const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
+    const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
+    if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) e.preventDefault(); }
+    else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); remove(); } }
+    else if (mod && !typing && k === 'v' && CLIP) { e.preventDefault(); pasteClip(); }
+    else if (mod && !typing && k === 'd' && selected) { e.preventDefault(); if (copySel()) pasteClip(3); }
+    else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
     else if (!typing && selected && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); remove(); }
     else if (!typing && selected && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { // 방향키로 조금씩 옮긴다(Shift 는 더 크게)
@@ -118,6 +132,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
       commit(sketchMoveBy(norm, selected, dx, dy), `nudge:${selected}`);
     } else if (e.key === 'Escape') setSelected('');
   };
+  keyRef.current = onKey; // 창 단위 키 입력 리스너가 항상 최신 상태의 처리 함수를 부르게 한다
 
   const ends = sel?.el?.pts ? [sel.el.pts[0], sel.el.pts[sel.el.pts.length - 1]] : null;
   const setEnd = (which, axis, v) => {
@@ -131,7 +146,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: '글자 메모' }[kind];
 
   return (
-    <div tabIndex={0} onKeyDown={onKey} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', outline: 'none' }} data-testid="sketch-editor">
+    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
       <div style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
         <div ref={canvasRef} onPointerDown={onDown} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default' }} />
       </div>
@@ -149,13 +164,14 @@ export default function SketchEditor({ spec, onChange, disabled }) {
             <button style={smallBtn(false)} onClick={() => add('slab')}>＋ 도형</button>
             <button style={smallBtn(false)} onClick={() => add('opening')}>＋ 개구부</button>
             <button style={smallBtn(false)} onClick={() => add('memo')}>＋ 글자</button>
+            {CLIP && <button style={smallBtn(false)} onClick={() => pasteClip()} title="Ctrl+V">붙여넣기</button>}
           </div>
         </div>
 
         {!sel && (
           <div style={sec}>
             <span style={title}>전체</span>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <label style={lab}>제목<input style={input} value={norm.title} onChange={(e) => setGlobal({ title: e.target.value }, 'title')} /></label>
             <label style={lab}>부제<input style={input} value={norm.subtitle} onChange={(e) => setGlobal({ subtitle: e.target.value }, 'subtitle')} /></label>
             <label style={lab}>범례: 화살표<input style={input} value={norm.legend.wind} onChange={(e) => setGlobal({ legend: { ...norm.legend, wind: e.target.value } }, 'lgw')} /></label>
@@ -253,6 +269,8 @@ export default function SketchEditor({ spec, onChange, disabled }) {
 
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => setSelected('')}>선택 해제</button>
+              <button style={smallBtn(false)} onClick={() => { if (copySel()) pasteClip(3); }} title="Ctrl+D" data-testid="duplicate">복제</button>
+              <button style={smallBtn(false)} onClick={copySel} title="Ctrl+C" data-testid="copy">복사</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="delete">삭제</button>
             </div>
           </div>

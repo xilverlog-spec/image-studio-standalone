@@ -543,6 +543,19 @@ export function sketchSetVia(spec, id, pt) {
   const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 's') return spec;
   return sketchUpdate(spec, id, { via: pt ? [Math.round(pt[0] * 10) / 10, Math.round(pt[1] * 10) / 10] : null });
 }
+// 복사·붙여넣기·복제: 요소를 통째로 복사해 두었다가(snapshot) 새 id 로 붙인다. 붙인 요소는 dx,dy 만큼 비껴 놓아 겹쳐 보이지 않게 한다
+export function sketchSnapshot(spec, id) {
+  const f = sketchFind(spec, id); if (!f) return null;
+  return { list: f.list, el: JSON.parse(JSON.stringify(f.el)) };
+}
+export function sketchPaste(spec, snap, dx = 3, dy = 3) {
+  if (!snap || !LISTS.includes(snap.list)) return { spec, id: '' };
+  const pre = { blocks: 'b', lines: 'p', winds: 'w', memos: 'm' }[snap.list]; let n = 1;
+  while ((spec[snap.list] || []).some((e) => e.id === `${pre}${n}`)) n += 1;
+  const id = `${pre}${n}`; const el = { ...JSON.parse(JSON.stringify(snap.el)), id };
+  return { spec: sketchMoveBy({ ...spec, [snap.list]: [...(spec[snap.list] || []), el] }, id, dx, dy), id };
+}
+
 // 다른 도형의 모서리 좌표에 가까우면 달라붙는다(tol 은 다이어그램 좌표 단위)
 function snapAxis(v, cands, tol) { let best = null; cands.forEach((c) => { const d = Math.abs(c - v); if (d <= tol && (best === null || d < best.d)) best = { d, c }; }); return best ? best.c : v; }
 const edgesOf = (spec, skip) => { const xs = []; const ys = []; spec.blocks.forEach((b) => { if (b.id === skip) return; xs.push(b.rect[0], b.rect[2]); ys.push(b.rect[1], b.rect[3]); }); return { xs, ys }; };
