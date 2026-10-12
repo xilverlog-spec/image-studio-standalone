@@ -274,9 +274,18 @@ const headShape = (p, dir, size, color, filled) => {
   return filled ? `<path d="${polyD([l, tip, r], true)}" fill="${color}" stroke="none"/>` : `<path d="${polyD([l, tip, r], false)}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
 };
 
+// 중심선 점 사이를 선형으로 채워 간격이 step(px) 이하가 되게 한다(끝 마무리가 각져 보이지 않게)
+const densify = (D, step) => {
+  const out = [D[0]];
+  for (let i = 1; i < D.length; i++) {
+    const a = D[i - 1]; const b = D[i]; const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 1; k <= n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  return out;
+};
 // 선 표현별 그리기. 반환: SVG 조각(문자열)과 defs 조각
 function drawWindForm(w, geo, pres, dashAttr) {
-  const D = geo.dense; const F = frames(D); const cum = arcLen(D); const total = cum[cum.length - 1] || 1;
+  const D = densify(geo.dense, 2.5); const F = frames(D); const cum = arcLen(D); const total = cum[cum.length - 1] || 1;
   const headEnd = w.head === 'end' || w.head === 'both'; const headStart = w.head === 'start' || w.head === 'both';
   const color = w.color; const out = []; let defs = '';
   const W = w.width * 5.6;
@@ -289,7 +298,10 @@ function drawWindForm(w, geo, pres, dashAttr) {
     const soft = w.form === 'soft';
     const floor = soft ? 0.3 : 0.42;
     const prof = (t, k = 1) => { const mid = Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, t))), 0.65); const base = floor + (1 - floor) * mid; return (headEnd && t > 0.5) || (headStart && t < 0.5) ? Math.max(base, 0.9) * k : base * k; };
-    const poly = (k) => { const L = []; const Rr = []; F.forEach((fr, i) => { const t = cum[i] / total; const hw = (W / 2) * prof(t, k); L.push([fr.p[0] + fr.n[0] * hw, fr.p[1] + fr.n[1] * hw]); Rr.push([fr.p[0] - fr.n[0] * hw, fr.p[1] - fr.n[1] * hw]); }); return polyD([...L, ...Rr.reverse()], true); };
+    const capOf = (ds, r) => (r <= 0 || ds >= r ? 1 : Math.sqrt(Math.max(0, 1 - ((r - ds) / r) ** 2)));
+    const poly = (k) => { const L = []; const Rr = []; F.forEach((fr, i) => { const t = cum[i] / total;
+      const rS = headStart ? 0 : (W / 2) * prof(0, k); const rE = headEnd ? 0 : (W / 2) * prof(1, k); // 화살촉이 없는 끝은 반원으로 마무리
+      const hw = (W / 2) * prof(t, k) * capOf(cum[i], rS) * capOf(total - cum[i], rE); L.push([fr.p[0] + fr.n[0] * hw, fr.p[1] + fr.n[1] * hw]); Rr.push([fr.p[0] - fr.n[0] * hw, fr.p[1] - fr.n[1] * hw]); }); return polyD([...L, ...Rr.reverse()], true); };
     const a0 = D[0]; const z0 = D[D.length - 1];
     const endA = soft ? 0 : 0.5; // 끝 투명도: 리본은 반쯤 흐리게, 번짐은 완전히 투명하게
     defs += `<linearGradient id="sg_${esc(w.id)}" gradientUnits="userSpaceOnUse" x1="${f1(a0[0])}" y1="${f1(a0[1])}" x2="${f1(z0[0])}" y2="${f1(z0[1])}">`
