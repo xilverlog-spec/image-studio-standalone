@@ -171,6 +171,53 @@ def kontext_short(mode: str, extra_en: str, variant_id: str, depth: str = "mater
     return out
 
 
+SUNNY_PHRASE = "in bright sunny afternoon light with a clear blue sky"
+
+
+def kontext_short_ref(mode: str, depth: str, variant_id: str, ref_roles: list, ref_hints: list | None, ref_notes: list | None,
+                      extra_en: str, keep_site: bool = True) -> str:
+    """참조 이미지가 있을 때의 짧은 지시문. 'image 1'은 원본, 'image 2~'는 참조 순서다.
+    참조에서는 표면(재료·리듬)·조명·주변만 가져오고 건물 형태는 가져오지 않는다고 한 문장으로 못 박는다."""
+    propose = depth in ("ref_propose", "redesign")
+    a = _by_id(ATMOSPHERES, variant_id) if mode != "facade" else {}
+    mood = next((i for i, r in enumerate(ref_roles) if r == "mood"), None)
+    if mood is not None:
+        light = f"with the lighting, weather and color grading of image {mood + 2}"
+    elif a:
+        light = f"with {a['prompt']}"
+    else:
+        light = SUNNY_PHRASE
+
+    def detail(i: int, fallback: str) -> str:
+        hint = (ref_hints[i] if ref_hints and i < len(ref_hints) else "").strip()
+        note = (ref_notes[i] if ref_notes and i < len(ref_notes) else "").strip()
+        text = hint or note[:240].rstrip()
+        return f" ({text})" if text else f" ({fallback})"
+
+    clauses = []
+    for i, role in enumerate(ref_roles):
+        n = i + 2
+        if role == "facade" and propose:
+            clauses.append(f"redesign the facade of the main building as a new original design inspired by the facade language of image {n}{detail(i, 'its cladding materials, proportions and window rhythm')}, with a new window proportion and rhythm, without copying image {n}")
+        elif role == "facade":
+            clauses.append(f"give the main building the facade of image {n}{detail(i, 'its cladding material, color and panel pattern')}, applied onto the existing building shape")
+        elif role == "material":
+            clauses.append(f"use the facade materials and textures of image {n}{detail(i, 'its materials and colors')} on the main building")
+        elif role == "site":
+            clauses.append(f"take the surrounding landscaping and ground of image {n}")
+    what = f"Change image 1, a 3D model screenshot, into a photorealistic architectural photograph {light}"
+    if clauses:
+        what += ", and " + ", and ".join(clauses)
+    keep = ("keep the overall building massing, height, roof and camera angle of image 1 unchanged" if propose
+            else "keep the building shape, window layout, roof lines and camera angle of image 1 unchanged")
+    if keep_site:
+        keep += " and keep the site, roads and neighboring buildings unchanged"
+    out = f"{what}, {keep}. Take only surface qualities from the other images, never their building shape."
+    if extra_en.strip():
+        out += f" {extra_en.strip()}"
+    return out
+
+
 def local_prompt(mode: str, extra_en: str, variant_id: str, depth: str = "material") -> str:
     """로컬 SDXL 용 키워드형 프롬프트(문장 지시를 이해하지 못하므로 장면 묘사로 쓴다)."""
     base = "photorealistic architectural photograph of a building, professional architectural visualization, realistic materials, detailed landscaping, natural light"

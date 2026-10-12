@@ -128,6 +128,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const [commonPrompt, setCommonPrompt] = useState('');
   const [extraEn, setExtraEn] = useState('');
   const [promptEdited, setPromptEdited] = useState(false);
+  const [refMeta, setRefMeta] = useState({ roles: [], hints: [], notes: [] });   // aerial-prompt 가 정리한 참조별 역할·가져올 것·분석 요약(짧은 지시문용)
   const [builtFor, setBuiltFor] = useState('');
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptBusy, setPromptBusy] = useState(false);
@@ -289,6 +290,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '프롬프트를 만들지 못했습니다');
       setCommonPrompt(data.prompt); setExtraEn(data.extra_en || ''); setPromptEdited(false); setBuiltFor(promptKey);
+      setRefMeta({ roles: data.ref_roles_used || [], hints: data.ref_hints_en || [], notes: data.ref_notes || [] });
       return { prompt: data.prompt, extraEn: data.extra_en || '' };
     } catch (e) {
       addToast?.('error', '프롬프트 생성 실패', e.message);
@@ -309,6 +311,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     input_image_base64: image.dataUrl.split(',').pop(),
     reference_images: refs.map((r) => ({ role: r.role, base64: r.dataUrl.split(',').pop() })),
     external_consent: consent,
+    prompt_style: promptEdited ? 'long' : 'auto',   // 사용자가 프롬프트를 직접 고쳤으면 그 글을 그대로 쓰는 긴 방식으로 보낸다
+    ref_roles: refMeta.roles, ref_hints_en: refMeta.hints, ref_notes: refMeta.notes,
   });
 
   const addResult = (data, extraFields) => {

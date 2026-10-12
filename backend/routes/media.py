@@ -1123,6 +1123,9 @@ class AerialGenerateRequest(BaseModel):
     keep_form: int = 85                   # 로컬 SDXL: 형태 유지 정도(0~100)
     keep_site: bool = True                # 짧은 지시문(prompt_style='short')에 부지 유지 문구를 넣을지
     prompt_style: str = "auto"            # Kontext 지시문: 'auto'(기본: 분위기 렌더·재료만 바꾸기는 BFL 가이드식 짧은 지시문, 나머지는 긴 지시문) | 'short'(강제) | 'long'(강제)
+    ref_roles: List[str] = []             # 참조별 역할(aerial-prompt 의 ref_roles_used). 짧은 참조 지시문용
+    ref_hints_en: List[str] = []          # 참조별 '가져올 것'(영어). aerial-prompt 의 ref_hints_en
+    ref_notes: List[str] = []             # 참조 자동 분석 요약(aerial-prompt 의 ref_notes)
     seed: Optional[int] = None
     project: str = image_history_store.DEFAULT_PROJECT
 
@@ -1208,6 +1211,9 @@ async def aerial_generate(request: AerialGenerateRequest):
         # 입면은 "사진처럼·화창한 오후" 문구와 "주 건물만, 이웃 건물은 그대로" 문구를 넣은 뒤 재료만 바꾸기·재디자인 모두 긴 지시문 수준(1500자 → 약 600자)이었다.
         # 참조 이미지가 있는 경우(레퍼런스 모드·이지 다중 참조)는 아직 짧게 만들지 않아 긴 지시문을 그대로 쓴다.
         prompt = aerial_modes.kontext_short(request.mode, request.extra_en, request.variant, request.depth, request.keep_site)
+    elif refs and request.prompt_style == "short":
+        roles = request.ref_roles or [r.role for r in request.reference_images[:len(refs)]]
+        prompt = aerial_modes.kontext_short_ref(request.mode, request.depth, request.variant, roles, request.ref_hints_en, request.ref_notes, request.extra_en, request.keep_site)
     else:   # kontext: 문장형 지시
         prompt = f"{request.common_prompt.strip()} {aerial_modes.variant_phrase(request.mode, request.variant, request.depth)}".strip()
     return await _local_aerial(request, engine, prompt, input_bytes, refs, seed, output_path, filename, request.project, label)
