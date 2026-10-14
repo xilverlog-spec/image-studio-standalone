@@ -26,6 +26,14 @@ def sim_ai_read(truth, rng):
         if rr[2] - rr[0] < 3: rr[2] = rr[0] + 3
         if rr[3] - rr[1] < 3: rr[3] = rr[1] + 3
         blocks.append({'id': f'b{i + 1}', 'hatched': core, 'rect': rr, 'color': 'blue'})
+    if os.environ.get('MIS'):  # 실제로 본 AI 의 판/코어 구분 오류를 흉내 낸다
+        slabs = [b for b in blocks if not b['hatched']]; cores = [b for b in blocks if b['hatched']]
+        if slabs and rng.random() < 0.4:                      # 큰 판 하나를 통째로 '빗금 코어'라고 표시
+            max(slabs, key=lambda b: (b['rect'][2] - b['rect'][0]) * (b['rect'][3] - b['rect'][1]))['hatched'] = True
+        if cores and rng.random() < 0.4:                      # 실제 코어 하나를 빠뜨림
+            blocks.remove(rng.choice(cores))
+        elif cores and rng.random() < 0.2:                    # 또는 코어를 판으로 적음
+            rng.choice(cores)['hatched'] = False
     lines = []
     for i, a in enumerate(truth['arrows']):
         if rng.random() < 0.1:
@@ -145,7 +153,7 @@ def main():
             truth0 = json.load(open(os.path.join(G.OUT, f'syn_{n}.json'), encoding='utf-8'))
             base = Image.open(os.path.join(G.OUT, f'syn_{n}.png')).convert('RGB')
             for sd in range(seeds):
-                rng = random.Random(1000 * sd + hash(n) % 997)
+                rng = random.Random(1000 * sd + __import__("zlib").crc32(n.encode()) % 997)
                 if kind.startswith('small'):
                     img, truth = shrink(base, truth0, int(kind[5:]) / 100.0)
                 else:
@@ -159,7 +167,8 @@ def main():
                 fused = sim_ai_read(truth, rng)
                 res = sr.refine(data, [{'id': b['id'], 'rect': b['rect'], 'hatched': b['hatched']} for b in fused['blocks']],
                                 [{'id': l['id'], 'pts': l['pts'], 'color': l['color']} for l in fused['lines'] if l['kind'] == 'arrow'],
-                                [{'id': l['id'], 'pts': l['pts'], 'color': l['color']} for l in fused['lines'] if l['kind'] == 'arc'])
+                                [{'id': l['id'], 'pts': l['pts'], 'color': l['color']} for l in fused['lines'] if l['kind'] == 'arc'],
+                                reconcile=not os.environ.get('NORECON'))
                 rows.append(C.score(C.apply(fused, res), truth))
         iou = sum(r['iou'] for r in rows) / len(rows)
         ah = sum(r['hit'] for r in rows); at = sum(r['n_truth_arrow'] for r in rows); fp = sum(max(0, r['n_arrow'] - r['hit']) for r in rows)

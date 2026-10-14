@@ -26,7 +26,9 @@ def d(p, q):
 
 
 def apply(read, res):
-    blocks = [dict(b, rect=res['blocks'].get(b['id'], b['rect'])) for b in read['blocks']]
+    rc = res.get('reclass', {})
+    blocks = [dict(b, rect=res['blocks'].get(b['id'], b['rect']), hatched=rc.get(b['id'], b['hatched'])) for b in read['blocks']]
+    blocks += [{'id': f'bx{i}', 'hatched': True, 'rect': r} for i, r in enumerate(res.get('new_cores', []))]
     lines = []
     for l in read['lines']:
         if l['kind'] == 'partition':

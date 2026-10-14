@@ -470,7 +470,7 @@ def _detect_partitions(body, dm, slabs, cores, K):
     return out
 
 
-def refine(png_bytes, blocks, arrows, arcs=()):
+def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True):
     """blocks=[{id,rect,hatched}], arrows=[{id,pts:[꼬리,화살촉]}] → {blocks:{id:rect}, arrows:{id:[꼬리,화살촉]}, notes:[...]}"""
     a = _load(png_bytes)
     H, W = a.shape[:2]
@@ -494,6 +494,15 @@ def refine(png_bytes, blocks, arrows, arcs=()):
     def n_inside(bx):  # 이 덩어리 상자 안에 중심이 들어온 AI 코어 개수(2개 이상이면 붙어 있는 코어 덩어리)
         return sum(1 for cx, cy in centers if bx[0] - 1 <= cx <= bx[2] + 1 and bx[1] - 1 <= cy <= bx[3] + 1)
 
+    def is_shared(bx):
+        """붙어 있는 코어들의 덩어리인가: AI 코어 중심이 둘 이상 들어 있고, 덩어리 크기가 그 AI 코어들의 면적 합으로 설명될 때만.
+        (판 윤곽·물결선까지 뭉친 거대한 덩어리에 코어가 맞춰지는 것을 막는다)"""
+        inside = [b for b, (cx, cy) in zip(hatched, centers) if bx[0] - 1 <= cx <= bx[2] + 1 and bx[1] - 1 <= cy <= bx[3] + 1]
+        if len(inside) < 2:
+            return False
+        ai_sum = sum((b["rect"][2] - b["rect"][0]) * (b["rect"][3] - b["rect"][1]) for b in inside)
+        return (bx[2] - bx[0]) * (bx[3] - bx[1]) <= 1.6 * ai_sum
+
     claimed = set()
 
     def pick_comp(b, use_dist):
@@ -503,7 +512,7 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             for bl in blobs:
                 bx = bl["bbox_u"]
                 key = (thr, bl["id"])
-                shared = n_inside(bx) >= 2
+                shared = is_shared(bx)
                 if key in claimed and not shared:
                     continue
                 bw = (bx[2] - bx[0]) * (bx[3] - bx[1]) * K * K
@@ -556,6 +565,79 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             out_blocks[g["id"]] = [round(v, 1) for v in bx]; cores.append(bx)
             notes.append(f"{g['id']}: 빗금 덩어리에 맞춤 (겹침 {matched[g['id']][1]:.2f})")
 
+    # ①-2 판/코어 구분 검증: AI 가 정한 '빗금 코어' 여부를 실제 빗금 잉크로 확인해 바로잡는다
+    #   · 빗금이 없는 '코어'는 판으로, 큰 판 안에 빗금 덩어리가 들어 있으면 판 + 코어로 나눈다(AI 가 큰 판을 통째로 코어로 표시하는 오류)
+    #   · 빗금이 뚜렷한데 AI 가 판으로 적었거나 아예 놓친 덩어리는 코어로 바꾸거나 추가한다
+    reclass = {}      # 블록 id → True(코어로) / False(판으로)
+    new_cores = []    # AI 가 놓쳐서 새로 추가하는 코어 상자
+    cand = []
+    for thr in (0.42, 0.32, 0.25):
+        for bl in blobs_at(thr)[0]:
+            bx = bl["bbox_u"]; bw = (bx[2] - bx[0]) * (bx[3] - bx[1]) * K * K
+            if bl["area"] < (0.55 if thr < 0.42 else 0.4) * bw or (bx[2] - bx[0]) * (bx[3] - bx[1]) < 12 or min(bx[2] - bx[0], bx[3] - bx[1]) < 4.0:
+                continue  # 속이 비었거나 작거나 얇은 띠(굵은 윤곽선·글자 뭉치)는 코어 근거로 쓰지 않는다 — 코어는 가로·세로 모두 4 단위 이상
+            if any(_iou(bx, c["bbox_u"]) >= 0.3 for c in cand):
+                continue
+            cand.append(dict(bl, thr=thr))
+    matched_boxes = [m[0] for m in matched.values()]
+
+    def is_claimed(bx):
+        return any(_iou(bx, mb) >= 0.5 for mb in matched_boxes)
+
+    def add_core(c):
+        bx = _extend_edges(body, c["bbox_u"], K)
+        new_cores.append([round(v, 1) for v in bx]); cores.append(bx); matched_boxes.append(c["bbox_u"])
+        return bx
+
+    def interior_density(r):
+        x0, y0, x1, y1 = [int(v * K) for v in r]
+        sub = body[max(0, y0 + 10):max(1, y1 - 10), max(0, x0 + 10):max(1, x1 - 10)]
+        return float(sub.mean()) if sub.size else 0.0
+
+    for b in hatched:  # AI 가 '빗금 코어'라고 했는데 덩어리와 맞지 않은 것
+        if b["id"] in matched:
+            continue
+        r = b["rect"]; area = max(1e-6, (r[2] - r[0]) * (r[3] - r[1]))
+        inside = [c for c in cand if r[0] - 1 <= (c["bbox_u"][0] + c["bbox_u"][2]) / 2 <= r[2] + 1 and r[1] - 1 <= (c["bbox_u"][1] + c["bbox_u"][3]) / 2 <= r[3] + 1
+                  and (c["bbox_u"][2] - c["bbox_u"][0]) * (c["bbox_u"][3] - c["bbox_u"][1]) <= 0.6 * area and not is_claimed(c["bbox_u"])]
+        if inside:
+            reclass[b["id"]] = False
+            for c in inside:
+                add_core(c)
+            notes.append(f"{b['id']}: 코어가 아니라 코어를 품은 판 → 판으로 바꾸고 안의 빗금 덩어리 {len(inside)}개를 코어로 추가")
+        elif interior_density(r) < 0.18:
+            reclass[b["id"]] = False
+            notes.append(f"{b['id']}: 빗금이 없어 코어가 아니라 판으로 바꿈")
+    for b in blocks:  # AI 가 판으로 적었는데 사실은 속이 빗금으로 찬 도형
+        if b.get("hatched"):
+            continue
+        for c in cand:
+            if is_claimed(c["bbox_u"]):
+                continue
+            bx = c["bbox_u"]; ai_area = max(1e-6, (b["rect"][2] - b["rect"][0]) * (b["rect"][3] - b["rect"][1]))
+            if _iou(b["rect"], bx) >= 0.6 and (bx[2] - bx[0]) * (bx[3] - bx[1]) >= 0.5 * ai_area:
+                reclass[b["id"]] = True
+                out_blocks[b["id"]] = [round(v, 1) for v in _extend_edges(body, bx, K)]
+                cores.append(bx); matched_boxes.append(bx)
+                notes.append(f"{b['id']}: 속이 빗금으로 차 있어 판이 아니라 코어로 바꿈")
+                break
+    for c in cand:  # AI 가 아예 놓친 빗금 덩어리(이미 쓰인 덩어리·기존 코어와 겹치는 것은 제외)
+        if is_claimed(c["bbox_u"]):
+            continue
+        if any(_iou(c["bbox_u"], r) >= 0.3 for r in ([b["rect"] for b in hatched if b["id"] in matched] + cores)):
+            continue
+        add_core(c)
+        notes.append("AI 가 놓친 빗금 덩어리를 코어로 추가")
+
+    if not reconcile:  # 시험용: 판/코어 검증을 끈다(비교 기준)
+        for k in [k for k, v in reclass.items() if v is True]:
+            out_blocks.pop(k, None)
+        reclass.clear(); new_cores.clear()
+
+    def is_core(b):
+        r = reclass.get(b["id"])
+        return bool(b.get("hatched")) if r is None else r
+
     # ② 판(윤곽 도형): 네 변을 선 잉크 위치로. 빗금 속은 제외하고(코어 변은 따로 후보로 더한다), 선이 조금 흔들려도 되도록 살짝 두껍게 본다
     _, dm = _dense_components(body)
     edge_ink = body & ~ndi.binary_erosion(dm, iterations=7)
@@ -565,7 +647,7 @@ def refine(png_bytes, blocks, arrows, arcs=()):
     core_x = sorted({c[0] for c in cores} | {c[2] for c in cores})
     core_y = sorted({c[1] for c in cores} | {c[3] for c in cores})
     for b in blocks:
-        if b.get("hatched"):
+        if is_core(b):
             continue
         x0, y0, x1, y1 = [v * K for v in b["rect"]]
         x0 = float(np.clip(x0, 0, W - 1)); x1 = float(np.clip(x1, 0, W - 1)); y0 = float(np.clip(y0, 0, H - 1)); y1 = float(np.clip(y1, 0, H - 1))
@@ -649,8 +731,8 @@ def refine(png_bytes, blocks, arrows, arcs=()):
     # ③-2 칸막이: 판 안쪽 선 잉크에서 직접 찾는다(윤곽·코어가 정해진 뒤)
     partitions = []
     try:
-        slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not b.get("hatched")]
-        core_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if b.get("hatched")]
+        slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
+        core_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
         partitions = _detect_partitions(body, dm, slab_rects, core_rects, K)
     except Exception as e:
         notes.append(f"칸막이 검출 건너뜀: {e}")
@@ -672,4 +754,4 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             notes.append(f"빨간 잉크에서 AI 가 놓친 호 {len(extra_arcs)}개 추가")
     except Exception as e:  # 보너스 기능이므로 실패해도 나머지 결과는 돌려준다
         notes.append(f"추가 검출 건너뜀: {e}")
-    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "notes": notes}
+    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "reclass": reclass, "new_cores": new_cores, "notes": notes}

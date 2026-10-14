@@ -179,7 +179,15 @@ export function applySketchRefine(read, res) {
   ];
   return {
     ...read,
-    blocks: read.blocks.map((b) => (ok(rb[b.id]) ? { ...b, rect: rb[b.id].map(Number) } : b)),
+    // 빗금(코어) 여부는 실제 빗금 잉크로 검증한 결과(reclass)를 따르고, AI 가 놓친 코어(new_cores)는 새 도형으로 추가한다
+    blocks: [
+      ...read.blocks.map((b) => {
+        const rc = res.reclass && typeof res.reclass[b.id] === 'boolean' ? res.reclass[b.id] : null;
+        const nb = rc === null ? b : { ...b, hatched: rc };
+        return ok(rb[b.id]) ? { ...nb, rect: rb[b.id].map(Number) } : nb;
+      }),
+      ...(Array.isArray(res.new_cores) ? res.new_cores : []).filter(ok).slice(0, 6).map((r, i) => ({ id: `bx${i + 1}`, hatched: true, rect: r.map(Number), color: 'blue', openSides: [], note: '' })),
+    ],
     lines: read.lines.filter((l) => !(Array.isArray(res.partitions) && l.kind === 'partition')).filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)).concat(extra),
   };
 }
