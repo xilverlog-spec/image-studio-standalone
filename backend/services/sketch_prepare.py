@@ -19,7 +19,7 @@ from services.sketch_refine import ink_masks
 WORK = 1000          # 잉크 찾기용 작업 해상도(긴 변)
 OUT_LONG = 1600      # 정리한 이미지의 목표 긴 변
 MAX_UPSCALE = 2.0    # 너무 작게 찍힌 그림을 키우는 한계
-MARGIN = 0.07        # 그림 영역 바깥 여백(그림 긴 변 대비)
+MARGIN = 0.30        # 그림 영역 바깥 여백(그림 긴 변 대비, 한쪽): 그림이 프레임의 약 60% 가 되도록 — 보정의 px 기준(펜 굵기·밀도 창)이 이 비율의 사진에 맞춰져 있다
 
 
 def _load(png_bytes):

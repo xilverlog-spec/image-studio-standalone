@@ -241,7 +241,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
         try { // AI 가 눈대중으로 준 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(실패하면 AI 값 그대로)
-          const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: work.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })) }) });
+          const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: work.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), flow_hint: sk.lines.filter((l) => l.kind === 'flow').length }) });
           if (rr.ok) sk = applySketchRefine(sk, await rr.json());
         } catch { /* 보정 없이 사용 */ }
         skCachePut(paid ? `${cacheKey}:paid` : cacheKey, sk);

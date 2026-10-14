@@ -12,7 +12,7 @@ import gen_sketches as G
 import check_refine as C
 from services import sketch_refine as sr
 
-NAMES = list(G.LAYOUTS)
+NAMES = list(G.MAIN)
 
 
 def sim_ai_read(truth, rng):

@@ -172,8 +172,11 @@ export function applySketchRefine(read, res) {
   const okPts = (pts) => Array.isArray(pts) && pts.length >= 2 && pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
   // 잉크에서 직접 찾은 칸막이가 오면(빈 목록 포함) AI 가 추측한 칸막이는 쓰지 않는다
   const parts = (Array.isArray(res.partitions) ? res.partitions : []).filter(okPts).slice(0, 12).map((pts, i) => ({ id: `lp${i + 1}`, kind: 'partition', style: 'straight', arrow: 'none', color: 'black', pts: pts.map((p) => p.map(Number)), note: '' }));
+  // 잉크에서 직접 찾은 물결선(바람 표시)이 있으면 AI 가 점 몇 개로 준 흐름선은 쓰지 않고 그것으로 대체한다
+  const flowsInk = (Array.isArray(res.flows) ? res.flows : []).filter(okPts).slice(0, 8).map((pts, i) => ({ id: `lf${i + 1}`, kind: 'flow', style: 'wavy', arrow: 'none', color: 'blue', pts: pts.map((p) => p.map(Number)), note: '', ink: true }));
   const extra = [
     ...parts,
+    ...flowsInk,
     ...(Array.isArray(res.extra_arrows) ? res.extra_arrows : []).filter(okPts).slice(0, 8).map((pts, i) => ({ id: `lx${i + 1}`, kind: 'arrow', style: 'straight', arrow: 'end', color: 'red', pts: pts.map((p) => p.map(Number)), note: '' })),
     ...(Array.isArray(res.extra_arcs) ? res.extra_arcs : []).filter(okPts).slice(0, 8).map((pts, i) => ({ id: `ly${i + 1}`, kind: 'arc', style: 'wavy', arrow: 'none', color: 'red', pts: pts.map((p) => p.map(Number)), note: '' })),
   ];
@@ -188,7 +191,7 @@ export function applySketchRefine(read, res) {
       }),
       ...(Array.isArray(res.new_cores) ? res.new_cores : []).filter(ok).slice(0, 6).map((r, i) => ({ id: `bx${i + 1}`, hatched: true, rect: r.map(Number), color: 'blue', openSides: [], note: '' })),
     ],
-    lines: read.lines.filter((l) => !(Array.isArray(res.partitions) && l.kind === 'partition')).filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)).concat(extra),
+    lines: read.lines.filter((l) => !(Array.isArray(res.partitions) && l.kind === 'partition')).filter((l) => !(flowsInk.length && l.kind === 'flow')).filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)).concat(extra),
   };
 }
 
@@ -309,7 +312,7 @@ export function makeSketchSpec(read, ann, style = 'concept') {
     // 스케치에 그려진 화살표·호에는 말풍선을 기본으로 붙이지 않는다(참고 개념도처럼 깔끔하게). 흐름선만 AI 가 정한 유입/유출 문구를 쓴다
     const labels = l.kind === 'flow' ? { inLabel: String(w.in ?? ''), outLabel: String(w.out ?? '') } : { inLabel: '', outLabel: '' };
     if (l.kind === 'flow') {
-      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, 2), 9), smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4, ...labels });
+      winds.push({ id: `w${winds.length + 1}`, pts: resample(chaikin(l.pts, l.ink ? 1 : 2), l.ink ? 11 : 9), smooth: true, head: HEADS.includes(w.head) ? w.head : 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: l.ink ? 'read' : 's', bend: 0.65, amp: 0.4, ...labels });
     } else if (l.kind === 'arrow') {
       winds.push({ id: `w${winds.length + 1}`, pts: trimTail(l.pts.length > 4 ? resample(chaikin(l.pts, 1), 5) : l.pts), smooth: true, head: l.arrow, dash: 'solid', width: 3.4, color, form: 'line', shape: 'read', bend: 1, amp: 0.4, ...labels });
     } else {

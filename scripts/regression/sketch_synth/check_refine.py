@@ -11,7 +11,7 @@ sys.path.insert(0, HERE)
 import gen_sketches as G
 from services import sketch_refine as sr
 
-NAMES = list(G.LAYOUTS)
+NAMES = list(G.MAIN)
 OUT = G.OUT
 
 

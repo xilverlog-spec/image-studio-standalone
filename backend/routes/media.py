@@ -1689,6 +1689,7 @@ class SketchRefineRequest(BaseModel):
     blocks: list   # [{id, rect:[x0,y0,x1,y1], hatched}] — 긴 변 100 기준 좌표
     arrows: list = []  # [{id, pts:[꼬리,화살촉]}]
     arcs: list = []    # [{id, pts:[...]}] 화살촉 없는 호
+    flow_hint: int | None = None  # AI 가 읽은 흐름선(물결) 개수 — 0 이면 물결선 검출을 건너뛴다
 
 
 @router.post("/image/sketch-refine")
@@ -1703,7 +1704,7 @@ async def sketch_refine(request: SketchRefineRequest):
     try:
         from services import sketch_refine as _sr
         arcs = [a for a in request.arcs if isinstance(a, dict) and "id" in a and isinstance(a.get("pts"), list) and len(a["pts"]) >= 2][:24]
-        return {"status": "success", **(await asyncio.to_thread(_sr.refine, png, blocks, arrows, arcs))}
+        return {"status": "success", **(await asyncio.to_thread(_sr.refine, png, blocks, arrows, arcs, True, request.flow_hint))}
     except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
         raise
     except BaseException as e:

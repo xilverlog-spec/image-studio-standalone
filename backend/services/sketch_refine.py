@@ -19,22 +19,29 @@ LONG = 1000  # 분석용으로 긴 변을 맞추는 픽셀 수 → 1 단위 = 10
 
 
 def _load(png_bytes):
+    """분석용 배열(float RGB): 긴 변 LONG(1000)px. 좌표는 단위(긴 변 = 100)로 다루고 1 단위 = K px(K = 긴 변/100).
+    밀도·창 크기 같은 px 기준은 '그림이 프레임의 60% 안팎'인 사진의 펜 굵기(약 3~4px)에 맞춰져 있다 — 사진 정리 단계(sketch_prepare)가 그림을 그 비율로 맞춰 준다."""
     im = Image.open(io.BytesIO(png_bytes)).convert("RGB")
     s = LONG / max(im.size)
     im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
     return np.asarray(im).astype(float)
 
 
-def ink_masks(a):
-    """종이 바탕(느린 변화)을 빼고 빨간 잉크와 파랑·검정 잉크를 나눈다.
-    잉크 판정 기준은 그림마다 측정한 '강한 잉크의 대비'(밝기 차이 상위 0.5%)에 비례해 정한다 — 초점이 흐리거나 조명이 어두워 선이 연해져도 같은 비율로 잡는다.
-    선명한 사진의 대비(약 120~140)일 때 기준은 예전 고정값(밝기 차이 55, 빨강 색 차이 22·30)과 같다."""
+def _dark_map(a):
+    """종이 바탕(느린 변화)을 뺀 '배경 대비 어두움' 지도와 색 차이(d), 강한 잉크 대비(상위 0.5%)."""
     small = a[::4, ::4]
     bg = np.stack([ndi.gaussian_filter(ndi.median_filter(small[..., c], 15), 8) for c in range(3)], -1)
     bg = np.stack([ndi.zoom(bg[..., c], 4, order=1)[:a.shape[0], :a.shape[1]] for c in range(3)], -1)
     d = a - bg
     dark = bg.mean(-1) - a.mean(-1)
-    contrast = float(np.percentile(dark, 99.5))
+    return dark, d, float(np.percentile(dark, 99.5))
+
+
+def ink_masks(a):
+    """종이 바탕(느린 변화)을 빼고 빨간 잉크와 파랑·검정 잉크를 나눈다.
+    잉크 판정 기준은 그림마다 측정한 '강한 잉크의 대비'(밝기 차이 상위 0.5%)에 비례해 정한다 — 초점이 흐리거나 조명이 어두워 선이 연해져도 같은 비율로 잡는다.
+    선명한 사진의 대비(약 120~140)일 때 기준은 예전 고정값(밝기 차이 55, 빨강 색 차이 22·30)과 같다."""
+    dark, d, contrast = _dark_map(a)
     k = float(np.clip(contrast / 128.0, 0.3, 1.25))   # 1.0 = 선명한 기준
     thr = float(np.clip(55.0 * k, 16.0, 62.0))
     red = (d[..., 0] - d[..., 1] > 22 * k) & (a[..., 0] - a[..., 2] > 30 * k) & (dark > max(6.0, 8 * k))
@@ -146,7 +153,7 @@ def _extend_edges(body, rect, K):
     H, W = body.shape
     x0, y0, x1, y1 = [v * K for v in rect]
     ink = ndi.maximum_filter(body.astype(np.uint8), size=7) > 0
-    w = int(0.14 * LONG)
+    w = int(4.0 * K)
     ys = slice(int(y0 + 0.15 * (y1 - y0)), max(int(y0 + 0.15 * (y1 - y0)) + 1, int(y1 - 0.15 * (y1 - y0))))
     xs = slice(int(x0 + 0.15 * (x1 - x0)), max(int(x0 + 0.15 * (x1 - x0)) + 1, int(x1 - 0.15 * (x1 - x0))))
     col = ink[ys, :].mean(0); row = ink[:, xs].mean(1)
@@ -470,12 +477,168 @@ def _detect_partitions(body, dm, slabs, cores, K):
     return out
 
 
-def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True):
+def _fragment_paths(sk, K, min_len):
+    """뼈대(sk)를 덩어리마다 가장 먼 두 끝점 사이 경로(px 좌표 목록)로 바꾼다. 길이 min_len(px) 미만은 버린다."""
+    g = _SkelGraph(sk)
+    out = []
+    for lbl in np.unique(g.labels):
+        ends = [int(e) for e in g.ends if g.labels[e] == lbl]
+        if len(ends) < 2:
+            continue
+        # 가장 먼 끝점 쌍(지름 경로): 한 끝점에서 가장 먼 끝점 → 그 끝점에서 다시 가장 먼 끝점
+        d0, _ = g.paths(ends[0])
+        far = max(ends, key=lambda e: d0[e] if np.isfinite(d0[e]) else -1)
+        d1, pred = g.paths(far)
+        far2 = max([e for e in ends if np.isfinite(d1[e])], key=lambda e: d1[e], default=None)
+        if far2 is None or d1[far2] < min_len:
+            continue
+        route = g.route(pred, far, far2)
+        if route:
+            out.append(np.stack([g.xs[route], g.ys[route]], 1).astype(float))
+    return out
+
+
+def _tangent(px, at_start, n=30):
+    seg = px[:n] if at_start else px[-n:][::-1]
+    v = seg[0] - seg[-1] if at_start else seg[0] - seg[-1]
+    nv = float(np.hypot(*v))
+    return v / nv if nv > 1e-6 else np.array([1.0, 0.0])
+
+
+def _known_mask(shape, K, slab_rects, core_rects, partitions):
+    """이미 알고 있는 구조(판·코어 사각형의 변, 코어 안쪽, 칸막이)가 차지한 자리. 물결선 찾기에서 이것을 먼저 지운다."""
+    from PIL import ImageDraw
+    img = Image.new("L", (shape[1], shape[0]), 0)
+    d = ImageDraw.Draw(img)
+    band = max(3, int(4.0 * K))  # 윤곽선 띠 두께 = 4 단위(양쪽 2 단위): 손으로 그린 윤곽선의 흔들림을 덮는다
+    for r in slab_rects:
+        x0, y0, x1, y1 = [int(v * K) for v in r]
+        d.rectangle([x0, y0, x1, y1], outline=255, width=band)
+    for r in core_rects:
+        x0, y0, x1, y1 = [int(v * K) for v in r]
+        d.rectangle([x0 - int(0.5 * K), y0 - int(0.5 * K), x1 + int(0.5 * K), y1 + int(0.5 * K)], fill=255)
+    for p in partitions:
+        d.line([(int(p[0][0] * K), int(p[0][1] * K)), (int(p[-1][0] * K), int(p[-1][1] * K))], fill=255, width=max(3, int(2.5 * K)))
+    return np.asarray(img) > 0
+
+
+_FLOW_DEBUG = []
+
+
+def _detect_flows(body, K, slab_rects=(), core_rects=(), partitions=()):
+    """파랑·검정 잉크에서 물결선(바람 표시)을 찾는다. 이미 알고 있는 구조(판·코어 변, 코어 안쪽, 칸막이)와 남은 곧은 선을 먼저 지우고,
+    남은 구불구불한 선 조각을 끝점이 가깝고 방향이 이어지는 것끼리 잇는다(윤곽선과 만나는 곳에서 끊긴 물결을 복구).
+    돌려주는 값: [[[x,y],...], ...] (단위 좌표)."""
+    H, W = body.shape
+    known = _known_mask((H, W), K, slab_rects, core_rects, partitions)
+    ink = body & ~known
+    # AI 가 놓친 판의 긴 윤곽선 같이 알려지지 않은 아주 긴 곧은 선(24 단위 이상)도 지운다. 물결의 평평한 구간은 그보다 짧다
+    ink_d = ndi.binary_dilation(ink, iterations=2)
+    L = int(24.0 * K)
+    horiz = ndi.binary_opening(ink_d, structure=np.ones((1, L)))
+    vert = ndi.binary_opening(ink_d, structure=np.ones((L, 1)))
+    straight = ndi.binary_dilation(horiz | vert, iterations=3)
+    resid = ink & ~straight
+    lab0, n0 = ndi.label(resid, structure=np.ones((3, 3)))
+    if n0 == 0:
+        return []
+    sizes = ndi.sum(resid, lab0, range(1, n0 + 1))
+    resid = np.isin(lab0, [i for i, c in enumerate(sizes, start=1) if c >= 40])
+    # 뼈대를 갈라지는 점(교차점)에서 자른 가지로 나눈 뒤, 아래에서 방향이 매끄럽게 이어지는 가지끼리 다시 잇는다
+    # (물결이 남은 선과 X 자로 만나는 곳에서, 물결끼리 이어지고 선끼리 이어지게 하기 위해)
+    sk0 = morphology.skeletonize(ndi.binary_dilation(resid, iterations=1))
+    nbr = ndi.convolve(sk0.astype(int), np.ones((3, 3), int), mode="constant") - 1
+    cut = ndi.binary_dilation(sk0 & (nbr >= 3), iterations=2)
+    frags = _fragment_paths(sk0 & ~cut, K, 1.5 * K)
+    if not frags:
+        return []
+    # 조각 잇기: 끝점끼리 가깝고(≤ 5 단위) 방향이 이어지면(≤ 50°) 하나로
+    known_d = ndi.binary_dilation(known, iterations=int(1.0 * K))
+    chains = [f for f in frags]
+    merged = True
+    while merged:
+        merged = False
+        best = None
+        for i in range(len(chains)):
+            for j in range(len(chains)):
+                if i == j:
+                    continue
+                for a_start in (False, True):
+                    for b_start in (True, False):
+                        pa = chains[i][0] if a_start else chains[i][-1]
+                        pb = chains[j][0] if b_start else chains[j][-1]
+                        gap = float(np.hypot(*(pa - pb)))
+                        if gap > 5.0 * K:
+                            continue
+                        # 조각이 끊긴 이유는 가운데 구조(윤곽선·코어)를 지웠기 때문이다: 두 끝점을 잇는 선분이 지운 자리 안을 지나야 한다
+                        if gap > 2.0 * K:
+                            seg = [pa + (pb - pa) * t for t in np.linspace(0, 1, 9)]
+                            inside = np.mean([bool(known_d[int(np.clip(q[1], 0, H - 1)), int(np.clip(q[0], 0, W - 1))]) for q in seg])
+                            if inside < 0.6:
+                                continue
+                        ta = _tangent(chains[i], a_start)       # 끝점에서 바깥쪽으로 향하는 방향
+                        tb = _tangent(chains[j], b_start)
+                        link = (pb - pa) / max(gap, 1e-6)
+                        # a 의 바깥 방향이 b 쪽을 향하고, b 의 바깥 방향이 a 쪽을 반대로 향해야 매끄럽게 이어진다
+                        if gap > 1.0 and float(ta @ link) < 0.64:
+                            continue
+                        if float(ta @ -tb) < 0.64:
+                            continue
+                        if best is None or gap < best[0]:
+                            best = (gap, i, j, a_start, b_start)
+        if best:
+            _, i, j, a_start, b_start = best
+            a = chains[i][::-1] if a_start else chains[i]       # a 의 끝점이 이어질 쪽 끝에 오도록
+            b = chains[j] if b_start else chains[j][::-1]
+            chains = [c for k, c in enumerate(chains) if k not in (i, j)] + [np.vstack([a, b])]
+            merged = True
+    out = []
+    for c in chains:
+        if len(c) < 3:
+            continue
+        chord = float(np.hypot(*(c[-1] - c[0])))
+        length = float(np.sum(np.hypot(*np.diff(c, axis=0).T)))
+        # 물결선은 길고(≥14), 현이 충분히 길며(고리·뭉침이 아님), 곧은 선이 아니라 뚜렷하게 휜다(현에서 가장 멀리 벗어난 거리 ≥2 단위)
+        if length < 14.0 * K or chord < 8.0 * K or chord / max(length, 1e-6) < 0.55:
+            _FLOW_DEBUG.append(("길이/현", [round(float(v) / K, 1) for v in c[0]], [round(float(v) / K, 1) for v in c[-1]], round(length / K, 1), round(chord / K, 1)))
+            continue
+        ch = (c[-1] - c[0]) / max(chord, 1e-6)
+        dev = float(np.max(np.abs((c[:, 0] - c[0, 0]) * ch[1] - (c[:, 1] - c[0, 1]) * ch[0])))
+        if dev < 1.5 * K:
+            _FLOW_DEBUG.append(("휨부족", [round(float(v) / K, 1) for v in c[0]], [round(float(v) / K, 1) for v in c[-1]], round(length / K, 1), round(dev / K, 1)))
+            continue
+        pu = c / K
+
+        def edge_dist(p, r):  # 점 p 에서 사각형 r 의 둘레까지 거리
+            dx = max(r[0] - p[0], 0, p[0] - r[2]); dy = max(r[1] - p[1], 0, p[1] - r[3])
+            if dx > 0 or dy > 0:
+                return float(np.hypot(dx, dy))
+            return float(min(p[0] - r[0], r[2] - p[0], p[1] - r[1], r[3] - p[1]))
+        # 판·코어 윤곽에 바짝 붙어 나란히 뻗은 찌꺼기(손으로 기울여 그린 윤곽선 등)는 물결선이 아니다: 변까지 5 단위 이내이고 방향이 25° 안쪽으로 나란한 점이 60% 이상
+        def along_edge(p, t):
+            # 네 변을 각각 따로 본다(모서리 근처에서 가장 가까운 변을 잘못 고르지 않도록): 변(양 끝을 3 단위 늘림)까지 5 단위 이내이고 접선이 변과 나란하면 True
+            for r in list(slab_rects) + list(core_rects):
+                for (horizontal, c0, a0, a1) in ((True, r[1], r[0] - 3, r[2] + 3), (True, r[3], r[0] - 3, r[2] + 3), (False, r[0], r[1] - 3, r[3] + 3), (False, r[2], r[1] - 3, r[3] + 3)):
+                    along, across = (p[0], p[1]) if horizontal else (p[1], p[0])
+                    if a0 <= along <= a1 and abs(across - c0) <= 5.0 and abs(t[0] if horizontal else t[1]) >= 0.9:
+                        return True
+            return False
+        tg = np.gradient(pu, axis=0); tg = tg / np.maximum(np.hypot(tg[:, 0], tg[:, 1]), 1e-6)[:, None]
+        if np.mean([along_edge(p, t) for p, t in zip(pu[::4], tg[::4])]) >= 0.6:
+            continue
+        pts = _resample_px(c, 9)
+        score = (dev / K) * min(length / K, 40.0)   # 휨이 뚜렷하고 길수록 물결선일 가능성이 크다
+        out.append((score, [[round(float(x) / K, 1), round(float(y) / K, 1)] for x, y in pts]))
+    out.sort(key=lambda t: -t[0])
+    return [p for _, p in out]
+
+
+def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True, flow_hint=None):
     """blocks=[{id,rect,hatched}], arrows=[{id,pts:[꼬리,화살촉]}] → {blocks:{id:rect}, arrows:{id:[꼬리,화살촉]}, notes:[...]}"""
     a = _load(png_bytes)
     H, W = a.shape[:2]
     red, body = ink_masks(a)
-    K = LONG / 100.0
+    K = max(a.shape[:2]) / 100.0  # 분석 크기가 선 굵기에 맞춰 달라질 수 있다(1 단위 = K px)
     notes = []
     out_blocks = {}
     out_arrows = {}
@@ -651,7 +814,7 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True):
             continue
         x0, y0, x1, y1 = [v * K for v in b["rect"]]
         x0 = float(np.clip(x0, 0, W - 1)); x1 = float(np.clip(x1, 0, W - 1)); y0 = float(np.clip(y0, 0, H - 1)); y1 = float(np.clip(y1, 0, H - 1))
-        w = int(0.14 * LONG)
+        w = int(14.0 * K)
         # 변마다 겹쳐 있는 범위의 가운데 80% 만 본다
         ys = slice(int(y0 + 0.1 * (y1 - y0)), max(int(y0 + 0.1 * (y1 - y0)) + 1, int(y1 - 0.1 * (y1 - y0))))
         xs = slice(int(x0 + 0.1 * (x1 - x0)), max(int(x0 + 0.1 * (x1 - x0)) + 1, int(x1 - 0.1 * (x1 - x0))))
@@ -728,12 +891,35 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True):
             if cov < 0.4:
                 out_arrows[it["id"]] = None
                 notes.append(f"{it['id']}: 선 주변에 빨간 잉크가 거의 없어 제외 ({cov:.2f})")
-    # ③-2 칸막이: 판 안쪽 선 잉크에서 직접 찾는다(윤곽·코어가 정해진 뒤)
+    # ③-2 물결선(바람 표시)을 먼저 찾는다: 판·코어 윤곽과 코어 안쪽을 지우고 남은 구불구불한 선을 잇는다
+    flows = []
+    try:
+        slab_r = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
+        core_r = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
+        # flow_hint: AI 가 읽은 흐름선(물결) 개수. 0 이면 물결선이 없는 그림이므로 찾지 않고, n>0 이면 휨이 뚜렷한 순으로 n+1 개까지만 쓴다(오검출 억제). None 이면 제한 없음(시험용)
+        if flow_hint is None or flow_hint > 0:
+            flows = _detect_flows(body, K, slab_r, core_r, ())
+            if flow_hint is not None:
+                flows = flows[:flow_hint + 1]
+    except Exception as e:
+        notes.append(f"물결선 검출 건너뜀: {e}")
+    # ③-3 칸막이: 판 안쪽 선 잉크에서 직접 찾는다. 물결선의 평평한 구간을 칸막이로 오인하지 않도록 물결선과 겹치는 것은 뺀다
     partitions = []
     try:
         slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
         core_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
         partitions = _detect_partitions(body, dm, slab_rects, core_rects, K)
+        if flows:
+            def near_flow(p):
+                return any(np.min(np.hypot(np.array(f)[:, 0] - p[0], np.array(f)[:, 1] - p[1])) <= 2.5 for f in flows)
+            kept = []
+            for pt in partitions:
+                samples = [[pt[0][0] + (pt[1][0] - pt[0][0]) * t, pt[0][1] + (pt[1][1] - pt[0][1]) * t] for t in np.linspace(0, 1, 9)]
+                if np.mean([near_flow(q) for q in samples]) >= 0.5:
+                    notes.append("칸막이 후보가 물결선과 겹쳐 제외")
+                    continue
+                kept.append(pt)
+            partitions = kept
     except Exception as e:
         notes.append(f"칸막이 검출 건너뜀: {e}")
     # ④ AI 가 놓친 화살표·호를 빨간 잉크에서 직접 찾아 덧붙인다(AI 가 짚은 선이 지나간 덩어리는 제외)
@@ -754,4 +940,4 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True):
             notes.append(f"빨간 잉크에서 AI 가 놓친 호 {len(extra_arcs)}개 추가")
     except Exception as e:  # 보너스 기능이므로 실패해도 나머지 결과는 돌려준다
         notes.append(f"추가 검출 건너뜀: {e}")
-    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "reclass": reclass, "new_cores": new_cores, "notes": notes}
+    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "flows": flows, "reclass": reclass, "new_cores": new_cores, "notes": notes}

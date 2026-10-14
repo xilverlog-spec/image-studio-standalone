@@ -106,6 +106,17 @@ class Pen:
             ang = a0 + math.pi + s * math.radians(27)
             self.stroke([pts[-1], (pts[-1][0] + math.cos(ang) * 26, pts[-1][1] + math.sin(ang) * 26)], color, width, 0.5)
 
+    def wave(self, p0, p1, amp, cycles, phase=0.0, color='blue', width=3.2):
+        """p0→p1 직선을 따라 amp(px) 만큼 좌우로 출렁이는 물결선(바람 표시). 점 목록(px)을 돌려준다."""
+        dx, dy = p1[0] - p0[0], p1[1] - p0[1]; L = math.hypot(dx, dy); nx, ny = -dy / L, dx / L
+        pts = []
+        for i in range(25):
+            t = i / 24
+            off = amp * math.sin(2 * math.pi * cycles * t + phase) * (0.35 + 0.65 * math.sin(math.pi * t) ** 0.5)
+            pts.append((p0[0] + dx * t + nx * off, p0[1] + dy * t + ny * off))
+        self.stroke(pts, color, width, 1.6)
+        return pts
+
     def arc(self, p0, p1, bulge, color='red', width=3.0):
         mx, my = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
         dx, dy = p1[0] - p0[0], p1[1] - p0[1]; L = math.hypot(dx, dy); nx, ny = -dy / L, dx / L
@@ -162,12 +173,23 @@ LAYOUTS = {
         ticks=[((205, 255), (205, 745), (-1, 0)), ((995, 255), (995, 745), (1, 0))],
         arrows=[((205, 500), (70, 500), 0.0), ((995, 500), (1130, 500), 0.0), ((600, 250), (600, 110), 0.0), ((600, 750), (600, 900), 0.0)],
         arcs=[((140, 200), (140, 800), -0.12)], texts=[('OPEN', (600, 60)), ('OPEN', (600, 950))]),
+    'G_blue_flows': dict(pen='blue', paper='green',
+        slabs=[(250, 430, 700, 590), (560, 230, 740, 800)], cores=[(430, 360, 540, 440), (560, 460, 650, 620)],
+        parts=[((470, 435), (470, 585))], ticks=[],
+        arrows=[], arcs=[], texts=[],
+        flows=[((330, 380), (360, 650), 26, 1.0, 0.3), ((600, 380), (590, 650), 22, 1.0, 3.4), ((520, 330), (880, 360), 24, 1.5, 0.2), ((520, 720), (880, 690), 22, 1.5, 2.6)]),
     'F_tilt_pair': dict(pen='blue', paper='white',
         slabs=[(180, 180, 520, 420), (680, 560, 1020, 800)], cores=[(430, 340, 520, 420), (680, 560, 770, 640)], parts=[((350, 185), (350, 415))],
         ticks=[((185, 180), (515, 180), (0, -1)), ((685, 800), (1015, 800), (0, 1))],
         arrows=[((350, 180), (350, 60), 0.0), ((850, 800), (850, 930), 0.0), ((520, 300), (640, 300), 0.0), ((680, 700), (560, 700), 0.0)],
         arcs=[((200, 100), (500, 100), -0.15)], texts=[('OPEN', (350, 40))]),
 }
+
+
+# 물결선(바람 표시) 시험용 레이아웃은 따로 둔다(기존 6장의 시드·고정 읽기 결과가 바뀌지 않게 맨 뒤로 옮기고 평균에서 뺀다)
+FLOW_LAYOUTS = ['G_blue_flows']
+LAYOUTS['G_blue_flows'] = LAYOUTS.pop('G_blue_flows')
+MAIN = [n for n in LAYOUTS if n not in FLOW_LAYOUTS]
 
 
 def build(name, seed):
@@ -179,6 +201,7 @@ def build(name, seed):
     for a, b, o in L['ticks']: p.ticks(a, b, o)
     for t, tip, bu in L['arrows']: p.arrow(t, tip, bu)
     arcs = [p.arc(a, b, bu) for a, b, bu in L['arcs']]
+    flows = [p.wave(a, b, amp, cy, ph, L['pen']) for a, b, amp, cy, ph in L.get('flows', [])]
     for s, xy in L['texts']: p.text(s, xy)
     p.save(f'{OUT}/syn_{name}.png')
     truth = {
@@ -186,6 +209,7 @@ def build(name, seed):
         'arrows': [{'tail': app(t), 'tip': app(tip)} for t, tip, _ in L['arrows']],
         'arcs': [{'pts': [app(q[0]), app(q[len(q) // 2]), app(q[-1])]} for q in arcs],
         'parts': [{'a': app(a), 'b': app(b)} for a, b in L['parts']],
+        'flows': [{'pts': [app(q) for q in f]} for f in flows],
     }
     json.dump(truth, open(f'{OUT}/syn_{name}.json', 'w', encoding='utf-8'), ensure_ascii=False)
 
