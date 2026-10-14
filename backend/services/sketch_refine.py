@@ -44,8 +44,8 @@ def _iou(a, b):
     return i / u if u > 0 else 0.0
 
 
-def _dense_components(body, thr=0.42):
-    """빗금이 촘촘히 몰린 덩어리(코어) 후보: [(상자 px, 면적)]"""
+def _dense_blobs(body, thr=0.42):
+    """빗금이 촘촘히 몰린 덩어리(코어) 후보. 돌려주는 값: (덩어리 목록 [{id, bbox px, area}], 라벨 이미지, 마스크)"""
     dens = ndi.uniform_filter(body.astype(float), 15)
     m = dens > thr
     m = ndi.binary_opening(m, structure=np.ones((5, 5)))
@@ -62,8 +62,36 @@ def _dense_components(body, thr=0.42):
             continue
         x0 = max(0, sl[1].start - 10) + xs.min(); x1 = max(0, sl[1].start - 10) + xs.max()
         y0 = max(0, sl[0].start - 10) + ys.min(); y1 = max(0, sl[0].start - 10) + ys.max()
-        out.append(([float(x0), float(y0), float(x1), float(y1)], area))
-    return out, m
+        out.append({"id": i, "bbox": [float(x0), float(y0), float(x1), float(y1)], "area": area})
+    return out, lab, m
+
+
+def _dense_components(body, thr=0.42):
+    """빗금이 촘촘히 몰린 덩어리(코어) 후보: [(상자 px, 면적)]"""
+    blobs, _, m = _dense_blobs(body, thr)
+    return [(b["bbox"], b["area"]) for b in blobs], m
+
+
+def _split_blob_boxes(body, lab, blob_id, rects, K):
+    """한 덩어리에 코어가 여럿 붙어 있을 때: 덩어리의 잉크 픽셀을 AI 상자 중심에서 정규화한 거리가 가장 가까운 코어에 나눠 주고, 코어마다 바깥 상자를 구한다."""
+    reg = ndi.binary_dilation(lab == blob_id, iterations=3) & body
+    ys, xs = np.nonzero(reg)
+    if len(xs) == 0:
+        return None
+    d = []
+    for r in rects:
+        cx, cy = (r[0] + r[2]) / 2 * K, (r[1] + r[3]) / 2 * K
+        hw, hh = max(1.0, (r[2] - r[0]) / 2 * K), max(1.0, (r[3] - r[1]) / 2 * K)
+        d.append(np.maximum(np.abs(xs - cx) / hw, np.abs(ys - cy) / hh))
+    owner = np.argmin(np.stack(d, 0), 0)
+    boxes = []
+    for k in range(len(rects)):
+        sel = owner == k
+        if sel.sum() < 150:
+            boxes.append(None); continue
+        # 가장자리 몇 개의 튄 픽셀 영향을 줄이려고 1%~99% 범위를 쓴다
+        boxes.append([float(np.percentile(xs[sel], 0.5)) / K, float(np.percentile(ys[sel], 0.5)) / K, float(np.percentile(xs[sel], 99.5)) / K, float(np.percentile(ys[sel], 99.5)) / K])
+    return boxes
 
 
 def _snap_edge(prof, p0, w, bonus, thr=0.62, outer=0):
@@ -139,8 +167,9 @@ def _remove_ticks(rm, body):
     out = rm.copy()
     for i, sl in enumerate(ndi.find_objects(lab), start=1):
         h = sl[0].stop - sl[0].start; w = sl[1].stop - sl[1].start
-        if max(h, w) >= 60:
-            out[sl][lab[sl] == i] = False
+        if max(h, w) < 60:
+            continue
+        out[sl][lab[sl] == i] = False
     return out
 
 
@@ -293,6 +322,149 @@ def _trace_arc(graph, pts, K):
     return [[round(float(x) / K, 1), round(float(y) / K, 1)] for x, y in _resample_px(best[1], 7)]
 
 
+def _used_labels(graph, polylines, K):
+    """이미 추적에 쓴 선(폴리라인, 단위 좌표)이 지나간 뼈대 덩어리 번호 집합."""
+    from skimage.draw import line as _line
+    H, W = graph.H, graph.W
+    mask = np.zeros((H, W), bool)
+    for pts in polylines:
+        for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
+            rr, cc = _line(int(np.clip(y0 * K, 0, H - 1)), int(np.clip(x0 * K, 0, W - 1)), int(np.clip(y1 * K, 0, H - 1)), int(np.clip(x1 * K, 0, W - 1)))
+            mask[rr, cc] = True
+    mask = ndi.binary_dilation(mask, iterations=int(2.0 * K))
+    used = set()
+    for lbl in np.unique(graph.labels):
+        nodes = np.nonzero(graph.labels == lbl)[0]
+        if len(nodes) and float(mask[graph.ys[nodes], graph.xs[nodes]].mean()) >= 0.35:
+            used.add(int(lbl))
+    return used
+
+
+def _detect_arrows(graph, used, K):
+    """AI 가 짚지 않은 화살표를 빨간 선에서 직접 찾는다: 화살촉 = 날개 두 개가 짧게 갈라지는 점, 화살대 = 거기서 곧게 이어지는 긴 선."""
+    if not len(graph.junctions):
+        return []
+    # 가까운 갈라지는 점끼리 묶는다
+    js = []
+    for j in graph.junctions:
+        if int(graph.labels[j]) in used:
+            continue
+        if all(np.hypot(graph.xs[j] - graph.xs[k], graph.ys[j] - graph.ys[k]) > 7 for k in js):
+            js.append(int(j))
+    out = []
+    taken = set()
+    for j in js:
+        lbl = int(graph.labels[j])
+        dist, pred = graph.paths(j)
+        ends = [int(e) for e in graph.ends if graph.labels[e] == lbl and np.isfinite(dist[e])]
+        barbs = [e for e in ends if 0.6 * K <= dist[e] <= 4.5 * K]
+        shafts = []
+        for e in ends:
+            chord = float(np.hypot(graph.xs[e] - graph.xs[j], graph.ys[e] - graph.ys[j]))
+            if chord >= 6.0 * K and dist[e] <= 1.35 * chord + 12:
+                shafts.append((chord, e))
+        if len(barbs) < 2 or not shafts:
+            continue
+        chord, e = max(shafts)
+        sv = np.array([graph.xs[e] - graph.xs[j], graph.ys[e] - graph.ys[j]], float) / chord
+        # 날개는 화살대 쪽(뒤)으로 뻗는다: 화살대 방향과 이루는 각이 작은 날개가 두 개 이상 있어야 한다
+        good = 0
+        for b in barbs:
+            v = np.array([graph.xs[b] - graph.xs[j], graph.ys[b] - graph.ys[j]], float); nv = float(np.hypot(*v))
+            if nv >= 0.5 * K and float(v @ sv) / nv >= 0.15:
+                good += 1
+        if good < 2:
+            continue
+        key = (lbl, round(graph.xs[j] / 40), round(graph.ys[j] / 40))
+        if key in taken:
+            continue
+        taken.add(key)
+        route = graph.route(pred, j, e)
+        if not route or len(route) < 5:
+            continue
+        px = np.stack([graph.xs[route], graph.ys[route]], 1)[::-1]  # 꼬리 → 화살촉
+        cand = [[round(float(x) / K, 1), round(float(y) / K, 1)] for x, y in _resample_px(px, 4 if len(px) > 60 else 2)]
+        # 같은 화살표를 갈라지는 점 두 곳에서 찾은 중복 제거(꼬리·화살촉이 모두 4 단위 안)
+        if any(np.hypot(cand[0][0] - o[0][0], cand[0][1] - o[0][1]) < 4 and np.hypot(cand[-1][0] - o[-1][0], cand[-1][1] - o[-1][1]) < 4 for o in out):
+            continue
+        out.append(cand)
+    return out
+
+
+def _detect_arcs(graph, used, K):
+    """AI 가 짚지 않은 호: 화살촉도 눈금도 없는 매끈한 긴 곡선(끝점 2개, 갈라짐 없음, 길이 8 단위 이상)."""
+    out = []
+    for lbl in np.unique(graph.labels):
+        lbl = int(lbl)
+        if lbl in used:
+            continue
+        nodes = np.nonzero(graph.labels == lbl)[0]
+        ends = [int(e) for e in graph.ends if graph.labels[e] == lbl]
+        jn = [int(j) for j in graph.junctions if graph.labels[j] == lbl]
+        if len(ends) != 2 or jn:
+            continue
+        a, z = ends
+        dist, pred = graph.paths(a)
+        chord = float(np.hypot(graph.xs[z] - graph.xs[a], graph.ys[z] - graph.ys[a]))
+        if not np.isfinite(dist[z]) or dist[z] < 8.0 * K or chord < 6.0 * K or dist[z] > 2.4 * chord + 20:
+            continue
+        route = graph.route(pred, a, z)
+        if not route:
+            continue
+        px = np.stack([graph.xs[route], graph.ys[route]], 1)
+        # 굵기가 들쑥날쑥한 글자 덩어리를 거른다: 높이·너비가 모두 짧으면 글자다
+        if max(px[:, 0].max() - px[:, 0].min(), px[:, 1].max() - px[:, 1].min()) < 8.0 * K:
+            continue
+        out.append([[round(float(x) / K, 1), round(float(y) / K, 1)] for x, y in _resample_px(px, 7)])
+    return out
+
+
+def _detect_partitions(body, dm, slabs, cores, K):
+    """판 안쪽 칸막이: 판 윤곽(2 단위 안쪽)과 코어(1 단위 바깥)를 뺀 안쪽에서, 파랑·검정 선이 판 폭(높이) 전체에 걸쳐 이어진 줄을 찾는다.
+    돌려주는 값: [[[x0,y0],[x1,y1]], ...] (단위 좌표)"""
+    H, W = body.shape
+    ink = body & ~ndi.binary_erosion(dm, iterations=7)
+    out = []
+    for r in slabs:
+        x0, y0, x1, y1 = [v * K for v in r]
+        m = int(2.0 * K)
+        ix0, iy0, ix1, iy1 = int(x0 + m), int(y0 + m), int(x1 - m), int(y1 - m)
+        if ix1 - ix0 < 3 * K or iy1 - iy0 < 3 * K:
+            continue
+        # 코어가 차지한 곳은 분모에서 뺀다
+        free = np.ones((iy1 - iy0, ix1 - ix0), bool)
+        for c in cores:
+            cx0, cy0, cx1, cy1 = [int(v * K) for v in c]
+            free[max(0, cy0 - 10 - iy0):max(0, cy1 + 10 - iy0), max(0, cx0 - 10 - ix0):max(0, cx1 + 10 - ix0)] = False
+        sub = ink[iy0:iy1, ix0:ix1]
+        # 세로 칸막이: 열마다, 주변 ±3px 안에 잉크가 있는 행의 비율(코어 쪽 행은 제외)
+        near_x = ndi.maximum_filter1d(sub.astype(np.uint8), size=7, axis=1) > 0
+        near_y = ndi.maximum_filter1d(sub.astype(np.uint8), size=7, axis=0) > 0
+        def peaks(prof, minlen):
+            res = []
+            i = 0
+            while i < len(prof):
+                if prof[i] >= 0.72:
+                    j = i
+                    while j + 1 < len(prof) and prof[j + 1] >= 0.72:
+                        j += 1
+                    k0 = i + int(np.argmax(prof[i:j + 1]))
+                    res.append((i + j) // 2 if j - i < 20 else k0)
+                    i = j + 1
+                else:
+                    i += 1
+            return res
+        colcov = np.array([float(near_x[free[:, c], c].mean()) if free[:, c].sum() >= 3 * K else 0.0 for c in range(sub.shape[1])])
+        rowcov = np.array([float(near_y[r_, free[r_, :]].mean()) if False else (float(near_y[r_, :][free[r_, :]].mean()) if free[r_, :].sum() >= 3 * K else 0.0) for r_ in range(sub.shape[0])])
+        for c in peaks(colcov, 3 * K):
+            xs = (ix0 + c) / K
+            out.append([[round(xs, 1), round(y0 / K, 1)], [round(xs, 1), round(y1 / K, 1)]])
+        for r_ in peaks(rowcov, 3 * K):
+            ys = (iy0 + r_) / K
+            out.append([[round(x0 / K, 1), round(ys, 1)], [round(x1 / K, 1), round(ys, 1)]])
+    return out
+
+
 def refine(png_bytes, blocks, arrows, arcs=()):
     """blocks=[{id,rect,hatched}], arrows=[{id,pts:[꼬리,화살촉]}] → {blocks:{id:rect}, arrows:{id:[꼬리,화살촉]}, notes:[...]}"""
     a = _load(png_bytes)
@@ -304,58 +476,80 @@ def refine(png_bytes, blocks, arrows, arcs=()):
     out_arrows = {}
 
     # ① 코어(빗금 도형): 빗금이 몰린 덩어리의 상자로
-    comps_by_thr = {}
-    def comps_at(thr):
-        if thr not in comps_by_thr:
-            cc, _ = _dense_components(body, thr)
-            comps_by_thr[thr] = [([v / K for v in bx], ar) for bx, ar in cc]
-        return comps_by_thr[thr]
     cores = []
+    blobs_by_thr = {}
+    def blobs_at(thr):
+        if thr not in blobs_by_thr:
+            bl, lab, _ = _dense_blobs(body, thr)
+            blobs_by_thr[thr] = ([dict(x, bbox_u=[v / K for v in x["bbox"]]) for x in bl], lab)
+        return blobs_by_thr[thr]
+    hatched = [b for b in blocks if b.get("hatched")]
+    centers = [((b["rect"][0] + b["rect"][2]) / 2, (b["rect"][1] + b["rect"][3]) / 2) for b in hatched]
+
+    def n_inside(bx):  # 이 덩어리 상자 안에 중심이 들어온 AI 코어 개수(2개 이상이면 붙어 있는 코어 덩어리)
+        return sum(1 for cx, cy in centers if bx[0] - 1 <= cx <= bx[2] + 1 and bx[1] - 1 <= cy <= bx[3] + 1)
+
     claimed = set()
 
-    def pick_comp(b, need_list, use_dist):
-        for thr, need in need_list:
+    def pick_comp(b, use_dist):
+        for thr, need in ((0.42, 0.15), (0.32, 0.2), (0.25, 0.25)):
+            blobs, _ = blobs_at(thr)
             cands = []
-            for bx, ar in comps_at(thr):
-                if tuple(bx) in claimed:
+            for bl in blobs:
+                bx = bl["bbox_u"]
+                key = (thr, bl["id"])
+                shared = n_inside(bx) >= 2
+                if key in claimed and not shared:
                     continue
                 bw = (bx[2] - bx[0]) * (bx[3] - bx[1]) * K * K
-                if thr < 0.42 and ar < 0.55 * bw:  # 낮은 기준에서는 속이 꽉 찬 덩어리만
+                if thr < 0.42 and bl["area"] < 0.55 * bw:  # 낮은 기준에서는 속이 꽉 찬 덩어리만
                     continue
                 ai_area = max(1e-6, (b["rect"][2] - b["rect"][0]) * (b["rect"][3] - b["rect"][1]))
-                if not 0.3 <= (bx[2] - bx[0]) * (bx[3] - bx[1]) / ai_area <= 2.6:
-                    continue  # 크기가 너무 다르면(붙어 있는 두 코어가 한 덩어리로 뭉친 경우 등) 이 코어의 덩어리가 아니다
+                ratio = (bx[2] - bx[0]) * (bx[3] - bx[1]) / ai_area
+                # 붙어 있는 코어 덩어리는 한 코어보다 훨씬 클 수 있다(분리해서 쓴다)
+                if not (0.3 <= ratio <= (2.6 if not shared else 6.0)):
+                    continue
                 iou = _iou(b["rect"], bx)
-                if use_dist:  # AI 가 코어를 많이 어긋나게 짚어 겹침이 없으면, 주인 없는 빗금 덩어리 중 가장 가까운 것
+                if use_dist:
                     d = float(np.hypot((bx[0] + bx[2]) / 2 - (b["rect"][0] + b["rect"][2]) / 2, (bx[1] + bx[3]) / 2 - (b["rect"][1] + b["rect"][3]) / 2))
                     if d <= 12.0:
-                        cands.append((-d, iou, bx))
-                elif iou >= need:
-                    cands.append((iou, iou, bx))
+                        cands.append((-d, iou, bx, key))
+                elif iou >= need or (shared and iou >= 0.1):
+                    cands.append((iou, iou, bx, key))
             if cands:
                 c = max(cands, key=lambda t: t[0])
-                return c[2], c[1]
+                return c[2], c[1], c[3]
         return None
 
-    levels = ((0.42, 0.15), (0.32, 0.2), (0.25, 0.25))
     matched = {}
-    for b in blocks:  # 1차: 겹침으로
-        if b.get("hatched"):
-            m = pick_comp(b, levels, False)
+    for use_dist in (False, True):  # 1차: 겹침으로, 2차: 겹침이 없으면 가까운 빈 덩어리로
+        for b in hatched:
+            if b["id"] in matched:
+                continue
+            m = pick_comp(b, use_dist)
             if m:
-                claimed.add(tuple(m[0])); matched[b["id"]] = m
-    for b in blocks:  # 2차: 겹침이 없으면 가까운 빈 덩어리로
-        if b.get("hatched") and b["id"] not in matched:
-            m = pick_comp(b, levels, True)
-            if m:
-                claimed.add(tuple(m[0])); matched[b["id"]] = m
-    for b in blocks:
-        if b.get("hatched") and b["id"] in matched:
-            bx0, iou0 = matched[b["id"]]
-            bx = _extend_edges(body, bx0, K)
-            out_blocks[b["id"]] = [round(v, 1) for v in bx]
-            cores.append(bx)
-            notes.append(f"{b['id']}: 빗금 덩어리에 맞춤 (겹침 {iou0:.2f})")
+                claimed.add(m[2]); matched[b["id"]] = m
+    # 같은 덩어리에 여러 코어가 매칭되면 픽셀을 나눠서 각자의 상자를 구한다
+    by_blob = {}
+    for b in hatched:
+        if b["id"] in matched:
+            by_blob.setdefault(matched[b["id"]][2], []).append(b)
+    for key, group in by_blob.items():
+        thr, bid = key
+        lab = blobs_at(thr)[1]
+        if len(group) >= 2:
+            boxes = _split_blob_boxes(body, lab, bid, [g["rect"] for g in group], K)
+            for g, bx in zip(group, boxes or [None] * len(group)):
+                if bx:
+                    out_blocks[g["id"]] = [round(v, 1) for v in bx]; cores.append(bx)
+                    notes.append(f"{g['id']}: 붙은 코어 덩어리에서 분리해 맞춤")
+                else:
+                    cores.append(g["rect"])
+        else:
+            g = group[0]
+            bx = _extend_edges(body, matched[g["id"]][0], K)
+            out_blocks[g["id"]] = [round(v, 1) for v in bx]; cores.append(bx)
+            notes.append(f"{g['id']}: 빗금 덩어리에 맞춤 (겹침 {matched[g['id']][1]:.2f})")
 
     # ② 판(윤곽 도형): 네 변을 선 잉크 위치로. 빗금 속은 제외하고(코어 변은 따로 후보로 더한다), 선이 조금 흔들려도 되도록 살짝 두껍게 본다
     _, dm = _dense_components(body)
@@ -407,11 +601,17 @@ def refine(png_bytes, blocks, arrows, arcs=()):
     lab0, n0 = ndi.label(rm)
     sizes = ndi.sum(rm, lab0, range(1, n0 + 1))
     rm = np.isin(lab0, [i for i, c in enumerate(sizes, start=1) if c >= 120])
+    rm_full = rm
     rm = _remove_ticks(rm, body)
     sk = morphology.skeletonize(rm)
     graph = _SkelGraph(sk)
+    graph_full = None
     for ar in arrows:
         pts = _trace_arrow(graph, ar["pts"][0], ar["pts"][-1], K)
+        if not pts:
+            if graph_full is None:
+                graph_full = _SkelGraph(morphology.skeletonize(rm_full))
+            pts = _trace_arrow(graph_full, ar["pts"][0], ar["pts"][-1], K)
         if pts:
             out_arrows[ar["id"]] = pts
             notes.append(f"{ar['id']}: 화살표 추적 꼬리 {ar['pts'][0]} → {pts[0]}")
@@ -441,4 +641,30 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             if cov < 0.4:
                 out_arrows[it["id"]] = None
                 notes.append(f"{it['id']}: 선 주변에 빨간 잉크가 거의 없어 제외 ({cov:.2f})")
-    return {"blocks": out_blocks, "arrows": out_arrows, "notes": notes}
+    # ③-2 칸막이: 판 안쪽 선 잉크에서 직접 찾는다(윤곽·코어가 정해진 뒤)
+    partitions = []
+    try:
+        slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not b.get("hatched")]
+        core_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if b.get("hatched")]
+        partitions = _detect_partitions(body, dm, slab_rects, core_rects, K)
+    except Exception as e:
+        notes.append(f"칸막이 검출 건너뜀: {e}")
+    # ④ AI 가 놓친 화살표·호를 빨간 잉크에서 직접 찾아 덧붙인다(AI 가 짚은 선이 지나간 덩어리는 제외)
+    extra_arrows, extra_arcs = [], []
+    try:
+        traced = [v for v in out_arrows.values() if v]
+        used = _used_labels(graph, traced, K) if traced else set()
+        # 추적에 실패해 AI 값을 그대로 둔 선(out_arrows 에 없는 것)도 같은 위치에 있으면 중복이므로 제외한다
+        for it in list(arrows) + list(arcs):
+            if it["id"] not in out_arrows:
+                used |= _used_labels(graph, [it["pts"]], K) if len(it["pts"]) >= 2 else set()
+        extra_arrows = _detect_arrows(graph, used, K)
+        used2 = used | _used_labels(graph, extra_arrows, K) if extra_arrows else used
+        extra_arcs = _detect_arcs(graph, used2, K)
+        if extra_arrows:
+            notes.append(f"빨간 잉크에서 AI 가 놓친 화살표 {len(extra_arrows)}개 추가")
+        if extra_arcs:
+            notes.append(f"빨간 잉크에서 AI 가 놓친 호 {len(extra_arcs)}개 추가")
+    except Exception as e:  # 보너스 기능이므로 실패해도 나머지 결과는 돌려준다
+        notes.append(f"추가 검출 건너뜀: {e}")
+    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "notes": notes}

@@ -3,6 +3,18 @@ import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, rende
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
+
+// 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
+const SK_CACHE_KEY = 'sketchReadCache.v1';
+const hashStr = (str) => { let h = 5381; for (let i = 0; i < str.length; i += 5) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return `${str.length}:${h >>> 0}`; };
+const skCacheGet = (k) => { try { const m = JSON.parse(localStorage.getItem(SK_CACHE_KEY) || '{}'); return m[k]?.v || null; } catch { return null; } };
+const skCachePut = (k, v) => {
+  try {
+    const m = JSON.parse(localStorage.getItem(SK_CACHE_KEY) || '{}'); m[k] = { v, t: Date.now() };
+    const keep = Object.keys(m).sort((a, b) => m[b].t - m[a].t).slice(0, 8); const out = {}; keep.forEach((x) => { out[x] = m[x]; });
+    localStorage.setItem(SK_CACHE_KEY, JSON.stringify(out));
+  } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
+};
 import SketchEditor from './SketchEditor';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
@@ -195,13 +207,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
 
   // 소재 이미지 읽기: 구조로 읽고, 읽은 모습을 바로 보여 준다
-  const readImage = async () => {
+  const readImage = async (opts) => {
     if (!subjectImage || reading) return null;
+    const fresh = !!(opts && opts.fresh === true); // '다시 읽기' 버튼은 저장된 결과를 쓰지 않고 새로 읽는다
     setReading(true);
     try {
       const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
+        const cacheKey = hashStr(subjectImage); const cached = fresh ? null : skCacheGet(cacheKey);
+        if (cached) { setRead(cached); setReadOrig(cached); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.'); return cached; }
         const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
         // 같은 스케치를 3번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 2개를 확보한다. (무료 Gemini 한도를 아끼려고 3회로 제한)
         let skErr = null;
@@ -214,6 +229,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })) }) });
           if (rr.ok) sk = applySketchRefine(sk, await rr.json());
         } catch { /* 보정 없이 사용 */ }
+        skCachePut(cacheKey, sk);
         setRead(sk); setReadOrig(sk); setSelBox(0);
         setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
         addToast?.('success', '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);
@@ -402,7 +418,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
                   {subjectKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
-                  <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={readImage}>
+                  <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>
                     {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
                   {read && (

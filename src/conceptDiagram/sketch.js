@@ -168,10 +168,19 @@ export function applySketchRefine(read, res) {
   if (!read || !res) return read;
   const rb = res.blocks || {}; const ra = res.arrows || {};
   const ok = (p) => Array.isArray(p) && p.length === 4 && p.every(Number.isFinite);
+  // AI 가 놓친 화살표·호를 빨간 잉크에서 직접 찾은 것(백엔드)을 덧붙인다
+  const okPts = (pts) => Array.isArray(pts) && pts.length >= 2 && pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+  // 잉크에서 직접 찾은 칸막이가 오면(빈 목록 포함) AI 가 추측한 칸막이는 쓰지 않는다
+  const parts = (Array.isArray(res.partitions) ? res.partitions : []).filter(okPts).slice(0, 12).map((pts, i) => ({ id: `lp${i + 1}`, kind: 'partition', style: 'straight', arrow: 'none', color: 'black', pts: pts.map((p) => p.map(Number)), note: '' }));
+  const extra = [
+    ...parts,
+    ...(Array.isArray(res.extra_arrows) ? res.extra_arrows : []).filter(okPts).slice(0, 8).map((pts, i) => ({ id: `lx${i + 1}`, kind: 'arrow', style: 'straight', arrow: 'end', color: 'red', pts: pts.map((p) => p.map(Number)), note: '' })),
+    ...(Array.isArray(res.extra_arcs) ? res.extra_arcs : []).filter(okPts).slice(0, 8).map((pts, i) => ({ id: `ly${i + 1}`, kind: 'arc', style: 'wavy', arrow: 'none', color: 'red', pts: pts.map((p) => p.map(Number)), note: '' })),
+  ];
   return {
     ...read,
     blocks: read.blocks.map((b) => (ok(rb[b.id]) ? { ...b, rect: rb[b.id].map(Number) } : b)),
-    lines: read.lines.filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)),
+    lines: read.lines.filter((l) => !(Array.isArray(res.partitions) && l.kind === 'partition')).filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)).concat(extra),
   };
 }
 
