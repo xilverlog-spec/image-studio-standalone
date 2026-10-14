@@ -23,6 +23,12 @@ def sim_ai_read(truth, rng):
         # 판은 가끔 한쪽 변이 크게(7) 어긋나고, 나머지 변은 ±3 안팎
         j = lambda big=False: rng.uniform(-3, 3) + (rng.choice([-7, 7]) if big and rng.random() < 0.25 else 0)
         rr = [r[0] + j(), r[1] + j(True), r[2] + j(), r[3] + j(True)]
+        if os.environ.get('SEV') and not core:   # 판 위치를 크게 틀리게 읽은 경우(변 하나가 ±8~14, 또는 전체가 밀림)
+            m = rng.random()
+            if m < 0.45:
+                k = rng.randrange(4); rr[k] += rng.choice([-1, 1]) * rng.uniform(8, 14)
+            elif m < 0.75:
+                dx, dy = rng.uniform(-9, 9), rng.uniform(-9, 9); rr = [rr[0] + dx, rr[1] + dy, rr[2] + dx, rr[3] + dy]
         if rr[2] - rr[0] < 3: rr[2] = rr[0] + 3
         if rr[3] - rr[1] < 3: rr[3] = rr[1] + 3
         blocks.append({'id': f'b{i + 1}', 'hatched': core, 'rect': rr, 'color': 'blue'})
