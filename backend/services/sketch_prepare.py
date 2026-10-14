@@ -28,10 +28,23 @@ def _load(png_bytes):
     return im
 
 
-def _ink_bbox(a, step_note=None):
-    """작업 해상도 배열 a(float RGB)에서 잉크 영역 [x0,y0,x1,y1] (px). 잉크가 거의 없으면 None."""
-    red, body = ink_masks(a)
-    ink = red | body
+def _thin_ink_mask(a):
+    """가는 어두운 선(펜 자국)만 남긴 마스크. 그림자 띠·종이 가장자리처럼 '넓게 어두운 영역의 경계'는 선이 아니므로 블랙 탑햇(닫기 − 원본)으로 걸러낸다.
+    기준은 그림의 강한 선 대비(상위 0.5%)의 40% 로 정해서 흐린 사진에서도 같은 비율로 잡는다."""
+    lum = a.mean(-1)
+    th = ndi.grey_closing(lum, size=(21, 21)) - lum
+    c = float(np.percentile(th, 99.5))
+    thr = float(np.clip(0.4 * c, 10.0, 60.0))
+    m = th > thr
+    # 사진 가장자리 14px 는 보지 않는다: 회전·가장자리 보간으로 생기는 가는 띠(가짜 선)가 그림 영역을 사진 전체로 늘리는 것을 막는다
+    b = 14
+    m[:b, :] = False; m[-b:, :] = False; m[:, :b] = False; m[:, -b:] = False
+    return m
+
+
+def _ink_bbox(a):
+    """작업 해상도 배열 a(float RGB)에서 그림(펜 자국) 영역 [x0,y0,x1,y1] (px). 선이 거의 없으면 None."""
+    ink = _thin_ink_mask(a)
     # 작은 잡티(종이 결·먼지)는 빼고, 실제 선 덩어리만 본다
     lab, n = ndi.label(ndi.binary_dilation(ink, iterations=2))
     if n == 0:
@@ -45,7 +58,41 @@ def _ink_bbox(a, step_note=None):
     return [float(np.percentile(xs, 0.3)), float(np.percentile(ys, 0.3)), float(np.percentile(xs, 99.7)), float(np.percentile(ys, 99.7))]
 
 
-def prepare(png_bytes, do_crop=True):
+def estimate_skew(a):
+    """작업 해상도 배열 a 에서 기울어진 각도(도, 반시계가 +)를 찾는다. 건물 윤곽(파랑·검정)의 긴 직선이 가로·세로로 가장 가지런해지는 각도.
+    가지런함 = 행·열 합계의 제곱합(직선이 한 줄에 몰릴수록 커진다). 0° 보다 뚜렷하게(≥8%) 나아질 때만 그 각도를 쓴다. 돌려줄 각도가 없으면 0."""
+    red, body = ink_masks(a)
+    ink = body if int(body.sum()) >= 400 else (body | red)
+    if int(ink.sum()) < 400:
+        return 0.0, 0.0
+    # 작게 줄여 빠르게(긴 변 420px)
+    f = 420.0 / max(ink.shape)
+    m = Image.fromarray((ink * 255).astype(np.uint8)).resize((max(1, round(ink.shape[1] * f)), max(1, round(ink.shape[0] * f))), Image.BILINEAR)
+    m = m.point(lambda v: 255 if v > 60 else 0)
+
+    def sharp(theta):
+        r = np.asarray(m.rotate(theta, resample=Image.NEAREST)).astype(float) / 255.0
+        return float((r.sum(1) ** 2).sum() + (r.sum(0) ** 2).sum())
+
+    base = sharp(0.0)
+    best_t, best_v = 0.0, base
+    for t in np.arange(-10.0, 10.01, 0.5):
+        v = sharp(float(t))
+        if v > best_v:
+            best_t, best_v = float(t), v
+    for t in np.arange(best_t - 0.5, best_t + 0.51, 0.1):  # 좁혀서 다시
+        v = sharp(float(t))
+        if v > best_v:
+            best_t, best_v = float(t), v
+    gain = (best_v - base) / max(base, 1e-9)
+    # 돌리는 각도가 클수록 더 강한 근거가 필요하다(사람이 손으로 그린 선은 원래 조금씩 기울어서, 작은 이득에 속으면 반듯한 사진을 오히려 기울인다)
+    need = 0.075 + 0.02 * abs(best_t)
+    if abs(best_t) < 0.5 or gain < need:
+        return 0.0, gain
+    return round(best_t, 2), gain
+
+
+def prepare(png_bytes, do_crop=True, do_deskew=True):
     """돌려주는 값: (정리된 PNG 바이트, info dict)"""
     im = _load(png_bytes)
     W0, H0 = im.size
@@ -53,6 +100,19 @@ def prepare(png_bytes, do_crop=True):
     s = WORK / max(W0, H0)
     small = im.resize((max(1, round(W0 * s)), max(1, round(H0 * s))), Image.LANCZOS)
     a = np.asarray(small).astype(float)
+
+    if do_deskew:
+        ang, gain = estimate_skew(a)
+        info["skew_gain"] = round(float(gain), 3)
+        if ang:
+            paper = tuple(int(v) for v in np.median(a.reshape(-1, 3), axis=0))
+            im = im.rotate(ang, resample=Image.BICUBIC, expand=True, fillcolor=paper)  # 반시계 ang 도: 기울어진 사진을 바로 세운다
+            info["angle"] = ang
+            info["rot_size"] = list(im.size)
+            W0, H0 = im.size
+            s = WORK / max(W0, H0)
+            small = im.resize((max(1, round(W0 * s)), max(1, round(H0 * s))), Image.LANCZOS)
+            a = np.asarray(small).astype(float)
 
     out = im
     if do_crop:

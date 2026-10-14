@@ -112,7 +112,13 @@ def map_truth(truth, info, orig_size):
     ow, oh = info['out_size']; S1 = max(ow, oh) / 100.0
     cx0, cy0 = (info['crop'][0], info['crop'][1]) if info['crop'] else (0, 0)
     sc = info['scale']
-    tr = lambda p: [round(((p[0] * S0 - cx0) * sc) / S1, 2), round(((p[1] * S0 - cy0) * sc) / S1, 2)]
+    ang = math.radians(info.get('angle', 0.0)); Wr, Hr = info.get('rot_size', [W0, H0])
+    def rot(px, py):  # PIL rotate(angle, expand=True): 반시계(+)로 중심 기준 회전 후 새 캔버스 중심으로 옮김
+        dx, dy = px - W0 / 2, py - H0 / 2
+        return Wr / 2 + dx * math.cos(ang) + dy * math.sin(ang), Hr / 2 - dx * math.sin(ang) + dy * math.cos(ang)
+    def tr(p):
+        x, y = rot(p[0] * S0, p[1] * S0)
+        return [round(((x - cx0) * sc) / S1, 2), round(((y - cy0) * sc) / S1, 2)]
     t = json.loads(json.dumps(truth))
     for b in t['blocks']:
         r = b['rect']; a, z = tr([r[0], r[1]]), tr([r[2], r[3]]); b['rect'] = [a[0], a[1], z[0], z[1]]
