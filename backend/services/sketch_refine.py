@@ -26,14 +26,19 @@ def _load(png_bytes):
 
 
 def ink_masks(a):
-    """종이 바탕(느린 변화)을 빼고 빨간 잉크와 파랑·검정 잉크를 나눈다."""
+    """종이 바탕(느린 변화)을 빼고 빨간 잉크와 파랑·검정 잉크를 나눈다.
+    잉크 판정 기준은 그림마다 측정한 '강한 잉크의 대비'(밝기 차이 상위 0.5%)에 비례해 정한다 — 초점이 흐리거나 조명이 어두워 선이 연해져도 같은 비율로 잡는다.
+    선명한 사진의 대비(약 120~140)일 때 기준은 예전 고정값(밝기 차이 55, 빨강 색 차이 22·30)과 같다."""
     small = a[::4, ::4]
     bg = np.stack([ndi.gaussian_filter(ndi.median_filter(small[..., c], 15), 8) for c in range(3)], -1)
     bg = np.stack([ndi.zoom(bg[..., c], 4, order=1)[:a.shape[0], :a.shape[1]] for c in range(3)], -1)
     d = a - bg
     dark = bg.mean(-1) - a.mean(-1)
-    red = (d[..., 0] - d[..., 1] > 22) & (a[..., 0] - a[..., 2] > 30) & (dark > 8)
-    body = (dark > 55) & ~red  # 파랑·검정
+    contrast = float(np.percentile(dark, 99.5))
+    k = float(np.clip(contrast / 128.0, 0.3, 1.25))   # 1.0 = 선명한 기준
+    thr = float(np.clip(55.0 * k, 16.0, 62.0))
+    red = (d[..., 0] - d[..., 1] > 22 * k) & (a[..., 0] - a[..., 2] > 30 * k) & (dark > max(6.0, 8 * k))
+    body = (dark > thr) & ~red  # 파랑·검정
     return red, body
 
 
