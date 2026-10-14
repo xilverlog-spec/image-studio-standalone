@@ -72,7 +72,7 @@ def _snap_edge(prof, p0, w, bonus, thr=0.62, outer=0):
     lo = max(0, int(p0) - w); hi = min(len(prof) - 1, int(p0) + w)
     if hi <= lo:
         return None
-    scores = {p: prof[p] - 0.0028 * abs(p - p0) + bonus(p) for p in range(lo, hi + 1) if prof[p] >= thr}
+    scores = {p: prof[p] - 0.0022 * abs(p - p0) + bonus(p) for p in range(lo, hi + 1) if prof[p] >= thr}
     if not scores:
         return None
     top = max(scores.values())
@@ -113,7 +113,7 @@ def _extend_edges(body, rect, K):
     H, W = body.shape
     x0, y0, x1, y1 = [v * K for v in rect]
     ink = ndi.maximum_filter(body.astype(np.uint8), size=7) > 0
-    w = int(0.04 * LONG)
+    w = int(0.14 * LONG)
     ys = slice(int(y0 + 0.15 * (y1 - y0)), max(int(y0 + 0.15 * (y1 - y0)) + 1, int(y1 - 0.15 * (y1 - y0))))
     xs = slice(int(x0 + 0.15 * (x1 - x0)), max(int(x0 + 0.15 * (x1 - x0)) + 1, int(x1 - 0.15 * (x1 - x0))))
     col = ink[ys, :].mean(0); row = ink[:, xs].mean(1)
@@ -311,25 +311,51 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             comps_by_thr[thr] = [([v / K for v in bx], ar) for bx, ar in cc]
         return comps_by_thr[thr]
     cores = []
-    for b in blocks:
-        if not b.get("hatched"):
-            continue
-        found = None
-        # 빗금이 성긴 그림(가는 펜·넓은 간격)은 밀도 기준을 낮춰 가며 찾는다. 낮은 기준일수록 AI 상자와 더 많이 겹쳐야 받아들인다
-        for thr, need in ((0.42, 0.15), (0.32, 0.3), (0.25, 0.4)):
-            best = max(((_iou(b["rect"], bx), bx, ar) for bx, ar in comps_at(thr)), default=(0, None, 0), key=lambda t: t[0])
-            if best[1] is not None and best[0] >= need:
-                bw = (best[1][2] - best[1][0]) * (best[1][3] - best[1][1]) * K * K
-                if thr < 0.42 and best[2] < 0.55 * bw:  # 낮은 기준에서는 속이 꽉 찬 덩어리만
+    claimed = set()
+
+    def pick_comp(b, need_list, use_dist):
+        for thr, need in need_list:
+            cands = []
+            for bx, ar in comps_at(thr):
+                if tuple(bx) in claimed:
                     continue
-                found = best; break
-        if found:
-            bx = _extend_edges(body, found[1], K)
+                bw = (bx[2] - bx[0]) * (bx[3] - bx[1]) * K * K
+                if thr < 0.42 and ar < 0.55 * bw:  # 낮은 기준에서는 속이 꽉 찬 덩어리만
+                    continue
+                ai_area = max(1e-6, (b["rect"][2] - b["rect"][0]) * (b["rect"][3] - b["rect"][1]))
+                if not 0.3 <= (bx[2] - bx[0]) * (bx[3] - bx[1]) / ai_area <= 2.6:
+                    continue  # 크기가 너무 다르면(붙어 있는 두 코어가 한 덩어리로 뭉친 경우 등) 이 코어의 덩어리가 아니다
+                iou = _iou(b["rect"], bx)
+                if use_dist:  # AI 가 코어를 많이 어긋나게 짚어 겹침이 없으면, 주인 없는 빗금 덩어리 중 가장 가까운 것
+                    d = float(np.hypot((bx[0] + bx[2]) / 2 - (b["rect"][0] + b["rect"][2]) / 2, (bx[1] + bx[3]) / 2 - (b["rect"][1] + b["rect"][3]) / 2))
+                    if d <= 12.0:
+                        cands.append((-d, iou, bx))
+                elif iou >= need:
+                    cands.append((iou, iou, bx))
+            if cands:
+                c = max(cands, key=lambda t: t[0])
+                return c[2], c[1]
+        return None
+
+    levels = ((0.42, 0.15), (0.32, 0.2), (0.25, 0.25))
+    matched = {}
+    for b in blocks:  # 1차: 겹침으로
+        if b.get("hatched"):
+            m = pick_comp(b, levels, False)
+            if m:
+                claimed.add(tuple(m[0])); matched[b["id"]] = m
+    for b in blocks:  # 2차: 겹침이 없으면 가까운 빈 덩어리로
+        if b.get("hatched") and b["id"] not in matched:
+            m = pick_comp(b, levels, True)
+            if m:
+                claimed.add(tuple(m[0])); matched[b["id"]] = m
+    for b in blocks:
+        if b.get("hatched") and b["id"] in matched:
+            bx0, iou0 = matched[b["id"]]
+            bx = _extend_edges(body, bx0, K)
             out_blocks[b["id"]] = [round(v, 1) for v in bx]
             cores.append(bx)
-            notes.append(f"{b['id']}: 빗금 덩어리에 맞춤 (겹침 {found[0]:.2f})")
-        else:
-            cores.append(b["rect"])
+            notes.append(f"{b['id']}: 빗금 덩어리에 맞춤 (겹침 {iou0:.2f})")
 
     # ② 판(윤곽 도형): 네 변을 선 잉크 위치로. 빗금 속은 제외하고(코어 변은 따로 후보로 더한다), 선이 조금 흔들려도 되도록 살짝 두껍게 본다
     _, dm = _dense_components(body)
@@ -344,7 +370,7 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             continue
         x0, y0, x1, y1 = [v * K for v in b["rect"]]
         x0 = float(np.clip(x0, 0, W - 1)); x1 = float(np.clip(x1, 0, W - 1)); y0 = float(np.clip(y0, 0, H - 1)); y1 = float(np.clip(y1, 0, H - 1))
-        w = int(0.09 * LONG)
+        w = int(0.14 * LONG)
         # 변마다 겹쳐 있는 범위의 가운데 80% 만 본다
         ys = slice(int(y0 + 0.1 * (y1 - y0)), max(int(y0 + 0.1 * (y1 - y0)) + 1, int(y1 - 0.1 * (y1 - y0))))
         xs = slice(int(x0 + 0.1 * (x1 - x0)), max(int(x0 + 0.1 * (x1 - x0)) + 1, int(x1 - 0.1 * (x1 - x0))))
@@ -367,6 +393,11 @@ def refine(png_bytes, blocks, arrows, arcs=()):
         if ny1 is None:
             ny1 = _median_edge(raw_ink, y1, w, xr, False)
         r = [(nx0 if nx0 is not None else x0) / K, (ny0 if ny0 is not None else y0) / K, (nx1 if nx1 is not None else x1) / K, (ny1 if ny1 is not None else y1) / K]
+        # 같은 변을 반대쪽 선으로 잘못 잡아 도형이 납작해지면(너비·높이 3 단위 미만), 그쪽 변은 AI 값으로 되돌린다
+        if r[3] - r[1] < 3:
+            r[1], r[3] = y0 / K, y1 / K
+        if r[2] - r[0] < 3:
+            r[0], r[2] = x0 / K, x1 / K
         if r[2] - r[0] > 2 and r[3] - r[1] > 2:
             out_blocks[b["id"]] = [round(v, 1) for v in r]
             notes.append(f"{b['id']}: 변 위치 {[nx0, ny0, nx1, ny1]}")
@@ -405,7 +436,7 @@ def refine(png_bytes, blocks, arrows, arcs=()):
             # AI 선을 따라 점을 찍어, 빨간 잉크(원본, 눈금 포함)가 가까이(2.5 단위) 있는 비율이 낮으면 지어낸 선으로 본다
             P = np.array(it["pts"], float) * K
             samples = [P[0] + (P[-1] - P[0]) * t for t in np.linspace(0, 1, 21)] if len(P) == 2 else list(P)
-            near = ndi.binary_dilation(red, iterations=int(2.5 * K))
+            near = ndi.binary_dilation(red, iterations=int((6.0 if it in arcs else 2.5) * K))  # 호는 AI 점이 더 많이 어긋나므로 더 넓게 본다
             cov = float(np.mean([bool(near[int(np.clip(y, 0, H - 1)), int(np.clip(x, 0, W - 1))]) for x, y in samples]))
             if cov < 0.4:
                 out_arrows[it["id"]] = None

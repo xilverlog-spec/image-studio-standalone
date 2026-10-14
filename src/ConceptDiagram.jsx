@@ -203,11 +203,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
-        // 같은 스케치를 5번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 3개를 확보한다
+        // 같은 스케치를 3번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 2개를 확보한다. (무료 Gemini 한도를 아끼려고 3회로 제한)
         let skErr = null;
         const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; return null; } };
-        let reads = (await Promise.all([one(), one(), one(), one(), one()])).filter(Boolean);
-        for (let k = 0; k < 2 && reads.length < 3; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+        let reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
+        for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
         try { // AI 가 눈대중으로 준 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(실패하면 AI 값 그대로)
