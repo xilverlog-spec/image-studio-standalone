@@ -190,6 +190,7 @@ export function applySketchRefine(read, res) {
         return ok(rb[b.id]) ? { ...nb, rect: rb[b.id].map(Number) } : nb;
       }),
       ...(Array.isArray(res.new_cores) ? res.new_cores : []).filter(ok).slice(0, 6).map((r, i) => ({ id: `bx${i + 1}`, hatched: true, rect: r.map(Number), color: 'blue', openSides: [], note: '' })),
+      ...(Array.isArray(res.new_slabs) ? res.new_slabs : []).filter(ok).slice(0, 3).map((r, i) => ({ id: `bs${i + 1}`, hatched: false, rect: r.map(Number), color: 'blue', openSides: [], note: '' })),
     ],
     lines: read.lines.filter((l) => !(Array.isArray(res.partitions) && l.kind === 'partition')).filter((l) => !(flowsInk.length && l.kind === 'flow')).filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)).concat(extra),
   };

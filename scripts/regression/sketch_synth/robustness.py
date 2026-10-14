@@ -32,6 +32,10 @@ def sim_ai_read(truth, rng):
         if rr[2] - rr[0] < 3: rr[2] = rr[0] + 3
         if rr[3] - rr[1] < 3: rr[3] = rr[1] + 3
         blocks.append({'id': f'b{i + 1}', 'hatched': core, 'rect': rr, 'color': 'blue'})
+    if os.environ.get('MISS') and len(blocks) > 2 and rng.random() < 0.5:   # AI 가 판 하나를 아예 놓침
+        sl = [b for b in blocks if not b['hatched']]
+        if len(sl) >= 2:
+            blocks.remove(rng.choice(sl))
     if os.environ.get('MIS'):  # 실제로 본 AI 의 판/코어 구분 오류를 흉내 낸다
         slabs = [b for b in blocks if not b['hatched']]; cores = [b for b in blocks if b['hatched']]
         if slabs and rng.random() < 0.4:                      # 큰 판 하나를 통째로 '빗금 코어'라고 표시

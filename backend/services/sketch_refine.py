@@ -633,6 +633,111 @@ def _detect_flows(body, K, slab_rects=(), core_rects=(), partitions=()):
     return [p for _, p in out]
 
 
+def _line_segments(mask, K, horizontal, min_len):
+    """마스크에서 가로(또는 세로)로 길게 이어진 선 조각 [(위치, 시작, 끝)] (px). 손떨림을 덮으려고 선과 수직 방향으로 ±3px 흔들림을 허용한다."""
+    m = ndi.maximum_filter1d(mask.astype(np.uint8), size=11, axis=0 if horizontal else 1) > 0
+    out = []
+    n_lines = m.shape[0] if horizontal else m.shape[1]
+    for pos in range(n_lines):
+        line = m[pos, :] if horizontal else m[:, pos]
+        d = np.diff(np.concatenate([[0], line.astype(int), [0]]))
+        starts, ends = np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]
+        runs = []
+        for a, b in zip(starts, ends):   # 작은 틈(≤ 1 단위)은 이어서 본다
+            if runs and a - runs[-1][1] <= K:
+                runs[-1][1] = b
+            else:
+                runs.append([a, b])
+        for a, b in runs:
+            if b - a >= min_len:
+                out.append((pos, a, b))
+    return out
+
+
+def _cluster_lines(segs, tol):
+    """같은 선을 가리키는 가까운 위치(tol px 이내)이면서 길이 방향으로 겹치는 조각들을 하나로 묶는다: [(위치, 시작, 끝)]"""
+    clusters = []   # [위치 목록, 시작, 끝]
+    for pos, a, b in sorted(segs):
+        for c in clusters:
+            if abs(pos - c[0][-1]) <= tol and min(b, c[2]) - max(a, c[1]) > 0:
+                c[0].append(pos); c[1] = min(c[1], a); c[2] = max(c[2], b)
+                break
+        else:
+            clusters.append([[pos], a, b])
+    return [(float(np.mean(c[0])), c[1], c[2]) for c in clusters]
+
+
+def _detect_missed_slabs(body, dm, K, slab_rects, core_rects, existing_cover):
+    """AI 가 놓친 판: 이미 알고 있는 구조(기존 판·코어의 변, 코어 안쪽)를 뺀 파랑·검정 잉크에서, 길게 평행한 가로선 한 쌍(또는 세로선 한 쌍)이
+    판의 위·아래(또는 좌·우)를 이루는 직사각형을 찾는다. 기존 판과 40% 이상 겹치면 제외. 돌려주는 값: [rect(단위)]"""
+    known = _known_mask(body.shape, K, slab_rects, core_rects, ())
+    ink = body & ~known & ~ndi.binary_dilation(dm, iterations=3)
+    min_len = int(14.0 * K)
+    hs = _cluster_lines(_line_segments(ink, K, True, min_len), int(1.2 * K))   # (y, x0, x1)
+    vs = _cluster_lines(_line_segments(ink, K, False, min_len), int(1.2 * K))  # (x, y0, y1)
+    known_d = ndi.binary_dilation(known, iterations=int(1.0 * K))
+
+    def merge_colinear(lines, horizontal):
+        """같은 선 위의 조각이 코어·다른 판처럼 이미 아는 구조에 가려 끊겼으면(틈의 60% 이상이 아는 구조 안) 하나로 잇는다."""
+        lines = sorted(lines, key=lambda t: (round(t[0] / (1.5 * K)), t[1]))
+        merged = True
+        while merged:
+            merged = False
+            for i in range(len(lines)):
+                for j in range(len(lines)):
+                    if i == j:
+                        continue
+                    (pa, a0, a1), (pb, b0, b1) = lines[i], lines[j]
+                    if abs(pa - pb) > 1.5 * K or not (-2 * K <= b0 - a1 <= 30 * K) or b0 < a0:
+                        continue
+                    gap_pts = [(pa + pb) / 2, a1 + (b0 - a1) * np.linspace(0.1, 0.9, 7)]
+                    inside = np.mean([bool(known_d[int(np.clip(gap_pts[0] if horizontal else q, 0, known_d.shape[0] - 1)), int(np.clip(q if horizontal else gap_pts[0], 0, known_d.shape[1] - 1))]) for q in gap_pts[1]])
+                    if inside >= 0.6 or b0 - a1 <= 2 * K:   # 맞닿거나 겹친 조각은 그냥 잇고, 떨어진 조각은 틈이 아는 구조에 가려졌을 때만 잇는다
+                        lines = [l for k2, l in enumerate(lines) if k2 not in (i, j)] + [((pa + pb) / 2, a0, max(a1, b1))]
+                        merged = True
+                        break
+                if merged:
+                    break
+        return lines
+
+    hs = merge_colinear(hs, True)
+    vs = merge_colinear(vs, False)
+    found = []
+    for i in range(len(hs)):   # 가로선 두 개 = 판의 위·아래: x 범위가 70% 이상 겹치고 간격 4~40 단위
+        for j in range(i + 1, len(hs)):
+            (ya, xa0, xa1), (yb, xb0, xb1) = hs[i], hs[j]
+            gap = abs(yb - ya) / K
+            ov = min(xa1, xb1) - max(xa0, xb0)
+            if not (4.0 <= gap <= 40.0) or ov < 0.7 * min(xa1 - xa0, xb1 - xb0):
+                continue
+            x0, x1 = max(xa0, xb0), min(xa1, xb1)
+            if any(min(ya, yb) + 1.5 * K < y < max(ya, yb) - 1.5 * K and min(x1, e) - max(x0, a) > 0.5 * (x1 - x0) for (y, a, e) in hs):
+                continue   # 두 선 사이에 다른 긴 가로선이 끼어 있으면 이웃이 아니다
+            found.append([x0 / K, min(ya, yb) / K, x1 / K, max(ya, yb) / K])
+    for i in range(len(vs)):
+        for j in range(i + 1, len(vs)):
+            (xa, ya0, ya1), (xb, yb0, yb1) = vs[i], vs[j]
+            gap = abs(xb - xa) / K
+            ov = min(ya1, yb1) - max(ya0, yb0)
+            if not (4.0 <= gap <= 40.0) or ov < 0.7 * min(ya1 - ya0, yb1 - yb0):
+                continue
+            y0, y1 = max(ya0, yb0), min(ya1, yb1)
+            if any(min(xa, xb) + 1.5 * K < x < max(xa, xb) - 1.5 * K and min(y1, e) - max(y0, a) > 0.5 * (y1 - y0) for (x, a, e) in vs):
+                continue
+            found.append([min(xa, xb) / K, y0 / K, max(xa, xb) / K, y1 / K])
+    out = []
+    for r in sorted(found, key=lambda r: -(r[2] - r[0]) * (r[3] - r[1])):   # 큰 것부터: 안쪽 칸막이 선으로 만들어진 작은 직사각형은 큰 판에 포함되어 버려진다
+        area = (r[2] - r[0]) * (r[3] - r[1])
+        if area < 40:
+            continue
+        if any(_iou(r, e) >= 0.4 or (min(r[2], e[2]) - max(r[0], e[0])) * (min(r[3], e[3]) - max(r[1], e[1])) >= 0.6 * area for e in existing_cover):
+            continue   # 기존 판·코어와 많이 겹치면 새 판이 아니다
+        if any(_iou(r, o) >= 0.4 or (min(r[2], o[2]) - max(r[0], o[0])) * (min(r[3], o[3]) - max(r[1], o[1])) >= 0.6 * area for o in out):
+            continue
+        out.append([round(v, 1) for v in r])
+    return out[:2]
+
+
 def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True, flow_hint=None):
     """blocks=[{id,rect,hatched}], arrows=[{id,pts:[꼬리,화살촉]}] → {blocks:{id:rect}, arrows:{id:[꼬리,화살촉]}, notes:[...]}"""
     a = _load(png_bytes)
@@ -891,10 +996,22 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True, flow_hint=None):
             if cov < 0.4:
                 out_arrows[it["id"]] = None
                 notes.append(f"{it['id']}: 선 주변에 빨간 잉크가 거의 없어 제외 ({cov:.2f})")
+    # ②-2 AI 가 놓친 판: 이미 아는 구조를 뺀 잉크에서 길게 평행한 선 한 쌍으로 이루어진 직사각형을 찾는다
+    new_slabs = []
+    try:
+        _sl = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
+        _co = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
+        if reconcile:
+            new_slabs = _detect_missed_slabs(body, dm, K, _sl, _co, _sl + _co)
+            if new_slabs:
+                notes.append(f"AI 가 놓친 판 {len(new_slabs)}개를 잉크의 긴 평행선에서 찾아 추가")
+    except Exception as e:
+        notes.append(f"놓친 판 검출 건너뜀: {e}")
+
     # ③-2 물결선(바람 표시)을 먼저 찾는다: 판·코어 윤곽과 코어 안쪽을 지우고 남은 구불구불한 선을 잇는다
     flows = []
     try:
-        slab_r = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
+        slab_r = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)] + [list(r) for r in new_slabs]
         core_r = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
         # flow_hint: AI 가 읽은 흐름선(물결) 개수. 0 이면 물결선이 없는 그림이므로 찾지 않고, n>0 이면 휨이 뚜렷한 순으로 n+1 개까지만 쓴다(오검출 억제). None 이면 제한 없음(시험용)
         if flow_hint is None or flow_hint > 0:
@@ -906,7 +1023,7 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True, flow_hint=None):
     # ③-3 칸막이: 판 안쪽 선 잉크에서 직접 찾는다. 물결선의 평평한 구간을 칸막이로 오인하지 않도록 물결선과 겹치는 것은 뺀다
     partitions = []
     try:
-        slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)]
+        slab_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if not is_core(b)] + [list(r) for r in new_slabs]
         core_rects = [out_blocks.get(b["id"], b["rect"]) for b in blocks if is_core(b)] + [list(r) for r in new_cores]
         partitions = _detect_partitions(body, dm, slab_rects, core_rects, K)
         if flows:
@@ -940,4 +1057,4 @@ def refine(png_bytes, blocks, arrows, arcs=(), reconcile=True, flow_hint=None):
             notes.append(f"빨간 잉크에서 AI 가 놓친 호 {len(extra_arcs)}개 추가")
     except Exception as e:  # 보너스 기능이므로 실패해도 나머지 결과는 돌려준다
         notes.append(f"추가 검출 건너뜀: {e}")
-    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "flows": flows, "reclass": reclass, "new_cores": new_cores, "notes": notes}
+    return {"blocks": out_blocks, "arrows": out_arrows, "extra_arrows": extra_arrows, "extra_arcs": extra_arcs, "partitions": partitions, "flows": flows, "reclass": reclass, "new_cores": new_cores, "new_slabs": new_slabs, "notes": notes}

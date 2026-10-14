@@ -29,6 +29,7 @@ def apply(read, res):
     rc = res.get('reclass', {})
     blocks = [dict(b, rect=res['blocks'].get(b['id'], b['rect']), hatched=rc.get(b['id'], b['hatched'])) for b in read['blocks']]
     blocks += [{'id': f'bx{i}', 'hatched': True, 'rect': r} for i, r in enumerate(res.get('new_cores', []))]
+    blocks += [{'id': f'bs{i}', 'hatched': False, 'rect': r} for i, r in enumerate(res.get('new_slabs', []))]
     lines = []
     for l in read['lines']:
         if l['kind'] == 'partition':
