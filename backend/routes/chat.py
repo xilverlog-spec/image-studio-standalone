@@ -31,10 +31,31 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = 3000
     temperature: float = 0.3
     project: Optional[str] = None   # 프론트의 apiFetch 가 현재 프로젝트를 자동으로 실어 보낸다
+    paid: bool = False              # True 면 유료 '정밀 읽기'(결제 연결된 Gemini 키 + 읽기용 모델). model 은 무시한다
+
+
+@router.get("/paid/vision-status")
+async def paid_vision_status():
+    """유료 정밀 읽기 사용 가능 여부(키는 노출하지 않는다)."""
+    from services import paid_vision
+    return paid_vision.status()
 
 
 @router.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
+    if request.paid:
+        if request.project:
+            from services import project_store
+            if not project_store.get_external_allowed(request.project):
+                raise HTTPException(status_code=403, detail="이 프로젝트는 외부 서버 전송이 금지되어 있어 유료 정밀 읽기(구글 서버)를 쓸 수 없습니다.")
+        from services import paid_vision
+        if not paid_vision.status()["available"]:
+            raise HTTPException(status_code=400, detail="유료 정밀 읽기가 설정되어 있지 않습니다.")
+        try:
+            content = paid_vision.chat([m.model_dump(exclude_none=True) for m in request.messages], request.max_tokens, request.temperature)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"유료 정밀 읽기 실패: {e}")
+        return {"id": "chatcmpl-paid", "choices": [{"index": 0, "message": {"role": "assistant", "content": content}}]}
     if request.model.lower().startswith("gemini") and request.project:
         from services import project_store
         if not project_store.get_external_allowed(request.project):

@@ -55,25 +55,34 @@ def estimate_cost(provider: str, n_images: int = 1) -> float:
     return round(p["cost"]() * max(1, n_images), 4) if p else 0.0
 
 
-def check_budget(provider: str) -> None:
-    """한도를 넘기게 되면 RuntimeError. 한도 0 이하면 검사하지 않는다."""
+def check_budget_amount(usd: float, what: str = "이미지") -> None:
+    """usd 를 더 쓰면 하루 한도를 넘게 되는 경우 RuntimeError. 한도 0 이하면 검사하지 않는다."""
     if PAID_DAILY_LIMIT_USD <= 0:
         return
     u = usage_today()
-    if u["usd"] + estimate_cost(provider) > PAID_DAILY_LIMIT_USD:
-        raise RuntimeError(f"오늘 유료 이미지 사용 한도(${PAID_DAILY_LIMIT_USD:g})에 도달했습니다 (현재 약 ${u['usd']:.2f}). 내일 다시 쓰거나 관리자가 한도를 올려야 합니다.")
+    if u["usd"] + usd > PAID_DAILY_LIMIT_USD:
+        raise RuntimeError(f"오늘 유료 {what} 사용 한도(${PAID_DAILY_LIMIT_USD:g})에 도달했습니다 (현재 약 ${u['usd']:.2f}). 내일 다시 쓰거나 관리자가 한도를 올려야 합니다.")
 
 
-def _record_usage(provider: str) -> None:
+def check_budget(provider: str) -> None:
+    """한도를 넘기게 되면 RuntimeError. 한도 0 이하면 검사하지 않는다."""
+    check_budget_amount(estimate_cost(provider))
+
+
+def record_usage_amount(usd: float) -> None:
     with _USAGE_LOCK:
         data = _read_usage()
         day = data.setdefault(_today(), {"usd": 0.0, "count": 0})
-        day["usd"] = float(day.get("usd", 0.0)) + estimate_cost(provider)
+        day["usd"] = float(day.get("usd", 0.0)) + usd
         day["count"] = int(day.get("count", 0)) + 1
         for k in [k for k in data if k < time.strftime("%Y-%m-%d", time.localtime(time.time() - 40 * 86400))]:
             data.pop(k, None)   # 40일 지난 기록은 정리
         with open(_USAGE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+
+
+def _record_usage(provider: str) -> None:
+    record_usage_amount(estimate_cost(provider))
 
 
 def provider_status() -> list:

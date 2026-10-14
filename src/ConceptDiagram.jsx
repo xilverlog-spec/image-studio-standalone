@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
@@ -157,6 +157,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [subjectKind, setSubjectKind] = useState('auto');
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
   const [reading, setReading] = useState(false);
+  // 유료 '정밀 읽기' 사용 가능 여부(서버 .env 에 결제 연결된 키·모델이 있을 때만 버튼이 나타난다)
+  const [paidVision, setPaidVision] = useState({ available: false });
+  useEffect(() => { let off = false; apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (!off && j) setPaidVision(j); }).catch(() => {}); return () => { off = true; }; }, []);
   const [readOrig, setReadOrig] = useState(null); // AI 가 처음 읽은 값(편집 되돌리기용)
   const [selBox, setSelBox] = useState(0);
   const subjectFileRef = useRef(null);
@@ -192,12 +195,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
 
   const toB64 = (img) => img.split(',').pop();
-  const callAI = async (content, images = []) => {
+  const callAI = async (content, images = [], opts = {}) => {
     const res = await apiFetch('/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model, max_tokens: 16000, temperature: 0.35,
+        model, max_tokens: 16000, temperature: 0.35, ...(opts.paid ? { paid: true } : {}),
         messages: [{ role: 'user', content, ...(images.length ? { images: images.map(toB64) } : {}) }],
       }),
     });
@@ -210,29 +213,36 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const readImage = async (opts) => {
     if (!subjectImage || reading) return null;
     const fresh = !!(opts && opts.fresh === true); // '다시 읽기' 버튼은 저장된 결과를 쓰지 않고 새로 읽는다
+    const paid = !!(opts && opts.paid === true);   // '정밀 읽기(유료)': 상위 모델로 한 번만 읽는다(무료로 몰래 대체하지 않는다)
     setReading(true);
     try {
       const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
-        const cacheKey = hashStr(subjectImage); const cached = fresh ? null : skCacheGet(cacheKey);
+        const cacheKey = hashStr(subjectImage); const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
         if (cached) { setRead(cached); setReadOrig(cached); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.'); return cached; }
         const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
         // 같은 스케치를 3번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 2개를 확보한다. (무료 Gemini 한도를 아끼려고 3회로 제한)
         let skErr = null;
         const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; return null; } };
-        let reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
-        for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+        let reads;
+        if (paid) { // 유료 정밀 읽기: 상위 모델 한 번(실패하면 사유를 그대로 보여 주고 무료로 대체하지 않는다). 잉크 보정은 그대로 한다
+          reads = [normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded], { paid: true }), dims)];
+        } else {
+          reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
+          for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+        }
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
         try { // AI 가 눈대중으로 준 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(실패하면 AI 값 그대로)
           const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })) }) });
           if (rr.ok) sk = applySketchRefine(sk, await rr.json());
         } catch { /* 보정 없이 사용 */ }
-        skCachePut(cacheKey, sk);
+        skCachePut(paid ? `${cacheKey}:paid` : cacheKey, sk);
         setRead(sk); setReadOrig(sk); setSelBox(0);
         setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
-        addToast?.('success', '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);
+        addToast?.('success', paid ? '정밀 읽기(유료)로 읽었습니다' : '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);
+        if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); // 오늘 사용액 갱신
         return sk;
       }
       let r = null; let lastErr = null;
@@ -421,6 +431,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>
                     {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
+                  {subjectKind === 'sketch' && paidVision.available && (
+                    <button style={{ ...btn(false, reading || busy), marginTop: 6 }} disabled={reading || busy}
+                      title={`상위 모델(${paidVision.model})로 한 번 읽습니다. 유료이며 누를 때만 호출됩니다.`}
+                      onClick={() => { if (window.confirm(`유료 정밀 읽기를 1회 실행합니다.
+예상 비용 약 $${paidVision.est_cost_usd} (오늘 사용 약 $${paidVision.usage_today?.usd ?? 0})
+계속할까요?`)) readImage({ fresh: true, paid: true }); }}>
+                      🔎 정밀 읽기 (유료 · 약 ${paidVision.est_cost_usd})
+                    </button>
+                  )}
                   {read && (
                     <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
                       <b>{SUBJECT_KINDS[read.kind]}</b>로 읽었습니다.{read.summary ? ` ${read.summary}` : ''}<br />

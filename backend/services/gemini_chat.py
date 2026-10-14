@@ -68,8 +68,9 @@ def gemini_chat_completion(model: str, messages: list, max_tokens: int = 3000, t
     raise last
 
 
-def _gemini_chat_once(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3) -> str:
-    if not GEMINI_API_KEY:
+def _gemini_chat_once(model: str, messages: list, max_tokens: int = 3000, temperature: float = 0.3, api_key: str | None = None) -> str:
+    key = api_key or GEMINI_API_KEY
+    if not key:
         raise RuntimeError("GEMINI_API_KEY가 설정되어 있지 않습니다 (backend/.env).")
 
     contents, system_text = _to_gemini_contents(messages)
@@ -80,7 +81,7 @@ def _gemini_chat_once(model: str, messages: list, max_tokens: int = 3000, temper
     if system_text:
         body["system_instruction"] = {"parts": [{"text": system_text}]}
 
-    url = f"{GEMINI_API_URL}/{model}:generateContent?key={GEMINI_API_KEY}"
+    url = f"{GEMINI_API_URL}/{model}:generateContent?key={key}"
     payload = json.dumps(body).encode("utf-8")
 
     last_err = None

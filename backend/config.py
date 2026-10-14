@@ -30,3 +30,10 @@ OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 PAID_COST_OPENAI_USD = float(os.getenv("PAID_COST_OPENAI_USD", "0.07"))
 PAID_COST_GEMINI_USD = float(os.getenv("PAID_COST_GEMINI_USD", "0.13"))
 PAID_DAILY_LIMIT_USD = float(os.getenv("PAID_DAILY_LIMIT_USD", "10"))
+
+# 2026-10-14: 손스케치 '정밀 읽기'(유료 비전 모델). 결제가 연결된 Gemini 키(GEMINI_PAID_API_KEY, 없으면 위 GEMINI_IMAGE_API_KEY 를 같이 쓴다)와
+# 읽기용 모델 ID(GEMINI_PAID_VISION_MODEL)가 둘 다 있어야 화면에 '정밀 읽기' 버튼이 나타난다. 모델 ID 는 공급자가 자주 바꾸므로 코드에 박지 않고
+# .env 로 지정한다(예: Pro 급 모델 ID). 호출 한 번의 예상 비용(USD)은 대략치이며 실제 청구액과 다를 수 있다 — 하루 한도(PAID_DAILY_LIMIT_USD)에 합산된다.
+GEMINI_PAID_API_KEY = os.getenv("GEMINI_PAID_API_KEY", "") or GEMINI_IMAGE_API_KEY
+GEMINI_PAID_VISION_MODEL = os.getenv("GEMINI_PAID_VISION_MODEL", "")
+PAID_COST_VISION_USD = float(os.getenv("PAID_COST_VISION_USD", "0.03"))
