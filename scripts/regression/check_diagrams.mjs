@@ -11,7 +11,7 @@ const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd } from ${fwd(sketch)};`);
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -195,6 +195,33 @@ run('개념도 스타일: 크림 배경·회색 코어·주황 점선, 이름이
 run('한 점뿐인 바람(길이 0)도 그려진다', () => m.renderSketch({ ...sp, winds: [{ id: 'z', pts: [[10, 10], [10, 10]], form: 'ribbon', shape: 's', head: 'both' }] }));
 if (!/data-eid=/.test(m.renderSketch(sp, { interactive: true }).svg)) fails.push('편집용 SVG 에 data-eid 가 없음');
 if (/data-eid=|class="hit"/.test(m.renderSketch(sp).svg)) fails.push('저장용 SVG 에 편집용 속성이 섞임');
+
+// 자유 해석(입체·수채 등 평면 도면이 아닌 그림): AI 가 준 요소·움직임이 편집 가능한 spec 으로 바뀌고, 이상한 값이 와도 그려진다
+const ffRaw = { summary: '경첩으로 회전하는 판', title: 'HINGED SPACE', subtitle: '가변형 공간', elements: [{ id: 'e1', role: 'fixed', label: '중앙벽', box: [200, 100, 700, 900] }, { id: 'e2', role: 'movable', label: '좌측판', box: [250, 120, 500, 300] }, { id: 'e3', role: 'movable', label: '', box: [300, 500, 300, 520] }, { id: 'bad', box: [1, 2] }],
+  motions: [{ id: 'm1', type: 'rotate', from: [250, 300], to: [500, 300], bulge: [370, 380], label: '회전' }, { id: 'm2', type: 'slide', from: [100, 100], to: [100, 300] }, { id: 'm3', type: 'flow', from: [900, 100], to: [900, 500] }, { id: 'm4', type: 'rotate', from: [10, 10], to: [10, 10] }, { type: 'x' }],
+  texts: [{ text: 'HINGED SPACE !', point: [950, 500] }, { text: '7/15/15 S. Holl', point: [950, 800] }] };
+run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름·제목 중복 글자 제거)', () => {
+  const rd = m.normalizeFreeformRead(ffRaw, [1200, 870]);
+  if (rd.elements.length !== 3) throw new Error(`요소 수 ${rd.elements.length} (상자가 없는 항목은 버려야 함)`);
+  if (rd.motions.length !== 3) throw new Error(`움직임 수 ${rd.motions.length} (길이 0·종류 없는 항목은 버려야 함)`);
+  const sp2 = m.makeFreeformSpec(rd);
+  if (sp2.blocks.length !== 3 || sp2.winds.length !== 3) throw new Error('도형·화살표 수가 읽은 값과 다름');
+  if (sp2.blocks.filter((b) => b.fill === '#F2C94C').length !== 2 || sp2.blocks[0].fill !== '#D9D5CE') throw new Error('고정은 회색·가변은 노랑이어야 함');
+  const w = sp2.winds[0]; if (w.shape !== 'arc' || w.dash !== 'dashed' || !(Math.abs(w.amp) >= 0.15)) throw new Error('회전은 점선 호여야 함');
+  if (sp2.memos.length !== 1 || sp2.memos[0].text !== '7/15/15 S. Holl') throw new Error('제목과 같은 글자 메모는 빼야 함');
+  const thin = sp2.blocks[2].rect; if (thin[2] - thin[0] < 1.5) throw new Error('얇은 요소는 최소 두께로 키워야 함');
+  const mirrored = m.makeFreeformSpec(m.normalizeFreeformRead({ ...ffRaw, motions: [{ type: 'rotate', from: [250, 300], to: [500, 300], bulge: [370, 220] }] }, null)).winds[0].amp;
+  if (!(mirrored * w.amp < 0)) throw new Error('호가 불룩한 쪽(bulge)에 따라 휨 방향이 바뀌어야 함');
+  return m.renderSketch(m.sketchUpdate(sp2, 'b2', { fill: '#F2C94C' }), { interactive: true, selected: 'b2' });
+});
+{
+  let t2 = false; try { m.normalizeFreeformRead({ elements: [] }, null); } catch { t2 = true; }
+  if (!t2) fails.push('요소가 없는 자유 해석은 오류여야 함');
+  const pr = m.buildFreeformPrompt('가변형 공간이 많다는 다이어그램');
+  if (!pr.includes('가변형 공간이 많다는 다이어그램') || !pr.includes('"elements"') || !pr.includes('"motions"')) fails.push('자유 해석 프롬프트에 설명·스키마가 없음');
+  if (!m.buildSketchReadPrompt().includes('"view"')) fails.push('손스케치 읽기에 그림 종류(view) 판별이 없음');
+  if (m.normalizeSketchRead({ blocks: [{ box_2d: [0, 0, 500, 500] }], view: '3d' }, null).view !== '3d' || m.normalizeSketchRead({ blocks: [{ box_2d: [0, 0, 500, 500] }] }, null).view !== 'plan') fails.push('view 값을 읽지 못함(없으면 plan)');
+}
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');
 console.log(`다이어그램 렌더 점검 ${ok}개 통과`);

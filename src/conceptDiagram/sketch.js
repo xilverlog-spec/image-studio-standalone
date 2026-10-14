@@ -42,7 +42,8 @@ export function buildSketchReadPrompt() {
  "arcs": [ {"id":"c1", "points":[[y,x],...3~6개], "color":"..."} ],
  "partitions": [ {"from":[y,x], "to":[y,x]} ],
  "texts": [ {"text":"손글씨 그대로", "point":[y,x], "color":"..."} ],
- "edges": [ {"from":[y,x], "to":[y,x], "color":"...", "note":"한 줄"} ]
+ "edges": [ {"from":[y,x], "to":[y,x], "color":"...", "note":"한 줄"} ],
+ "view": "plan" | "3d"
 }
 규칙:
 - blocks: 닫힌 도형 하나당 바깥 윤곽 전체를 감싸는 상자 하나. 도형 안쪽을 가르는 가는 선으로 생긴 칸은 따로 적지 않는다(그 선은 partitions). 안을 빗금으로 칠한 도형은 hatched true. 기울어진 도형도 가장 바깥을 감싸는 상자로 적는다. 서로 겹쳐 그려진 도형은 각각 적는다.
@@ -51,7 +52,8 @@ export function buildSketchReadPrompt() {
 - partitions: 도형 안쪽을 나누는 가는 직선. texts: 손으로 쓴 글자·단어·숫자를 보이는 그대로(같은 글자가 여러 곳이면 각각), point 는 글자의 중심.
 - open_sides: 그 도형의 변 중에서 **빨간 빗금·눈금·톱니 표시가 변을 따라 붙어 있는 변**(열린 면·개구부 표시)을 위(top)·아래(bottom)·왼쪽(left)·오른쪽(right)으로 적는다. 변의 일부에만 붙어 있어도 그 변을 적는다. 표시가 없으면 빈 배열.
 - edges: (open_sides 로 담기 어려운 짧은 표시만) 벽이나 도형의 변을 따라 붙여 그린 짧은 빗금·눈금·톱니 표시(열린 면·개구부 표시)가 이어진 구간의 양 끝(꺾이면 구간을 나눠 적는다). 도형 안을 채운 빗금은 edges 가 아니다.
-- 펜 색을 color 로 구분한다(빨간 펜은 대개 건물이 아닌 방향·개방 같은 주석). 이름을 짓지 않는다. 그려진 것만 적는다.`;
+- 펜 색을 color 로 구분한다(빨간 펜은 대개 건물이 아닌 방향·개방 같은 주석). 이름을 짓지 않는다. 그려진 것만 적는다.
+- view: 위에서 본 평면·단면·도식처럼 납작한 선 그림이면 "plan". 건물을 비스듬히 보여 주는 입체(원근·축측) 그림이거나, 수채·음영·질감이 칠해져 선 그림이 아니면 "3d".`;
 }
 
 const SNAP_TOL = 3.2;
@@ -116,7 +118,83 @@ export function normalizeSketchRead(parsed, dims) {
     const pts = Array.isArray(e?.from) && Array.isArray(e?.to) ? [yx(e.from), yx(e.to)] : (Array.isArray(e?.pts) ? e.pts.map(fix) : []);
     return pts.length >= 2 ? { id: `e${i + 1}`, pts, color: penOf(e.color), note: String(e.note ?? '') } : null;
   }).filter(Boolean);
-  return { kind: 'sketch', summary: String(parsed.summary ?? ''), blocks, lines, texts, edges };
+  return { kind: 'sketch', view: parsed.view === '3d' ? '3d' : 'plan', summary: String(parsed.summary ?? ''), blocks, lines, texts, edges };
+}
+
+// ── 1-2) 자유 해석: 평면 도면이 아닌 그림(입체·수채·사진 등)은 틀에 맞추지 않고 '무엇을 말하는 그림인지' 이해해서 개념 다이어그램의 요소로 옮긴다 ──
+// AI 는 요소(고정/가변)와 움직임(회전·이동·흐름)을 빠짐없이 나열만 하고, 그리기는 코드가 한다(편집기에서 그대로 끌어 고칠 수 있다).
+export const FF_COLORS = { fixed: '#D9D5CE', movable: '#F2C94C', motion: '#E8832A', flow: '#1E88C8' };
+export function buildFreeformPrompt(userText) {
+  return `당신은 건축 설계사무소의 다이어그램 디자이너다. 첨부 이미지는 건축가의 스케치(입체·투시·수채·손그림·사진 등 무엇이든 가능)이고, 설명은 건축가의 의도다. 스케치의 '설계 개념'이 한눈에 보이는 단순한 평면 개념 다이어그램을 만들기 위해, 그 요소를 JSON 으로만 출력한다(설명/코드펜스 금지).
+[설명] ${userText || '(없음 — 스케치에서 읽히는 핵심 개념을 스스로 정한다)'}
+
+모든 위치는 이미지 전체를 0~1000 으로 정규화한 좌표다. 점은 [y, x], 상자는 [ymin, xmin, ymax, xmax] 순서다(왼쪽 위가 [0,0]).
+스키마:
+{
+ "summary": "이 스케치가 무엇을 그린 것인지와 핵심 개념 2~3가지(한국어 2~4문장)",
+ "title": "제목(스케치에 제목 글자가 있으면 그대로, 없으면 20자 이내)",
+ "subtitle": "부제(30자 이내, 없으면 빈 문자열)",
+ "elements": [ {"id":"e1", "role":"fixed|movable", "label":"짧은 이름(8자 이내, 한국어)", "box":[ymin,xmin,ymax,xmax]} ],
+ "motions": [ {"id":"m1", "type":"rotate|slide|flow", "from":[y,x], "to":[y,x], "bulge":[y,x], "label":"6자 이내 또는 빈 문자열"} ],
+ "texts": [ {"text":"스케치에 쓰인 글자 그대로(제목 제외)", "point":[y,x]} ]
+}
+규칙:
+- elements: 스케치에서 구분되는 요소(벽·판·틀·구멍·색칠된 면·가구 등)를 **하나도 빠뜨리지 않고** 각각 적는다(최대 16개). 입체 그림이어도 위에서 내려다본 단순한 직사각형 하나로 옮기고, 이미지 안에서 그 요소가 있는 자리를 box 로 쓴다(서로 겹쳐 쓰지 않는다). 긴 벽은 길쭉한 직사각형으로 쓴다.
+- role: 구조·벽·바닥·틀처럼 고정된 것은 fixed. 움직이거나 열리거나 바뀌는 것, 또는 설명이 강조하는 것(예: 가변형 공간이면 움직이는 판)은 movable. 설명이 강조하는 개념이 다이어그램에서 가장 눈에 띄어야 한다.
+- motions: 스케치에 화살표·점선으로 그려진 움직임을 하나도 빠뜨리지 않는다. rotate = 회전·열림·접힘(경첩을 도는 호): from = 움직이는 요소의 시작 쪽 끝, to = 도착 쪽 끝, bulge = 호가 지나가는 가운데 점. slide = 직선 이동(from→to). flow = 바람·사람·시선의 흐름(from→to). bulge 는 rotate 에서만 쓴다(없으면 생략).
+- 스케치에 없는 요소·움직임을 지어내지 않는다. 확실하지 않으면 적지 않는다.
+- 모든 글자는 한국어(스케치에 쓰인 글자는 그대로).`;
+}
+
+export function normalizeFreeformRead(parsed, dims) {
+  if (!parsed || typeof parsed !== 'object') throw new Error('스케치를 읽은 결과가 비어 있습니다.');
+  const long = dims ? Math.max(dims[0], dims[1]) : 1; const sx = dims ? dims[0] / long : 1; const sy = dims ? dims[1] / long : 1;
+  const yx = (p) => [num(p?.[1], 0, 0, 1000) / 10 * sx, num(p?.[0], 0, 0, 1000) / 10 * sy];
+  const okPt = (p) => Array.isArray(p) && p.length === 2 && p.every((v) => Number.isFinite(Number(v)));
+  const MIN = 1.6;
+  const elements = (Array.isArray(parsed.elements) ? parsed.elements : []).slice(0, 16).map((e, i) => {
+    if (!Array.isArray(e?.box) || e.box.length !== 4) return null;
+    const [y0, x0, y1, x1] = e.box.map((v) => num(v, 0, 0, 1000));
+    const r = [Math.min(x0, x1) / 10 * sx, Math.min(y0, y1) / 10 * sy, Math.max(x0, x1) / 10 * sx, Math.max(y0, y1) / 10 * sy];
+    if (r[2] - r[0] < MIN) { const c = (r[0] + r[2]) / 2; r[0] = c - MIN / 2; r[2] = c + MIN / 2; }
+    if (r[3] - r[1] < MIN) { const c = (r[1] + r[3]) / 2; r[1] = c - MIN / 2; r[3] = c + MIN / 2; }
+    return { id: `e${i + 1}`, role: e.role === 'movable' ? 'movable' : 'fixed', label: String(e.label ?? '').trim().slice(0, 12), rect: r };
+  }).filter(Boolean);
+  if (!elements.length) throw new Error('스케치에서 요소를 찾지 못했습니다.');
+  const motions = (Array.isArray(parsed.motions) ? parsed.motions : []).slice(0, 16).map((m, i) => {
+    if (!okPt(m?.from) || !okPt(m?.to)) return null;
+    const type = ['rotate', 'slide', 'flow'].includes(m.type) ? m.type : 'slide';
+    const a = yx(m.from); const z = yx(m.to);
+    if (Math.hypot(z[0] - a[0], z[1] - a[1]) < 1.5) return null;
+    return { id: `m${i + 1}`, type, from: a, to: z, bulge: okPt(m.bulge) ? yx(m.bulge) : null, label: String(m.label ?? '').trim().slice(0, 10) };
+  }).filter(Boolean);
+  const texts = (Array.isArray(parsed.texts) ? parsed.texts : []).slice(0, 12).map((t, i) => {
+    const text = String(t?.text ?? '').trim().slice(0, 30); return text && okPt(t?.point) ? { id: `t${i + 1}`, text, pos: yx(t.point) } : null;
+  }).filter(Boolean);
+  return { kind: 'freeform', summary: String(parsed.summary ?? ''), title: String(parsed.title ?? '').slice(0, 40), subtitle: String(parsed.subtitle ?? '').slice(0, 60), elements, motions, texts };
+}
+
+// 읽은 요소 → 편집 가능한 spec(고정은 회색 판, 가변은 노란 판, 회전은 점선 호 화살표, 이동은 직선 화살표, 흐름은 파란 리본)
+export function makeFreeformSpec(read, style = 'concept') {
+  const blocks = read.elements.map((e, i) => ({
+    id: `b${i + 1}`, kind: 'slab', rect: e.rect.map((v) => Math.round(v * 10) / 10), name: e.label, desc: '', fill: FF_COLORS[e.role === 'movable' ? 'movable' : 'fixed'],
+    showName: !!e.label, inset: 6, openSides: [],
+  }));
+  const winds = read.motions.map((m, i) => {
+    const base = { id: `w${i + 1}`, pts: [m.from, m.to], smooth: true, head: 'end', via: null, bend: 1, amp: 0.4, inLabel: '', outLabel: m.label };
+    if (m.type === 'rotate') { // 호가 bulge 점 쪽으로 불룩하도록 휘는 정도(부호 포함)를 정한다
+      const L = Math.hypot(m.to[0] - m.from[0], m.to[1] - m.from[1]) || 1; const nx = -(m.to[1] - m.from[1]) / L; const ny = (m.to[0] - m.from[0]) / L;
+      const amp = m.bulge ? ((m.bulge[0] - m.from[0]) * nx + (m.bulge[1] - m.from[1]) * ny) / (L * 0.25) : 0.8;
+      return { ...base, dash: 'dashed', width: 3.2, color: FF_COLORS.motion, form: 'line', shape: 'arc', amp: Math.max(-1.2, Math.min(1.2, Math.abs(amp) < 0.15 ? 0.8 : amp)) };
+    }
+    if (m.type === 'flow') return { ...base, dash: 'solid', width: 4.5, color: FF_COLORS.flow, form: 'ribbon', shape: 's', bend: 0.65, amp: 0.4 };
+    return { ...base, dash: 'solid', width: 3.4, color: FF_COLORS.motion, form: 'line', shape: 'straight' };
+  });
+  const norm = (s) => String(s).replace(/[\s!！.]/g, '').toLowerCase();
+  const memos = read.texts.filter((t) => norm(t.text) !== norm(read.title)).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 22, color: '#2B2523' }));
+  const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...memos.map((m) => [m.x, m.y])];
+  const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.05; const padY = (y1 - y0) * 0.05;
+  return { title: read.title, subtitle: read.subtitle, style, frame: [x0 - padX, y0 - padY, x1 + padX, y1 + padY], blocks, lines: [], winds, memos, legend: { wind: '움직임', core: '코어(계단·승강기)', opening: '개구부(창)' }, notes: [] };
 }
 
 // 여러 번 읽은 결과 중 서로 가장 일치하는 것을 고른다(가끔 도형 하나를 크게 빗나가게 읽는 이탈값을 피한다)
@@ -573,7 +651,7 @@ export function renderSketch(raw, opts = {}) {
       if (!b.name || !(b.showName ?? b.kind === 'core')) return;
       const [x, y, w, h] = R(b); const len = [...b.name].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0) || 1;
       const fs = Math.max(10, Math.min(22, (w - 10) / len, h - 8));
-      o.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="${b.kind === 'core' ? 600 : 500}" fill="${b.kind === 'core' ? C.text : '#8A8580'}" pointer-events="none">${esc(b.name)}</text>`);
+      o.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${fs.toFixed(1)}" font-weight="${b.kind === 'core' || b.fill ? 600 : 500}" fill="${b.kind === 'core' || b.fill ? C.text : '#8A8580'}" pointer-events="none">${esc(b.name)}</text>`);
     });
   }
   openings.forEach((b) => {

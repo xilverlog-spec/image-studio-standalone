@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec } from './conceptDiagram/sketch';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v1';
@@ -209,6 +209,29 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     return parseJsonLoose(data.choices?.[0]?.message?.content);
   };
 
+  const imgDims = (src) => new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = src; });
+
+  // 자유 해석: 평면 도면이 아닌 그림(입체·수채·사진 등)을 틀 없이 이해해서 요소(고정/가변)와 움직임(회전·이동·흐름)으로 읽는다(AI 호출 1회).
+  // 설명(1번)이 읽을 때 쓰이므로 설명이 바뀌면 새로 읽는다
+  const readFreeform = async ({ fresh = false, paid = false, notice = '' } = {}) => {
+    const ask = askText();
+    const cacheKey = `ff:${hashStr(subjectImage)}:${hashStr(ask)}${paid ? ':paid' : ''}`;
+    let rd = fresh ? null : skCacheGet(cacheKey);
+    if (rd) addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림·같은 설명이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.');
+    else {
+      const dims = await imgDims(subjectImage); let last = null;
+      for (let k = 0; k < 2 && !rd; k++) {
+        try { rd = { ...normalizeFreeformRead(await callAI(buildFreeformPrompt(ask), [subjectImage], paid ? { paid: true } : {}), dims), askedText: ask }; } catch (e) { last = e; if (paid) break; }
+      }
+      if (!rd) throw last || new Error('스케치를 읽지 못했습니다.');
+      skCachePut(cacheKey, rd);
+      addToast?.('success', paid ? '정밀 읽기(유료)로 읽었습니다' : '그림을 해석했습니다', `${notice}${rd.summary || SUBJECT_KINDS.freeform}`);
+    }
+    setRead(rd); setReadOrig(rd); setSelBox(0);
+    setResult({ type: 'sketch', spec: makeFreeformSpec(rd), isReadPreview: true, ver: Date.now() });
+    return rd;
+  };
+
   // 소재 이미지 읽기: 구조로 읽고, 읽은 모습을 바로 보여 준다
   const readImage = async (opts) => {
     if (!subjectImage || reading) return null;
@@ -216,10 +239,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const paid = !!(opts && opts.paid === true);   // '정밀 읽기(유료)': 상위 모델로 한 번만 읽는다(무료로 몰래 대체하지 않는다)
     setReading(true);
     try {
-      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
+      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch' && subjectKind !== 'freeform'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
+      if (subjectKind === 'freeform') { const rd = await readFreeform({ fresh, paid }); if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); return rd; }
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
-        const cacheKey = hashStr(subjectImage); const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
+        const cacheKey = hashStr(subjectImage);
+        const forceSketch = !!(opts && opts.forceSketch === true); // '평면 스케치로 다시 읽기': 입체 그림으로 판단돼 자유 해석으로 읽던 것을 되돌린다
+        if (forceSketch) skCachePut(`${cacheKey}:view3d`, false);
+        else if (skCacheGet(`${cacheKey}:view3d`)) return await readFreeform({ fresh, paid, notice: '입체·채색 그림이라 자유 해석으로 읽었습니다. ' });
+        const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
         if (cached) { setRead(cached); setReadOrig(cached); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.'); return cached; }
         // 사진 정리(백엔드): EXIF 방향·기울어짐을 바로잡고 그림 영역만 잘라 읽기 좋은 크기로 만든다. AI 읽기와 잉크 보정이 같은 정리 이미지를 쓰므로 좌표 변환이 필요 없다. 실패하면 원본 그대로
         let work = subjectImage; let prepInfo = null;
@@ -227,7 +255,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           const pr = await apiFetch('/v1/image/sketch-prepare', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop() }) });
           if (pr.ok) { const pj = await pr.json(); if (pj.image_base64) { work = `data:image/png;base64,${pj.image_base64}`; prepInfo = pj.info || null; } }
         } catch { /* 정리 없이 원본으로 읽는다 */ }
-        const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = work; });
+        const dims = await imgDims(work);
         // 같은 스케치를 3번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 2개를 확보한다. (무료 Gemini 한도를 아끼려고 3회로 제한)
         let skErr = null;
         const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [work]), dims); } catch (e) { skErr = e; return null; } };
@@ -235,8 +263,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         if (paid) { // 유료 정밀 읽기: 상위 모델 한 번(실패하면 사유를 그대로 보여 주고 무료로 대체하지 않는다). 잉크 보정은 그대로 한다
           reads = [normalizeSketchRead(await callAI(buildSketchReadPrompt(), [work], { paid: true }), dims)];
         } else {
-          reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
-          for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+          // 첫 읽기 하나로 그림의 종류(평면 도면 / 입체·채색 그림)를 먼저 확인한다. 입체·채색 그림이면 나머지 읽기를 하지 않고 자유 해석으로 넘어간다(한도 절약)
+          let first = null;
+          for (let k = 0; k < 3 && !first; k++) first = await one();
+          if (!first) throw skErr || new Error('스케치를 읽지 못했습니다.');
+          reads = [first];
+          if (first.view !== '3d') {
+            reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+            for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+          }
+        }
+        if (reads.filter((r) => r.view === '3d').length * 2 > reads.length) { // 입체·채색 그림: 평면 도면용 읽기는 맞지 않는다
+          skCachePut(`${cacheKey}:view3d`, true);
+          return await readFreeform({ fresh, paid, notice: '입체·채색 그림이라 자유 해석으로 읽었습니다. ' });
         }
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
@@ -293,6 +332,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
+    if (read.kind === 'freeform') { // 읽을 때 이미 설명을 반영했으므로 그대로 그린다(설명을 바꿨으면 새 설명으로 다시 읽는다)
+      const rd = read.askedText === askText() ? read : await readFreeform({ fresh: true });
+      return { type: 'sketch', spec: makeFreeformSpec(rd), ver: Date.now() };
+    }
     if (read.kind === 'sketch') {
       let ann;
       try { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); }
@@ -433,11 +476,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <option value="auto">이미지 종류: 자동 판단</option>
                     {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
+                  {subjectKind === 'freeform' && <p style={slotNote}>평면 도면이 아닌 그림(입체·투시·수채·사진 등)용입니다. 틀에 맞추지 않고 그림이 말하는 개념을 이해해서, 고정 요소(회색)와 움직이거나 강조된 요소(노랑), 회전·이동·흐름 화살표로 단순하게 다시 그립니다. 설명(1번)이 읽을 때 쓰이므로 설명을 바꾸면 새로 읽습니다. 결과는 클릭해서 바로 고칠 수 있습니다.</p>}
                   {subjectKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>
                     {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
-                  {subjectKind === 'sketch' && paidVision.available && (
+                  {(subjectKind === 'sketch' || subjectKind === 'freeform') && paidVision.available && (
                     <button style={{ ...btn(false, reading || busy), marginTop: 6 }} disabled={reading || busy}
                       title={`상위 모델(${paidVision.model})로 한 번 읽습니다. 유료이며 누를 때만 호출됩니다.`}
                       onClick={() => { if (window.confirm(`유료 정밀 읽기를 1회 실행합니다.
@@ -450,6 +494,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
                       <b>{SUBJECT_KINDS[read.kind]}</b>로 읽었습니다.{read.summary ? ` ${read.summary}` : ''}<br />
                       오른쪽 그림이 읽은 모습입니다. 다르면 종류를 바꿔 다시 읽거나, 아래에서 직접 고치세요.
+                      {read.kind === 'freeform' && subjectKind === 'sketch' && (
+                        <><br />입체·채색 그림으로 판단해 자유 해석으로 읽었습니다. <button style={{ ...btn(false, reading || busy), padding: '3px 8px', fontSize: 11.5, marginTop: 4 }} disabled={reading || busy} onClick={() => readImage({ fresh: true, forceSketch: true })}>평면 스케치로 다시 읽기</button></>
+                      )}
                     </p>
                   )}
                   {read && read.kind === 'form' && (

@@ -8,6 +8,7 @@ export const SUBJECT_KINDS = {
   plan: '평면도',
   site: '배치도·대지',
   sketch: '손스케치(펜으로 그린 개념 스케치)',
+  freeform: '자유 해석(입체·수채·사진 등 그 밖의 스케치)',
   other: '그 외(지원 안 함)',
 };
 
