@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapPoint, sketchSnapMove, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -14,6 +14,8 @@ const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, bor
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222'];
 const r1 = (v) => Math.round(v * 10) / 10;
+const GUIDE_COLOR = { edge: '#E0368A', center: '#E0368A', axis: '#2E9E5B', mirror: '#0FA3B1' };
+const GUIDE_LABEL = { center: '가운데', axis: '중심축', mirror: '대칭' };
 // 복사해 둔 요소(같은 페이지 안에서 다른 그림으로도 붙일 수 있게 모듈에 둔다)와 연속 붙여넣기 횟수
 let CLIP = null; let PASTE_N = 0;
 // 선 표현: 선(실선·파선·점선·일점쇄선)과 모양 자체가 다른 표현을 한 목록으로 고른다
@@ -51,6 +53,10 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const canvasRef = useRef(null);
   const drag = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [guides, setGuides] = useState([]);       // 끄는 동안 붙은 안내선(가로·세로)
+  const [showAxis, setShowAxis] = useState(false); // 그림 가운데 중심축을 항상 보여 줄지
+  const [refId, setRefId] = useState('axis');      // 정렬·대칭의 기준(요소 id 또는 'axis' = 그림 가운데)
+  const [axisPick, setAxisPick] = useState('frame'); // 대칭축: 그림 가운데 / 가장 큰 도형 가운데
   const keyRef = useRef(null);
 
   // 글자·숫자를 칠 때 한 글자마다 되돌리기 칸이 생기지 않도록, 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
@@ -68,6 +74,20 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   }, [norm, selected]);
 
   const sel = selected ? sketchFind(norm, selected) : null;
+  const view = useMemo(() => sketchView(norm), [norm]);
+  // 중심축 항상 보기: 그림 틀 가운데의 세로·가로선
+  const axisGuides = showAxis ? (() => { const f = norm.frame; const ax = sketchAxes(norm, ''); return [{ dim: 'x', v: ax.x[0].v, kind: 'axis', lo: f[1] - 2, hi: f[3] + 2 }, { dim: 'y', v: ax.y[0].v, kind: 'axis', lo: f[0] - 2, hi: f[2] + 2 }]; })() : [];
+  // 정렬·대칭 기준: 고른 요소 말고 다른 요소 중에서 고른다. 없어진 요소면 그림 가운데로 돌린다
+  const others = selected ? [...norm.blocks, ...norm.lines, ...norm.winds, ...norm.memos].filter((e) => e.id !== selected) : [];
+  const ref = refId !== 'axis' && others.some((e) => e.id === refId) ? refId : 'axis';
+  const refIsBlock = selected && ref !== 'axis' && sketchKind(norm, ref) === 'block' && sketchKind(norm, selected) === 'block';
+  const axesNow = selected ? sketchAxes(norm, selected) : null;
+  const axisIdx = axisPick === 'big' && axesNow && axesNow.x.length > 1 ? 1 : 0;
+  const elLabel = (e) => `${{ block: e.kind === 'core' ? '코어' : e.kind === 'opening' ? '개구부' : '판', line: '선', wind: '화살표', memo: '글자' }[sketchKind(norm, e.id)] || ''} ${e.id}${e.name ? ` · ${e.name}` : e.text ? ` · ${e.text}` : ''}`;
+  const axisVal = (dir) => { const a = dir === 'h' ? axesNow.x : axesNow.y; return a[Math.min(axisIdx, a.length - 1)].v; };
+  const doAlign = (mode) => commit(sketchAlign(norm, selected, ref, mode));
+  const doMirrorPlace = (dir) => { if (ref !== 'axis') commit(sketchMirrorPlace(norm, selected, ref, axisVal(dir), dir)); };
+  const doMirrorCopy = (dir) => { const r = sketchMirrorCopy(norm, selected, axisVal(dir), dir); if (r.id) { commit(r.spec); setSelected(r.id); } };
   const kind = sel ? sketchKind(norm, selected) : '';
   const set = (patch, key) => commit(sketchUpdate(norm, selected, patch), key ? `${selected}:${key}` : '');
   const remove = () => { commit(sketchDelete(norm, selected)); setSelected(''); };
@@ -96,19 +116,28 @@ export default function SketchEditor({ spec, onChange, disabled }) {
       if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; // 살짝 눌렀다 떼면 선택만
       d.moved = true; past.current = [...past.current.slice(-49), d.orig]; future.current = []; lastKey.current = ''; setDragging(true);
     }
-    const pt = toDiag(e.clientX, e.clientY); if (!pt) return; const snap = !e.altKey; const o = d.orig; const kind0 = sketchKind(o, d.id); let next = o;
+    const pt = toDiag(e.clientX, e.clientY); if (!pt) return; const snap = !e.altKey; const o = d.orig; let next = o; let gd = [];
     if (!d.handle) {
       let dx = pt[0] - d.start[0]; let dy = pt[1] - d.start[1];
-      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // Shift: 수평·수직으로만
-      if (snap && kind0 === 'block') [dx, dy] = sketchSnapMove(o, d.id, dx, dy);
+      let lockX = false; let lockY = false;
+      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) { dy = 0; lockY = true; } else { dx = 0; lockX = true; } } // Shift: 수평·수직으로만
+      const b0 = snap ? sketchBox(o, d.id) : null;
+      if (b0) { const r = sketchSnapGuides(o, d.id, [b0[0] + dx, b0[1] + dy, b0[2] + dx, b0[3] + dy]); if (!lockX) dx += r.dx; if (!lockY) dy += r.dy; gd = r.guides.filter((g) => (g.dim === 'x' ? !lockX : !lockY)); }
       next = sketchMoveBy(o, d.id, dx, dy);
-    } else if (d.handle === 'start' || d.handle === 'end') next = sketchSetEnd(o, d.id, d.handle, snap ? sketchSnapPoint(o, d.id, pt) : pt);
-    else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
+    } else if (d.handle === 'start' || d.handle === 'end') {
+      const pts = sketchFind(o, d.id)?.el?.pts; const ex = pts ? (d.handle === 'start' ? pts[pts.length - 1] : pts[0]) : null; // 반대쪽 끝과 수평·수직으로 맞추기
+      const r = snap ? sketchSnapPointG(o, d.id, pt, 1.4, ex ? [[ex[0], ex[1], ex[0], ex[1]]] : []) : { pt, guides: [] };
+      next = sketchSetEnd(o, d.id, d.handle, r.pt); gd = r.guides;
+    } else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
     else if (d.handle === 'via') next = sketchSetVia(o, d.id, pt);
-    else next = sketchResizeRect(o, d.id, d.handle, ...(snap ? sketchSnapPoint(o, d.id, pt) : pt));
+    else {
+      const r = snap ? sketchSnapPointG(o, d.id, pt) : { pt, guides: [] }; const hx = /[we]/.test(d.handle); const hy = /[ns]/.test(d.handle); // 움직이는 쪽 방향의 안내선만 쓴다
+      next = sketchResizeRect(o, d.id, d.handle, hx ? r.pt[0] : pt[0], hy ? r.pt[1] : pt[1]); gd = r.guides.filter((g) => (g.dim === 'x' ? hx : hy));
+    }
+    setGuides(gd);
     onChange(next); tick((n) => n + 1);
   };
-  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); tick((n) => n + 1); };
+  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); setGuides([]); tick((n) => n + 1); };
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
@@ -147,7 +176,17 @@ export default function SketchEditor({ spec, onChange, disabled }) {
 
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
-      <div style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+      <div style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff', position: 'relative' }}>
+        <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+          {[...axisGuides, ...guides].map((g, i) => {
+            const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
+            const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
+            return (<g key={`${g.dim}${g.kind}${i}`} data-guide={g.kind}>
+              <line x1={a[0]} y1={a[1]} x2={z[0]} y2={z[1]} stroke={col} strokeWidth="1.6" strokeDasharray={g.kind === 'axis' ? '10 5' : '6 4'} />
+              {label && <text x={g.dim === 'x' ? a[0] + 5 : a[0]} y={g.dim === 'x' ? a[1] + 13 : a[1] - 5} fontSize="13" fontWeight="700" fill={col} style={{ fontFamily: 'sans-serif' }}>{label}</text>}
+            </g>);
+          })}
+        </svg>
         <div ref={canvasRef} onPointerDown={onDown} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default' }} />
       </div>
 
@@ -155,6 +194,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={smallBtn(false)} disabled={!past.current.length} onClick={undo} title="Ctrl+Z" data-testid="undo">↶ 되돌리기</button>
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
+          <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 4 }} title="그림 틀 가운데의 세로·가로 중심선을 항상 보여 줍니다"><input type="checkbox" checked={showAxis} onChange={(e) => setShowAxis(e.target.checked)} data-testid="show-axis" />중심축 보기</label>
         </div>
         <div style={sec}>
           <span style={title}>요소 추가</span>
@@ -171,7 +211,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
         {!sel && (
           <div style={sec}>
             <span style={title}>전체</span>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <div style={{ display: 'flex', gap: 6 }}>
               {[['concept', '개념도(주황)'], ['line', '도면용(흑백)']].map(([id, label]) => <button key={id} style={{ ...smallBtn(norm.style === id), flex: 1 }} onClick={() => setGlobal({ style: id })} data-testid={`style-${id}`}>{label}</button>)}
             </div>
@@ -300,6 +340,32 @@ export default function SketchEditor({ spec, onChange, disabled }) {
               </div>
             </>)}
 
+            <div style={{ ...lab, gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="align-panel">
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>정렬·대칭</span>
+              <label style={lab}>기준
+                <select style={input} value={ref} onChange={(e) => setRefId(e.target.value)} data-testid="align-ref">
+                  <option value="axis">그림 가운데(틀)</option>
+                  {others.map((e) => <option key={e.id} value={e.id}>{elLabel(e)}</option>)}
+                </select>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {[['left', '⇤ 왼쪽'], ['hcenter', '⇔ 가운데'], ['right', '⇥ 오른쪽'], ['top', '⤒ 위'], ['vcenter', '↕ 중간'], ['bottom', '⤓ 아래']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => doAlign(k)} data-testid={`align-${k}`}>{t}</button>)}
+              </div>
+              {axesNow && axesNow.x.length > 1 && (
+                <label style={lab}>대칭축
+                  <select style={input} value={axisIdx === 1 ? 'big' : 'frame'} onChange={(e) => setAxisPick(e.target.value)} data-testid="align-axis">
+                    <option value="frame">그림 가운데</option><option value="big">가장 큰 도형 가운데</option>
+                  </select>
+                </label>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                <button style={smallBtn(false)} disabled={ref === 'axis'} onClick={() => doMirrorPlace('h')} title="기준 요소와 좌우 대칭이 되는 위치로 옮깁니다(크기는 그대로)" data-testid="mirror-place-h">↔ 좌우 대칭 위치로</button>
+                <button style={smallBtn(false)} disabled={ref === 'axis'} onClick={() => doMirrorPlace('v')} title="기준 요소와 상하 대칭이 되는 위치로 옮깁니다(크기는 그대로)" data-testid="mirror-place-v">↕ 상하 대칭 위치로</button>
+                <button style={smallBtn(false)} onClick={() => doMirrorCopy('h')} title="선택한 요소를 대칭축 기준으로 좌우 뒤집어 복제합니다" data-testid="mirror-copy-h">⧉ 좌우 대칭 복제</button>
+                <button style={smallBtn(false)} onClick={() => doMirrorCopy('v')} title="선택한 요소를 대칭축 기준으로 상하 뒤집어 복제합니다" data-testid="mirror-copy-v">⧉ 상하 대칭 복제</button>
+              </div>
+              {refIsBlock && <button style={smallBtn(false)} onClick={() => commit(sketchSameSize(norm, selected, ref))} data-testid="same-size">▭ 기준과 같은 크기로</button>}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => setSelected('')}>선택 해제</button>
               <button style={smallBtn(false)} onClick={() => { if (copySel()) pasteClip(3); }} title="Ctrl+D" data-testid="duplicate">복제</button>

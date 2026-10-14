@@ -135,7 +135,7 @@ export function buildFreeformPrompt(userText) {
  "title": "제목(스케치에 제목 글자가 있으면 그대로, 없으면 20자 이내)",
  "subtitle": "부제(30자 이내, 없으면 빈 문자열)",
  "elements": [ {"id":"e1", "role":"fixed|movable", "label":"짧은 이름(8자 이내, 한국어)", "box":[ymin,xmin,ymax,xmax]} ],
- "motions": [ {"id":"m1", "type":"rotate|slide|flow", "from":[y,x], "to":[y,x], "bulge":[y,x], "label":"6자 이내 또는 빈 문자열"} ],
+ "motions": [ {"id":"m1", "type":"rotate|slide|flow", "from":[y,x], "to":[y,x], "bulge":[y,x], "label":"6자 이내 또는 빈 문자열(같은 말을 반복하지 말고, 화살표를 구별해야 할 때만)"} ],
  "texts": [ {"text":"스케치에 쓰인 글자 그대로(제목 제외)", "point":[y,x]} ]
 }
 규칙:
@@ -180,8 +180,9 @@ export function makeFreeformSpec(read, style = 'concept') {
     id: `b${i + 1}`, kind: 'slab', rect: e.rect.map((v) => Math.round(v * 10) / 10), name: e.label, desc: '', fill: FF_COLORS[e.role === 'movable' ? 'movable' : 'fixed'],
     showName: !!e.label, inset: 6, openSides: [],
   }));
-  const winds = read.motions.map((m, i) => {
-    const base = { id: `w${i + 1}`, pts: [m.from, m.to], smooth: true, head: 'end', via: null, bend: 1, amp: 0.4, inLabel: '', outLabel: m.label };
+  const labelCount = {}; read.motions.forEach((m) => { if (m.label) labelCount[m.label] = (labelCount[m.label] || 0) + 1; });
+  const winds = read.motions.map((m, i) => { // 같은 말이 3번 이상 되풀이되면(예: 화살표마다 '회전') 라벨을 모두 빼 화면을 어지럽히지 않는다
+    const base = { id: `w${i + 1}`, pts: [m.from, m.to], smooth: true, head: 'end', via: null, bend: 1, amp: 0.4, inLabel: '', outLabel: labelCount[m.label] >= 3 ? '' : m.label };
     if (m.type === 'rotate') { // 호가 bulge 점 쪽으로 불룩하도록 휘는 정도(부호 포함)를 정한다
       const L = Math.hypot(m.to[0] - m.from[0], m.to[1] - m.from[1]) || 1; const nx = -(m.to[1] - m.from[1]) / L; const ny = (m.to[0] - m.from[0]) / L;
       const amp = m.bulge ? ((m.bulge[0] - m.from[0]) * nx + (m.bulge[1] - m.from[1]) * ny) / (L * 0.25) : 0.8;
@@ -876,6 +877,98 @@ export function sketchSnapMove(spec, id, dx, dy, tol = 1.4) {
   const adj = (vals, cands) => { let best = null; vals.forEach((v) => cands.forEach((c) => { const d = c - v; if (Math.abs(d) <= tol && (best === null || Math.abs(d) < Math.abs(best))) best = d; })); return best; };
   const ax = adj([r[0] + dx, r[2] + dx], e.xs); const ay = adj([r[1] + dy, r[3] + dy], e.ys);
   return [ax === null ? dx : dx + ax, ay === null ? dy : dy + ay];
+}
+
+// ── 정렬·대칭: 끌 때 안내선(가로·세로)에 붙고, 버튼으로 기준에 맞추거나 대칭 위치·대칭 복제를 한다 ──
+// 요소의 영역(다이어그램 좌표 [x0,y0,x1,y1]): 도형은 상자, 선·화살표는 점들의 바깥 상자(세로선이면 x0=x1), 글자는 한 점
+export function sketchBox(spec, id) {
+  const f = sketchFind(spec, id); if (!f) return null; const e = f.el;
+  if (f.list === 'blocks') return [...e.rect];
+  if (f.list === 'memos') return [e.x, e.y, e.x, e.y];
+  return bbox(e.pts);
+}
+const allBoxes = (spec, skip) => LISTS.flatMap((l) => (spec[l] || []).filter((e) => e.id !== skip).map((e) => ({ id: e.id, list: l, box: sketchBox(spec, e.id) }))).filter((o) => o.box);
+const areaOf = (b) => (b[2] - b[0]) * (b[3] - b[1]);
+// 대칭축 후보: 그림 가운데(틀의 가운데)와, 움직이지 않는 가장 큰 도형의 가운데
+export function sketchAxes(spec, skipId) {
+  const [fx0, fy0, fx1, fy1] = spec.frame; const x = [{ v: (fx0 + fx1) / 2, name: '그림 가운데' }]; const y = [{ v: (fy0 + fy1) / 2, name: '그림 가운데' }];
+  const big = allBoxes(spec, skipId).filter((o) => o.list === 'blocks').sort((p, q) => areaOf(q.box) - areaOf(p.box))[0];
+  if (big) { const bx = (big.box[0] + big.box[2]) / 2; const by = (big.box[1] + big.box[3]) / 2; if (Math.abs(bx - x[0].v) > 0.3) x.push({ v: bx, name: '가장 큰 도형 가운데', id: big.id }); if (Math.abs(by - y[0].v) > 0.3) y.push({ v: by, name: '가장 큰 도형 가운데', id: big.id }); }
+  return { x, y };
+}
+// 움직이는 영역 box 가 다른 요소의 변·가운데선, 그림 가운데선, 대칭 위치에 가까우면 그 위치로 붙는다. 돌려주는 값: { dx, dy, guides } (dx,dy 는 더 움직일 양, guides 는 그릴 안내선)
+// extra = 자기 자신의 다른 점(화살표 한쪽 끝을 끌 때 반대쪽 끝) 같은 추가 기준 상자들
+export function sketchSnapGuides(spec, id, box, tol = 1.4, extra = []) {
+  const others = [...allBoxes(spec, id), ...extra.map((b, i) => ({ id: `~${i}`, list: 'self', box: b }))]; const axes = sketchAxes(spec, id);
+  const kindBias = { mirror: 0, axis: 0.02, center: 0.04, edge: 0.06 };
+  const solve = (dim) => {
+    const k = dim === 'x' ? 0 : 1; const lo = box[k]; const hi = box[k + 2]; const mine = [lo, (lo + hi) / 2, hi]; const pointy = hi - lo < 1e-6;
+    const cands = [];
+    axes[dim].forEach((a) => mine.forEach((m, i) => { if (!pointy || i === 1) cands.push({ t: a.v, i, kind: 'axis', src: null }); }));
+    others.forEach((o) => {
+      const ol = o.box[k]; const oh = o.box[k + 2]; const of = [ol, (ol + oh) / 2, oh];
+      mine.forEach((m, i) => { if (pointy && i !== 1) return; cands.push({ t: of[i], i, kind: i === 1 ? 'center' : 'edge', src: o.box }); });
+      if (o.list === 'self') return;
+      axes[dim].forEach((a) => { // 이 축을 기준으로 이 요소와 대칭인 위치
+        if (Math.abs(of[1] - a.v) < 0.3) return;
+        const mr = [2 * a.v - oh, 2 * a.v - of[1], 2 * a.v - ol];
+        mine.forEach((m, i) => { if (!pointy || i === 1) cands.push({ t: mr[i], i, kind: 'mirror', src: o.box, axis: a.v }); });
+      });
+    });
+    let best = null;
+    cands.forEach((c) => { const d = c.t - mine[c.i]; const sc = Math.abs(d) + kindBias[c.kind]; if (Math.abs(d) <= tol && (!best || sc < best.sc)) best = { d, sc }; });
+    if (!best) return { shift: 0, hits: [] };
+    let hits = cands.filter((c) => Math.abs(c.t - mine[c.i] - best.d) < 0.06).map((c) => ({ ...c, v: mine[c.i] + best.d }));
+    hits = hits.filter((h) => h.kind !== 'mirror' || !hits.some((n) => n.kind !== 'mirror' && n.kind !== 'axis' && Math.abs(n.v - h.v) < 0.06)); // 같은 자리에 변·가운데 안내선이 이미 있으면 우연히 겹친 대칭 안내선은 빼서 화면을 덜 어지럽힌다
+    return { shift: best.d, hits };
+  };
+  const sx = solve('x'); const nb = [box[0] + sx.shift, box[1], box[2] + sx.shift, box[3]]; const sy = solve('y');
+  const fb = [nb[0], nb[1] + sy.shift, nb[2], nb[3] + sy.shift];
+  const fr = spec.frame; const guides = [];
+  const pad = 2; const seen = new Set();
+  const push = (dim, v, kind, lo, hi, axis) => { const key = `${dim}:${v.toFixed(2)}:${kind}`; if (seen.has(key)) return; seen.add(key); guides.push({ dim, v, kind, lo: lo - pad, hi: hi + pad, ...(axis !== undefined ? { axis } : {}) }); };
+  const ext = (dim, src) => { const k = dim === 'x' ? 1 : 0; const mn = [fb[k], ...(src ? [src[k]] : [])]; const mx = [fb[k + 2], ...(src ? [src[k + 2]] : [])]; return [Math.min(...mn), Math.max(...mx)]; };
+  [['x', sx], ['y', sy]].forEach(([dim, r]) => r.hits.forEach((h) => {
+    const [lo, hi] = h.kind === 'axis' ? [dim === 'x' ? fr[1] : fr[0], dim === 'x' ? fr[3] : fr[2]] : ext(dim, h.src);
+    push(dim, h.v, h.kind, lo, hi);
+    if (h.kind === 'mirror') push(dim, h.axis, 'axis', dim === 'x' ? fr[1] : fr[0], dim === 'x' ? fr[3] : fr[2]);
+  }));
+  return { dx: sx.shift, dy: sy.shift, guides };
+}
+// 점(끝점·크기 조절점)을 끌 때: 점 하나를 같은 규칙으로 붙인다. 돌려주는 값: { pt, guides }
+export function sketchSnapPointG(spec, id, pt, tol = 1.4, extra = []) {
+  const r = sketchSnapGuides(spec, id, [pt[0], pt[1], pt[0], pt[1]], tol, extra);
+  return { pt: [pt[0] + r.dx, pt[1] + r.dy], guides: r.guides };
+}
+
+// 기준(요소 id 또는 'axis'=그림 틀)에 맞춰 정렬: mode = left|hcenter|right|top|vcenter|bottom
+export function sketchAlign(spec, id, refId, mode) {
+  const b = sketchBox(spec, id); if (!b) return spec;
+  const r = refId === 'axis' || !refId ? [...spec.frame] : sketchBox(spec, refId); if (!r) return spec;
+  const to = { left: [r[0] - b[0], 0], right: [r[2] - b[2], 0], hcenter: [(r[0] + r[2]) / 2 - (b[0] + b[2]) / 2, 0], top: [0, r[1] - b[1]], bottom: [0, r[3] - b[3]], vcenter: [0, (r[1] + r[3]) / 2 - (b[1] + b[3]) / 2] }[mode];
+  return to ? sketchMoveBy(spec, id, to[0], to[1]) : spec;
+}
+// 기준 요소와 대칭인 위치로 옮긴다(축 axisV 를 기준으로, dir 'h' = 좌우·'v' = 상하). 크기는 그대로 두고 가운데만 맞춘다
+export function sketchMirrorPlace(spec, id, refId, axisV, dir = 'h') {
+  const b = sketchBox(spec, id); const r = sketchBox(spec, refId); if (!b || !r) return spec;
+  if (dir === 'h') return sketchMoveBy(spec, id, 2 * axisV - (r[0] + r[2]) / 2 - (b[0] + b[2]) / 2, 0);
+  return sketchMoveBy(spec, id, 0, 2 * axisV - (r[1] + r[3]) / 2 - (b[1] + b[3]) / 2);
+}
+// 대칭 복제: 선택한 요소를 축 axisV 기준으로 뒤집은 새 요소를 만든다(열린 변·화살표 방향·휘는 방향도 함께 뒤집힌다). 돌려주는 값: { spec, id }
+export function sketchMirrorCopy(spec, id, axisV, dir = 'h') {
+  const snap = sketchSnapshot(spec, id); if (!snap) return { spec, id: '' };
+  const m = (v) => 2 * axisV - v; const e = snap.el; const swap = dir === 'h' ? { left: 'right', right: 'left' } : { top: 'bottom', bottom: 'top' };
+  const mp = (p) => (dir === 'h' ? [m(p[0]), p[1]] : [p[0], m(p[1])]);
+  if (snap.list === 'blocks') { e.rect = dir === 'h' ? [m(e.rect[2]), e.rect[1], m(e.rect[0]), e.rect[3]] : [e.rect[0], m(e.rect[3]), e.rect[2], m(e.rect[1])]; e.openSides = (e.openSides || []).map((s) => swap[s] || s); }
+  else if (snap.list === 'memos') { const p = mp([e.x, e.y]); e.x = p[0]; e.y = p[1]; }
+  else { e.pts = e.pts.map(mp); if (e.via) e.via = mp(e.via); if (snap.list === 'winds' && typeof e.amp === 'number') e.amp = -e.amp; }
+  return sketchPaste(spec, snap, 0, 0);
+}
+// 기준 요소와 같은 크기(도형만, 가운데는 유지)
+export function sketchSameSize(spec, id, refId) {
+  const f = sketchFind(spec, id); const r = sketchFind(spec, refId); if (!f || !r || f.list !== 'blocks' || r.list !== 'blocks') return spec;
+  const w = r.el.rect[2] - r.el.rect[0]; const h = r.el.rect[3] - r.el.rect[1]; const cx = (f.el.rect[0] + f.el.rect[2]) / 2; const cy = (f.el.rect[1] + f.el.rect[3]) / 2;
+  return sketchUpdate(spec, id, { rect: [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2] });
 }
 
 export function getSketchTextFields(spec) {

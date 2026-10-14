@@ -11,7 +11,7 @@ const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt } from ${fwd(sketch)};`);
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -209,6 +209,8 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   if (sp2.blocks.filter((b) => b.fill === '#F2C94C').length !== 2 || sp2.blocks[0].fill !== '#D9D5CE') throw new Error('고정은 회색·가변은 노랑이어야 함');
   const w = sp2.winds[0]; if (w.shape !== 'arc' || w.dash !== 'dashed' || !(Math.abs(w.amp) >= 0.15)) throw new Error('회전은 점선 호여야 함');
   if (sp2.memos.length !== 1 || sp2.memos[0].text !== '7/15/15 S. Holl') throw new Error('제목과 같은 글자 메모는 빼야 함');
+  const many = m.makeFreeformSpec(m.normalizeFreeformRead({ ...ffRaw, motions: [1, 2, 3].map(() => ({ type: 'rotate', from: [250, 300], to: [500, 300], label: '회전' })).concat([{ type: 'slide', from: [100, 100], to: [100, 300], label: '이동' }]) }, null));
+  if (many.winds.slice(0, 3).some((w) => w.outLabel) || many.winds[3].outLabel !== '이동') throw new Error('3번 이상 반복되는 라벨은 빼고 한 번뿐인 라벨은 남겨야 함');
   const thin = sp2.blocks[2].rect; if (thin[2] - thin[0] < 1.5) throw new Error('얇은 요소는 최소 두께로 키워야 함');
   const mirrored = m.makeFreeformSpec(m.normalizeFreeformRead({ ...ffRaw, motions: [{ type: 'rotate', from: [250, 300], to: [500, 300], bulge: [370, 220] }] }, null)).winds[0].amp;
   if (!(mirrored * w.amp < 0)) throw new Error('호가 불룩한 쪽(bulge)에 따라 휨 방향이 바뀌어야 함');
@@ -221,6 +223,59 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   if (!pr.includes('가변형 공간이 많다는 다이어그램') || !pr.includes('"elements"') || !pr.includes('"motions"')) fails.push('자유 해석 프롬프트에 설명·스키마가 없음');
   if (!m.buildSketchReadPrompt().includes('"view"')) fails.push('손스케치 읽기에 그림 종류(view) 판별이 없음');
   if (m.normalizeSketchRead({ blocks: [{ box_2d: [0, 0, 500, 500] }], view: '3d' }, null).view !== '3d' || m.normalizeSketchRead({ blocks: [{ box_2d: [0, 0, 500, 500] }] }, null).view !== 'plan') fails.push('view 값을 읽지 못함(없으면 plan)');
+}
+
+// 정렬·대칭: 끌 때 안내선에 붙는 위치, 버튼 정렬·대칭 위치·대칭 복제·같은 크기
+{
+  const A = { id: 'b1', kind: 'slab', rect: [10, 10, 30, 30], openSides: ['left'] };
+  const B = { id: 'b2', kind: 'slab', rect: [60, 10, 80, 30] };
+  const Cc = { id: 'b3', kind: 'core', rect: [40, 50, 50, 60] };
+  const W1 = { id: 'w1', pts: [[10, 80], [40, 90]], shape: 's', amp: 0.5, head: 'end', via: [25, 85] };
+  const g0 = m.normalizeSketch({ frame: [0, 0, 100, 100], blocks: [A, B, Cc], winds: [W1] });
+  const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
+  run('정렬 안내선: 변·가운데·그림 가운데·대칭 위치에 붙고, 멀면 붙지 않는다', () => {
+    let r = m.sketchSnapGuides(g0, 'b3', [10.6, 40, 30.6, 50]);
+    if (!near(r.dx, -0.6) || !r.guides.some((g) => g.dim === 'x')) throw new Error(`변 맞춤 실패 dx=${r.dx}`);
+    r = m.sketchSnapGuides(g0, 'b3', [44.5, 70, 54.5, 80]);
+    if (!near(r.dx, 0.5) || !r.guides.some((g) => g.kind === 'axis' && g.dim === 'x' && near(g.v, 50))) throw new Error(`그림 가운데 맞춤 실패 dx=${r.dx}`);
+    r = m.sketchSnapGuides(g0, 'b3', [69.4, 60, 89.4, 70]);
+    if (!near(r.dx, 0.6) || !r.guides.some((g) => g.kind === 'mirror') || !r.guides.some((g) => g.kind === 'axis')) throw new Error(`대칭 위치 맞춤 실패 dx=${r.dx} ${JSON.stringify(r.guides.map((g) => g.kind))}`);
+    r = m.sketchSnapGuides(g0, 'b3', [200, 300, 220, 320]); if (r.dx !== 0 || r.dy !== 0 || r.guides.length) throw new Error('멀리 있으면 붙지 않아야 함');
+    r = m.sketchSnapGuides(g0, 'b3', [44, 70, 54, 80], 1.4, []); // 위쪽 판 B 의 아래변(y=30) 등과 무관하게 y 는 가까운 기준만
+    for (const g of m.sketchSnapGuides(g0, 'b3', [10.6, 40.4, 30.6, 50.4]).guides) if (![g.v, g.lo, g.hi].every(Number.isFinite)) throw new Error('안내선에 NaN');
+    return m.renderSketch(g0);
+  });
+  run('정렬 안내선: 화살표 끝점을 끌 때 반대쪽 끝과 수평·수직으로 맞춘다, 글자·선·화살표 영역', () => {
+    const r = m.sketchSnapPointG(g0, 'w1', [70.2, 90.3], 1.4, [[10, 90, 10, 90]]);
+    if (!near(r.pt[1], 90)) throw new Error(`수평 맞춤 실패 ${r.pt}`);
+    const mm = m.normalizeSketch({ frame: [0, 0, 100, 100], blocks: [A], memos: [{ id: 'm1', x: 20.3, y: 70, text: '가' }] });
+    if (!near(m.sketchSnapGuides(mm, 'm1', m.sketchBox(mm, 'm1')).dx, -0.3)) throw new Error('글자가 도형 가운데에 붙지 않음');
+    const bw = m.sketchBox(g0, 'w1'); if (!near(bw[0], 10) || !near(bw[3], 90)) throw new Error('화살표 영역 계산 오류');
+    const ax = m.sketchAxes(g0, 'b3'); if (!ax.x.length || !ax.y.length) throw new Error('대칭축 후보 없음');
+    return m.renderSketch(g0);
+  });
+  run('정렬·대칭 버튼: 정렬, 대칭 위치, 같은 크기', () => {
+    let t = m.sketchAlign(g0, 'b3', 'b1', 'left'); if (!near(m.sketchBox(t, 'b3')[0], 10)) throw new Error('왼쪽 맞춤 실패');
+    t = m.sketchAlign(g0, 'b3', 'axis', 'hcenter'); const bb = m.sketchBox(t, 'b3'); if (!near((bb[0] + bb[2]) / 2, 50)) throw new Error('그림 가운데 맞춤 실패');
+    t = m.sketchAlign(g0, 'b3', 'b2', 'bottom'); if (!near(m.sketchBox(t, 'b3')[3], 30)) throw new Error('아래 맞춤 실패');
+    t = m.sketchMirrorPlace(g0, 'b2', 'b1', 50, 'h'); const mb = m.sketchBox(t, 'b2'); if (!near((mb[0] + mb[2]) / 2, 80)) throw new Error('좌우 대칭 위치 실패');
+    t = m.sketchMirrorPlace(g0, 'b3', 'b1', 50, 'v'); const vb = m.sketchBox(t, 'b3'); if (!near((vb[1] + vb[3]) / 2, 80)) throw new Error('상하 대칭 위치 실패');
+    t = m.sketchSameSize(g0, 'b3', 'b1'); const sb = m.sketchBox(t, 'b3'); if (!near(sb[2] - sb[0], 20) || !near((sb[0] + sb[2]) / 2, 45)) throw new Error('같은 크기 실패');
+    if (m.sketchAlign(g0, 'nope', 'b1', 'left') !== g0 || m.sketchAlign(g0, 'b3', 'nope', 'left') !== g0) throw new Error('없는 요소는 그대로여야 함');
+    return m.renderSketch(t);
+  });
+  run('대칭 복제: 도형(열린 변 좌우 교환)·화살표(휘는 방향 반전)·글자·상하', () => {
+    let r = m.sketchMirrorCopy(g0, 'b1', 50, 'h'); const nb = r.spec.blocks.find((b) => b.id === r.id);
+    if (!r.id || r.id === 'b1' || !nb) throw new Error('복제 실패');
+    if (!near(nb.rect[0], 70) || !near(nb.rect[2], 90) || nb.openSides.join() !== 'right') throw new Error(`도형 복제 오류 ${JSON.stringify(nb)}`);
+    r = m.sketchMirrorCopy(g0, 'b1', 50, 'v'); const vb = r.spec.blocks.find((b) => b.id === r.id); if (!near(vb.rect[1], 70) || !near(vb.rect[3], 90) || vb.openSides.join() !== 'left') throw new Error('상하 복제 오류');
+    r = m.sketchMirrorCopy(g0, 'w1', 50, 'h'); const nw = r.spec.winds.find((w) => w.id === r.id);
+    if (!near(nw.pts[0][0], 90) || !near(nw.pts[1][0], 60) || !near(nw.amp, -0.5) || !near(nw.via[0], 75)) throw new Error(`화살표 복제 오류 ${JSON.stringify(nw)}`);
+    const mm = m.normalizeSketch({ frame: [0, 0, 100, 100], memos: [{ id: 'm1', x: 20, y: 70, text: '가' }] });
+    r = m.sketchMirrorCopy(mm, 'm1', 50, 'h'); if (!near(r.spec.memos.find((q) => q.id === r.id).x, 80)) throw new Error('글자 복제 오류');
+    if (m.sketchMirrorCopy(g0, 'nope', 50).id !== '') throw new Error('없는 요소 복제는 아무것도 만들지 않아야 함');
+    return m.renderSketch(r.spec);
+  });
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');
