@@ -66,18 +66,28 @@ def _dense_components(body):
     return out, m
 
 
-def _snap_edge(prof, p0, w, bonus, thr=0.62):
-    """prof[p] = 그 위치에 선 잉크가 이어진 비율. p0 근처(±w)에서 가장 확실한 위치를 고른다. 근거가 약하면 None."""
+def _snap_edge(prof, p0, w, bonus, thr=0.62, outer=0):
+    """prof[p] = 그 위치에 선 잉크가 이어진 비율. p0 근처(±w)에서 가장 확실한 위치를 고른다. 근거가 약하면 None.
+    outer = -1(위·왼쪽 변)/+1(아래·오른쪽 변): 비슷하게 확실한 선이 여럿이면 가장 바깥 선을 고른다(안쪽 선은 코어 변·칸막이일 가능성이 크다)."""
     lo = max(0, int(p0) - w); hi = min(len(prof) - 1, int(p0) + w)
     if hi <= lo:
         return None
-    best = None
-    for p in range(lo, hi + 1):
-        sc = prof[p] - 0.0028 * abs(p - p0) + bonus(p)
-        if best is None or sc > best[0]:
-            best = (sc, p)
-    sc, p = best
-    return p if prof[p] >= thr else None
+    scores = {p: prof[p] - 0.0028 * abs(p - p0) + bonus(p) for p in range(lo, hi + 1) if prof[p] >= thr}
+    if not scores:
+        return None
+    top = max(scores.values())
+    cands = [p for p, sc in scores.items() if sc >= top - 0.12]
+    return (min(cands) if outer < 0 else max(cands)) if outer else max(scores, key=scores.get)
+
+
+def _snap2(prof_t, prof_s, p0, w, bonus, outer):
+    """1단계: 너그러운 값으로 대략 위치를 잡고(기울어진 손선 대응), 2단계: 엄격한 값으로 ±1.4 단위 안에서 선 위치를 정밀하게 맞춘다."""
+    p = _snap_edge(prof_s, p0, w, bonus, thr=0.62, outer=outer)
+    if p is None:
+        return None
+    lo = max(0, p - 14); hi = min(len(prof_s) - 1, p + 14)
+    q = max(range(lo, hi + 1), key=lambda i: prof_s[i] - 0.004 * abs(i - p))
+    return q if prof_s[q] >= 0.3 else p
 
 
 def _extend_edges(body, rect, K):
@@ -132,6 +142,8 @@ def refine(png_bytes, blocks, arrows):
     _, dm = _dense_components(body)
     edge_ink = body & ~ndi.binary_erosion(dm, iterations=7)
     edge_ink = ndi.maximum_filter(edge_ink.astype(np.uint8), size=7) > 0
+    edge_t_x = ndi.maximum_filter1d(edge_ink.astype(np.uint8), size=29, axis=1) > 0  # 세로 변: 가로로 ±14px 흔들려도 같은 선으로
+    edge_t_y = ndi.maximum_filter1d(edge_ink.astype(np.uint8), size=29, axis=0) > 0  # 가로 변: 세로로 ±14px
     core_x = sorted({c[0] for c in cores} | {c[2] for c in cores})
     core_y = sorted({c[1] for c in cores} | {c[3] for c in cores})
     for b in blocks:
@@ -145,9 +157,11 @@ def refine(png_bytes, blocks, arrows):
         xs = slice(int(x0 + 0.1 * (x1 - x0)), max(int(x0 + 0.1 * (x1 - x0)) + 1, int(x1 - 0.1 * (x1 - x0))))
         colprof = edge_ink[ys, :].mean(0) if (ys.stop - ys.start) > 0 else np.zeros(W)   # x 위치별
         rowprof = edge_ink[:, xs].mean(1) if (xs.stop - xs.start) > 0 else np.zeros(H)   # y 위치별
-        near = lambda targets: (lambda p: 0.22 if any(abs(p - t * K) <= 22 for t in targets) else 0.0)
-        nx0 = _snap_edge(colprof, x0, w, near(core_x)); nx1 = _snap_edge(colprof, x1, w, near(core_x))
-        ny0 = _snap_edge(rowprof, y0, w, near(core_y)); ny1 = _snap_edge(rowprof, y1, w, near(core_y))
+        colprof_t = edge_t_x[ys, :].mean(0) if (ys.stop - ys.start) > 0 else np.zeros(W)  # 기울어진 선도 잡도록 수직 방향으로 너그럽게 본 값
+        rowprof_t = edge_t_y[:, xs].mean(1) if (xs.stop - xs.start) > 0 else np.zeros(H)
+        near = lambda targets: (lambda p: 0.10 if any(abs(p - t * K) <= 22 for t in targets) else 0.0)
+        nx0 = _snap2(colprof_t, colprof, x0, w, near(core_x), -1); nx1 = _snap2(colprof_t, colprof, x1, w, near(core_x), 1)
+        ny0 = _snap2(rowprof_t, rowprof, y0, w, near(core_y), -1); ny1 = _snap2(rowprof_t, rowprof, y1, w, near(core_y), 1)
         r = [(nx0 if nx0 is not None else x0) / K, (ny0 if ny0 is not None else y0) / K, (nx1 if nx1 is not None else x1) / K, (ny1 if ny1 is not None else y1) / K]
         if r[2] - r[0] > 2 and r[3] - r[1] > 2:
             out_blocks[b["id"]] = [round(v, 1) for v in r]
