@@ -106,6 +106,22 @@ def shrink(img, truth, sc):
     return canvas, t
 
 
+def map_truth(truth, info, orig_size):
+    """정리 전 이미지 기준 정답을 정리된 이미지 기준으로 옮긴다(자르기·배율만 — 회전은 info['angle'] 로 따로)."""
+    W0, H0 = orig_size; S0 = max(W0, H0) / 100.0
+    ow, oh = info['out_size']; S1 = max(ow, oh) / 100.0
+    cx0, cy0 = (info['crop'][0], info['crop'][1]) if info['crop'] else (0, 0)
+    sc = info['scale']
+    tr = lambda p: [round(((p[0] * S0 - cx0) * sc) / S1, 2), round(((p[1] * S0 - cy0) * sc) / S1, 2)]
+    t = json.loads(json.dumps(truth))
+    for b in t['blocks']:
+        r = b['rect']; a, z = tr([r[0], r[1]]), tr([r[2], r[3]]); b['rect'] = [a[0], a[1], z[0], z[1]]
+    for a in t['arrows']: a['tail'], a['tip'] = tr(a['tail']), tr(a['tip'])
+    for a in t['arcs']: a['pts'] = [tr(p) for p in a['pts']]
+    for p_ in t['parts']: p_['a'], p_['b'] = tr(p_['a']), tr(p_['b'])
+    return t
+
+
 CONDITIONS = [('clean', 0), ('gradient_light', 0), ('shadow', 0), ('noise', 0), ('warm', 0), ('lowres', 0), ('jpeg', 0), ('pencil', 0), ('blur_light', 0), ('blur_heavy', 0), ('clean', 1), ('clean', 2), ('clean', 4), ('shadow', -3), ('small70', 0), ('small50', 0), ('small35', 0)]
 
 
@@ -129,9 +145,13 @@ def main():
                 else:
                     img, truth = (rotate(base, truth0, deg) if deg else (base, truth0))
                 img = photometric(img, 'clean' if kind.startswith('small') else kind, rng)
-                buf = io.BytesIO(); img.save(buf, 'PNG')
+                buf = io.BytesIO(); img.save(buf, 'PNG'); data = buf.getvalue()
+                if os.environ.get('PREP'):
+                    from services import sketch_prepare as SP
+                    data, info = SP.prepare(data)
+                    truth = map_truth(truth, info, img.size)
                 fused = sim_ai_read(truth, rng)
-                res = sr.refine(buf.getvalue(), [{'id': b['id'], 'rect': b['rect'], 'hatched': b['hatched']} for b in fused['blocks']],
+                res = sr.refine(data, [{'id': b['id'], 'rect': b['rect'], 'hatched': b['hatched']} for b in fused['blocks']],
                                 [{'id': l['id'], 'pts': l['pts'], 'color': l['color']} for l in fused['lines'] if l['kind'] == 'arrow'],
                                 [{'id': l['id'], 'pts': l['pts'], 'color': l['color']} for l in fused['lines'] if l['kind'] == 'arc'])
                 rows.append(C.score(C.apply(fused, res), truth))

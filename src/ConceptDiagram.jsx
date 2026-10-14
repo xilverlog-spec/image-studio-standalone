@@ -221,13 +221,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const cacheKey = hashStr(subjectImage); const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
         if (cached) { setRead(cached); setReadOrig(cached); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.'); return cached; }
-        const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
+        // 사진 정리(백엔드): EXIF 방향·기울어짐을 바로잡고 그림 영역만 잘라 읽기 좋은 크기로 만든다. AI 읽기와 잉크 보정이 같은 정리 이미지를 쓰므로 좌표 변환이 필요 없다. 실패하면 원본 그대로
+        let work = subjectImage; let prepInfo = null;
+        try {
+          const pr = await apiFetch('/v1/image/sketch-prepare', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop() }) });
+          if (pr.ok) { const pj = await pr.json(); if (pj.image_base64) { work = `data:image/png;base64,${pj.image_base64}`; prepInfo = pj.info || null; } }
+        } catch { /* 정리 없이 원본으로 읽는다 */ }
+        const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = work; });
         // 같은 스케치를 3번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 2개를 확보한다. (무료 Gemini 한도를 아끼려고 3회로 제한)
         let skErr = null;
-        const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; return null; } };
+        const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [work]), dims); } catch (e) { skErr = e; return null; } };
         let reads;
         if (paid) { // 유료 정밀 읽기: 상위 모델 한 번(실패하면 사유를 그대로 보여 주고 무료로 대체하지 않는다). 잉크 보정은 그대로 한다
-          reads = [normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded], { paid: true }), dims)];
+          reads = [normalizeSketchRead(await callAI(buildSketchReadPrompt(), [work], { paid: true }), dims)];
         } else {
           reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
           for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
@@ -235,13 +241,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
         try { // AI 가 눈대중으로 준 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(실패하면 AI 값 그대로)
-          const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })) }) });
+          const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: work.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts, color: l.color })), arcs: sk.lines.filter((l) => l.kind === 'arc').map((l) => ({ id: l.id, pts: l.pts, color: l.color })) }) });
           if (rr.ok) sk = applySketchRefine(sk, await rr.json());
         } catch { /* 보정 없이 사용 */ }
         skCachePut(paid ? `${cacheKey}:paid` : cacheKey, sk);
         setRead(sk); setReadOrig(sk); setSelBox(0);
         setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
-        addToast?.('success', paid ? '정밀 읽기(유료)로 읽었습니다' : '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);
+        addToast?.('success', paid ? '정밀 읽기(유료)로 읽었습니다' : '스케치를 읽었습니다', `${sk.summary || SUBJECT_KINDS.sketch}${prepInfo?.cropped ? ' (사진에서 그림 부분만 잘라 읽었습니다)' : ''}`);
         if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); // 오늘 사용액 갱신
         return sk;
       }

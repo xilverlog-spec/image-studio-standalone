@@ -1663,6 +1663,27 @@ async def site_extract(request: SiteExtractRequest):
         raise HTTPException(status_code=500, detail=f"배치도 분석 실패: {e}")
 
 
+class SketchPrepareRequest(BaseModel):
+    image_base64: str
+
+
+@router.post("/image/sketch-prepare")
+async def sketch_prepare(request: SketchPrepareRequest):
+    """손스케치 사진 정리: EXIF 방향·기울어짐을 바로잡고 그림 영역만 잘라 읽기 좋은 크기로 만든다(완전 로컬)."""
+    try:
+        raw = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+    try:
+        from services import sketch_prepare as _sp
+        png, info = await asyncio.to_thread(_sp.prepare, raw)
+        return {"status": "success", "image_base64": base64.b64encode(png).decode("ascii"), "info": info}
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:
+        raise HTTPException(status_code=500, detail=f"스케치 사진 정리 실패: {e}")
+
+
 class SketchRefineRequest(BaseModel):
     image_base64: str
     blocks: list   # [{id, rect:[x0,y0,x1,y1], hatched}] — 긴 변 100 기준 좌표
