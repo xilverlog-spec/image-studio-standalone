@@ -1667,6 +1667,7 @@ class SketchRefineRequest(BaseModel):
     image_base64: str
     blocks: list   # [{id, rect:[x0,y0,x1,y1], hatched}] — 긴 변 100 기준 좌표
     arrows: list = []  # [{id, pts:[꼬리,화살촉]}]
+    arcs: list = []    # [{id, pts:[...]}] 화살촉 없는 호
 
 
 @router.post("/image/sketch-refine")
@@ -1680,7 +1681,8 @@ async def sketch_refine(request: SketchRefineRequest):
     arrows = [a for a in request.arrows if isinstance(a, dict) and "id" in a and isinstance(a.get("pts"), list) and len(a["pts"]) >= 2][:24]
     try:
         from services import sketch_refine as _sr
-        return {"status": "success", **(await asyncio.to_thread(_sr.refine, png, blocks, arrows))}
+        arcs = [a for a in request.arcs if isinstance(a, dict) and "id" in a and isinstance(a.get("pts"), list) and len(a["pts"]) >= 2][:24]
+        return {"status": "success", **(await asyncio.to_thread(_sr.refine, png, blocks, arrows, arcs))}
     except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
         raise
     except BaseException as e:

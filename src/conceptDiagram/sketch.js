@@ -149,7 +149,18 @@ export function fuseSketchReads(reads, base) {
     if (mates.length < Math.ceil(ok.length / 2) || l.pts.length !== 2) return l;
     return { ...l, pts: [[med(mates.map((p) => p[0][0])), med(mates.map((p) => p[0][1]))], [med(mates.map((p) => p[p.length - 1][0])), med(mates.map((p) => p[p.length - 1][1]))]] };
   });
-  return { ...base, blocks, lines };
+  // 기준 읽기가 빠뜨린 화살표: 화살촉 위치가 비슷한 것끼리 묶어 절반 가까운 읽기에서 나왔으면 보탠다
+  const have = lines.filter((l) => l.kind === 'arrow').map((l) => l.pts[l.pts.length - 1]);
+  const pool = ok.flatMap((r, ri) => r.lines.filter((c) => c.kind === 'arrow').map((c) => ({ c, ri, tip: c.pts[c.pts.length - 1] }))).filter((a) => !have.some((t) => Math.hypot(t[0] - a.tip[0], t[1] - a.tip[1]) <= 6));
+  const used = new Set(); const extra = [];
+  pool.forEach((a, i) => {
+    if (used.has(i)) return;
+    const grp = pool.map((b, j) => ({ b, j })).filter(({ b, j }) => !used.has(j) && Math.hypot(b.tip[0] - a.tip[0], b.tip[1] - a.tip[1]) <= 6);
+    if (new Set(grp.map(({ b }) => b.ri)).size < Math.max(2, Math.ceil(ok.length * 0.4))) return;
+    grp.forEach(({ j }) => used.add(j));
+    extra.push({ ...a.c, id: `l${lines.length + extra.length + 100}`, pts: [[med(grp.map(({ b }) => b.c.pts[0][0])), med(grp.map(({ b }) => b.c.pts[0][1]))], [med(grp.map(({ b }) => b.tip[0])), med(grp.map(({ b }) => b.tip[1]))]] });
+  });
+  return { ...base, blocks, lines: [...lines, ...extra] };
 }
 
 // 잉크 분석(백엔드 보정) 결과를 읽기에 반영한다: 도형 상자와 화살표 꼬리·화살촉
@@ -160,7 +171,7 @@ export function applySketchRefine(read, res) {
   return {
     ...read,
     blocks: read.blocks.map((b) => (ok(rb[b.id]) ? { ...b, rect: rb[b.id].map(Number) } : b)),
-    lines: read.lines.map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length === 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)),
+    lines: read.lines.filter((l) => ra[l.id] !== null).map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length >= 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)),
   };
 }
 
