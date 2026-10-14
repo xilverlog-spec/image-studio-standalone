@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec } from './conceptDiagram/sketch';
 import SketchEditor from './SketchEditor';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
@@ -203,13 +203,17 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const dims = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve([im.width, im.height]); im.onerror = () => resolve(null); im.src = subjectImage; });
-        // 같은 스케치를 3번 동시에 읽고 서로 가장 일치하는 결과를 쓴다(가끔 도형 하나를 크게 빗나가게 읽는 것을 피한다)
+        // 같은 스케치를 5번 동시에 읽어 중앙값으로 합치고(한 번 크게 빗나간 읽기에 휘둘리지 않게), 실패한 읽기는 다시 시도해 최소 3개를 확보한다
         let skErr = null;
         const one = async () => { try { return normalizeSketchRead(await callAI(buildSketchReadPrompt(), [gridded]), dims); } catch (e) { skErr = e; return null; } };
-        let reads = (await Promise.all([one(), one(), one()])).filter(Boolean);
-        if (!reads.length) reads = [await one()].filter(Boolean); // 모두 실패하면 한 번 더
-        const sk = pickConsensusSketch(reads);
+        let reads = (await Promise.all([one(), one(), one(), one(), one()])).filter(Boolean);
+        for (let k = 0; k < 2 && reads.length < 3; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
+        let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
+        try { // AI 가 눈대중으로 준 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(실패하면 AI 값 그대로)
+          const rr = await apiFetch('/v1/image/sketch-refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), blocks: sk.blocks.map((b) => ({ id: b.id, rect: b.rect, hatched: b.hatched })), arrows: sk.lines.filter((l) => l.kind === 'arrow').map((l) => ({ id: l.id, pts: l.pts })) }) });
+          if (rr.ok) sk = applySketchRefine(sk, await rr.json());
+        } catch { /* 보정 없이 사용 */ }
         setRead(sk); setReadOrig(sk); setSelBox(0);
         setResult({ type: 'sketch', spec: makeSketchSpec(sk, null), isReadPreview: true, ver: Date.now() });
         addToast?.('success', '스케치를 읽었습니다', sk.summary || SUBJECT_KINDS.sketch);

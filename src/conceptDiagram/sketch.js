@@ -133,6 +133,37 @@ export function pickConsensusSketch(reads) {
   return best;
 }
 
+// 여러 번 읽은 결과를 합친다: 기준(가장 일치하는 읽기)의 도형·화살표 좌표를 다른 읽기의 같은 요소와 함께 중앙값으로 맞춘다(한 번 크게 빗나간 읽기가 섞여도 중앙값이 밀어낸다)
+export function fuseSketchReads(reads, base) {
+  const ok = reads.filter(Boolean); if (ok.length < 3 || !base) return base;
+  const med = (arr) => { const s = [...arr].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const iou = (a, c) => { const x0 = Math.max(a[0], c[0]); const y0 = Math.max(a[1], c[1]); const x1 = Math.min(a[2], c[2]); const y1 = Math.min(a[3], c[3]); const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); const u = (a[2] - a[0]) * (a[3] - a[1]) + (c[2] - c[0]) * (c[3] - c[1]) - i; return u > 0 ? i / u : 0; };
+  const blocks = base.blocks.map((b) => {
+    const mates = ok.map((r) => r.blocks.filter((c) => c.hatched === b.hatched).map((c) => ({ c, v: iou(b.rect, c.rect) })).sort((p, q) => q.v - p.v)[0]).filter((m) => m && m.v >= 0.3).map((m) => m.c.rect);
+    return mates.length >= Math.ceil(ok.length / 2) ? { ...b, rect: [0, 1, 2, 3].map((k) => med(mates.map((r) => r[k]))) } : b;
+  });
+  const lines = base.lines.map((l) => {
+    if (l.kind !== 'arrow') return l;
+    const tip = l.pts[l.pts.length - 1];
+    const mates = ok.map((r) => r.lines.filter((c) => c.kind === 'arrow').map((c) => ({ c, d: Math.hypot(c.pts[c.pts.length - 1][0] - tip[0], c.pts[c.pts.length - 1][1] - tip[1]) })).sort((p, q) => p.d - q.d)[0]).filter((m) => m && m.d <= 6).map((m) => m.c.pts);
+    if (mates.length < Math.ceil(ok.length / 2) || l.pts.length !== 2) return l;
+    return { ...l, pts: [[med(mates.map((p) => p[0][0])), med(mates.map((p) => p[0][1]))], [med(mates.map((p) => p[p.length - 1][0])), med(mates.map((p) => p[p.length - 1][1]))]] };
+  });
+  return { ...base, blocks, lines };
+}
+
+// 잉크 분석(백엔드 보정) 결과를 읽기에 반영한다: 도형 상자와 화살표 꼬리·화살촉
+export function applySketchRefine(read, res) {
+  if (!read || !res) return read;
+  const rb = res.blocks || {}; const ra = res.arrows || {};
+  const ok = (p) => Array.isArray(p) && p.length === 4 && p.every(Number.isFinite);
+  return {
+    ...read,
+    blocks: read.blocks.map((b) => (ok(rb[b.id]) ? { ...b, rect: rb[b.id].map(Number) } : b)),
+    lines: read.lines.map((l) => (Array.isArray(ra[l.id]) && ra[l.id].length === 2 && ra[l.id].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) ? { ...l, pts: ra[l.id].map((p) => p.map(Number)) } : l)),
+  };
+}
+
 // 열린 벽 표시(구간 하나)를 가장 가까운 도형 외곽(벽)에 붙인다. seg = [x0,y0,x1,y1](얇은 직사각형), solids = 벽이 될 도형들의 rect 목록(판 우선, 코어는 뒤로).
 // 구간이 벽과 겹치는 부분만 남기고, 벽에서 tol(다이어그램 단위)보다 멀면 붙이지 않는다.
 export function findWall(seg, solids, tol = 6) {

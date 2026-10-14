@@ -1663,6 +1663,30 @@ async def site_extract(request: SiteExtractRequest):
         raise HTTPException(status_code=500, detail=f"배치도 분석 실패: {e}")
 
 
+class SketchRefineRequest(BaseModel):
+    image_base64: str
+    blocks: list   # [{id, rect:[x0,y0,x1,y1], hatched}] — 긴 변 100 기준 좌표
+    arrows: list = []  # [{id, pts:[꼬리,화살촉]}]
+
+
+@router.post("/image/sketch-refine")
+async def sketch_refine(request: SketchRefineRequest):
+    """손스케치: AI 가 읽은 도형 경계·화살표 꼬리를 실제 잉크 위치에 맞춘다(완전 로컬)."""
+    try:
+        png = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+    blocks = [b for b in request.blocks if isinstance(b, dict) and "id" in b and isinstance(b.get("rect"), list) and len(b["rect"]) == 4][:24]
+    arrows = [a for a in request.arrows if isinstance(a, dict) and "id" in a and isinstance(a.get("pts"), list) and len(a["pts"]) >= 2][:24]
+    try:
+        from services import sketch_refine as _sr
+        return {"status": "success", **(await asyncio.to_thread(_sr.refine, png, blocks, arrows))}
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:
+        raise HTTPException(status_code=500, detail=f"스케치 보정 실패: {e}")
+
+
 class PlanSegmentRequest(BaseModel):
     image_base64: str
     seeds: list  # [{id, x, y}] — x,y 는 이미지 가로·세로에 대한 0~1 비율
