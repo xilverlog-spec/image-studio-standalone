@@ -5,8 +5,8 @@ import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec } from './conceptDiagram/sketch';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
-const SK_CACHE_KEY = 'sketchReadCache.v1';
-const hashStr = (str) => { let h = 5381; for (let i = 0; i < str.length; i += 5) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return `${str.length}:${h >>> 0}`; };
+const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
+const hashStr = (str) => { let h1 = 0x811c9dc5; let h2 = 5381; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; } return `${str.length}:${h1 >>> 0}:${h2 >>> 0}`; }; // 글자 전체를 본다(일부만 보면 서로 다른 그림이 같은 저장값으로 잡힐 수 있다)
 const skCacheGet = (k) => { try { const m = JSON.parse(localStorage.getItem(SK_CACHE_KEY) || '{}'); return m[k]?.v || null; } catch { return null; } };
 const skCachePut = (k, v) => {
   try {
@@ -217,7 +217,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const ask = askText();
     const cacheKey = `ff:${hashStr(subjectImage)}:${hashStr(ask)}${paid ? ':paid' : ''}`;
     let rd = fresh ? null : skCacheGet(cacheKey);
-    if (rd) addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림·같은 설명이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.');
+    if (rd) { rd = { ...rd, fromCache: true }; addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림·같은 설명이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "새로 읽기"를 누르세요.'); }
     else {
       const dims = await imgDims(subjectImage); let last = null;
       for (let k = 0; k < 2 && !rd; k++) {
@@ -248,7 +248,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         if (forceSketch) skCachePut(`${cacheKey}:view3d`, false);
         else if (skCacheGet(`${cacheKey}:view3d`)) return await readFreeform({ fresh, paid, notice: '입체·채색 그림이라 자유 해석으로 읽었습니다. ' });
         const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
-        if (cached) { setRead(cached); setReadOrig(cached); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "다시 읽기"를 누르세요.'); return cached; }
+        if (cached) { const cr = { ...cached, fromCache: true }; setRead(cr); setReadOrig(cr); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "새로 읽기"를 누르세요.'); return cr; }
         // 사진 정리(백엔드): EXIF 방향·기울어짐을 바로잡고 그림 영역만 잘라 읽기 좋은 크기로 만든다. AI 읽기와 잉크 보정이 같은 정리 이미지를 쓰므로 좌표 변환이 필요 없다. 실패하면 원본 그대로
         let work = subjectImage; let prepInfo = null;
         try {
@@ -494,6 +494,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
                       <b>{SUBJECT_KINDS[read.kind]}</b>로 읽었습니다.{read.summary ? ` ${read.summary}` : ''}<br />
                       오른쪽 그림이 읽은 모습입니다. 다르면 종류를 바꿔 다시 읽거나, 아래에서 직접 고치세요.
+                      {read.fromCache && (
+                        <><br /><b>저장된 읽기 결과입니다</b>(같은 그림을 전에 읽은 결과라 AI 를 다시 부르지 않았습니다). <button style={{ ...btn(true, reading || busy), padding: '3px 8px', fontSize: 11.5, marginTop: 4 }} disabled={reading || busy} onClick={() => readImage({ fresh: true })} data-testid="reread-fresh">새로 읽기</button></>
+                      )}
                       {read.kind === 'freeform' && subjectKind === 'sketch' && (
                         <><br />입체·채색 그림으로 판단해 자유 해석으로 읽었습니다. <button style={{ ...btn(false, reading || busy), padding: '3px 8px', fontSize: 11.5, marginTop: 4 }} disabled={reading || busy} onClick={() => readImage({ fresh: true, forceSketch: true })}>평면 스케치로 다시 읽기</button></>
                       )}
