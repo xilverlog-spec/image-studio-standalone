@@ -195,10 +195,10 @@ def vectorize_color(png_bytes, smooth=False):
     k = min(3.0, max(1.0, 2000.0 / max(orig_size)))
     work = im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS) if k > 1.0 else im
     try:
-        if smooth:
-            from services.vector_smooth import quantize_smooth, VTRACER_SMOOTH
-            work, _pal = quantize_smooth(im)
-            trace = dict(VTRACER_SMOOTH)
+        if smooth:   # 선 + 색 분리 변환(선은 매끈하게, 색은 묶어서 부드럽게 — services/vector_smooth.py)
+            from services.vector_smooth import vectorize_hybrid
+            hsvg, hsize = vectorize_hybrid(im)
+            return _finish_color_svg(slim_svg_paths(hsvg), im, hsize), orig_size
         else:
             trace = dict(colormode="color", hierarchical="stacked", mode="spline", max_iterations=10,
                          filter_speckle=COLOR_FILTER_SPECKLE, color_precision=8, layer_difference=6, corner_threshold=60,

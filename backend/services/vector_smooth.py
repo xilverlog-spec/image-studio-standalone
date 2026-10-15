@@ -29,7 +29,7 @@ def gradient_score(img):
     return min(1.0, tail * 1.2 + max(0, big - 12) * 0.01), big, tail
 
 
-def quantize_smooth(img, k=14, sigma=1.3, dark_boost=1.35):
+def quantize_smooth(img, k=14, sigma=1.3, dark_boost=1.35, median=3):
     """img(PIL RGB) → (평면 색 PIL RGB, 대표색 목록). 경계는 가우시안으로 부드럽게."""
     w0, h0 = img.size
     f = min(MAX_UPSCALE, max(1.0, TARGET_LONG / max(w0, h0)))
@@ -37,7 +37,8 @@ def quantize_smooth(img, k=14, sigma=1.3, dark_boost=1.35):
         f = TARGET_LONG / max(w0, h0)
     if abs(f - 1.0) > 0.02:
         img = img.resize((max(1, round(w0 * f)), max(1, round(h0 * f))), Image.LANCZOS)
-    img = img.filter(ImageFilter.MedianFilter(3))           # 낱알 잡음만 제거(가는 선은 지키려고 작은 창)
+    if median and median >= 3:
+        img = img.filter(ImageFilter.MedianFilter(int(median)))   # 낱알 잡음 제거(창이 클수록 가장자리가 매끄럽지만 가는 선이 줄어든다)
     rgb = np.asarray(img).astype(np.float64) / 255.0
     lab = skcolor.rgb2lab(rgb)
     H, W = lab.shape[:2]
@@ -80,3 +81,74 @@ def quantize_smooth(img, k=14, sigma=1.3, dark_boost=1.35):
 
 VTRACER_SMOOTH = dict(colormode="color", hierarchical="stacked", mode="spline", filter_speckle=8, color_precision=8,
                       layer_difference=4, corner_threshold=70, length_threshold=5.0, splice_threshold=45, path_precision=2, max_iterations=10)
+
+
+# ── 선 + 색 분리 변환(2026-10-15): 선은 선대로, 색은 색대로 따로 변환해서 겹친다 ──
+LINE_DARK = 105        # 이 밝기보다 어두운 화소를 '선'으로 본다
+LINE_BLUR = 1.1        # 선 마스크를 흐렸다가 다시 자르는 정도(계단·짜글짜글함 제거)
+LINE_CUT = 0.42        # 다시 자르는 문턱(낮출수록 가는 선이 남는다)
+THIN_CONTRAST = 38     # 가는 회색 선으로 볼 최소 대비(주변 밝기와의 차이)
+
+
+def vectorize_hybrid(img, k=10, sigma=1.9):
+    """img(PIL RGB) → (SVG 문자열(크기 표기 없는 vtracer 출력), (작업 가로, 세로)).
+    ① 어두운 선: 흐렸다가 0.42 에서 다시 잘라 부드러운 윤곽으로 만든 뒤 vtracer 이진 변환
+    ② 색 면: 선 자리를 가장 가까운 밝은 색으로 메워 색이 선 밑으로 이어지게 하고, 색을 k 개로 묶어 경계를 부드럽게 해서 vtracer 색 변환
+    ③ 색 위에 선을 겹친다.  AI 재생성이 아니라 원본에서 직접 따므로 구성·색·글자 위치가 바뀌지 않는다."""
+    import os, re, tempfile
+    import vtracer
+    w0, h0 = img.size
+    f = min(MAX_UPSCALE, max(1.0, TARGET_LONG / max(w0, h0)))
+    if max(w0, h0) > TARGET_LONG:
+        f = TARGET_LONG / max(w0, h0)
+    big = img.resize((max(1, round(w0 * f)), max(1, round(h0 * f))), Image.LANCZOS) if abs(f - 1.0) > 0.02 else img
+    a = np.asarray(big).astype(np.float32)
+    lum = a.mean(-1)
+    dark = ndi.binary_opening(lum < LINE_DARK, structure=np.ones((2, 2)))
+    soft = ndi.gaussian_filter(dark.astype(np.float32), LINE_BLUR) > LINE_CUT
+    line_img = Image.fromarray(np.where(soft, 0, 255).astype(np.uint8), "L")
+    # 가는 회색 선(밝기 105~190, 주변보다 뚜렷이 어두운 가는 선): 넓은 회색 면은 닫기-원본(블랙 탑햇)에서 빠지므로 선만 남는다. 검정과 따로 회색으로 칠한다
+    win = max(5, int(round(0.004 * max(lum.shape))) | 1)
+    top = ndi.minimum_filter(ndi.maximum_filter(lum, size=win), size=win) - lum
+    thin = (top > THIN_CONTRAST) & (lum >= LINE_DARK) & (lum < 200) & ~ndi.binary_dilation(dark, iterations=2)
+    thin = ndi.binary_opening(thin, structure=np.ones((2, 2))) if thin.any() else thin
+    gray_val = int(np.clip(np.median(lum[thin]), 90, 170)) if thin.sum() > 50 else 128
+    gsoft = ndi.gaussian_filter(thin.astype(np.float32), LINE_BLUR) > LINE_CUT
+    gline_img = Image.fromarray(np.where(gsoft, 0, 255).astype(np.uint8), "L")
+    grow = ndi.binary_dilation(dark | thin, iterations=2)
+    idx = ndi.distance_transform_edt(grow, return_distances=False, return_indices=True)
+    filled = a.copy()
+    filled[grow] = a[idx[0][grow], idx[1][grow]]
+    col_q, _pal = quantize_smooth(Image.fromarray(np.clip(filled, 0, 255).astype(np.uint8), "RGB").resize((w0, h0), Image.LANCZOS), k=k, sigma=sigma, median=3)
+    tmp = tempfile.mkdtemp(prefix="hyb_")
+    try:
+        lin, lout, cin, cout = (os.path.join(tmp, n) for n in ("l_in.png", "l_out.svg", "c_in.png", "c_out.svg"))
+        gin, gout = os.path.join(tmp, "g_in.png"), os.path.join(tmp, "g_out.svg")
+        line_img.save(lin)
+        gline_img.save(gin)
+        col_q.save(cin)
+        vtracer.convert_image_to_svg_py(lin, lout, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=8, corner_threshold=70, length_threshold=5.0, splice_threshold=45, path_precision=2)
+        vtracer.convert_image_to_svg_py(cin, cout, colormode="color", hierarchical="stacked", mode="spline", filter_speckle=12, color_precision=8, layer_difference=4, corner_threshold=85, length_threshold=7.0, splice_threshold=55, path_precision=2, max_iterations=10)
+        csvg = open(cout, encoding="utf-8").read()
+        lsvg = open(lout, encoding="utf-8").read()
+        gsvg = ""
+        if thin.sum() > 50:
+            vtracer.convert_image_to_svg_py(gin, gout, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=6, corner_threshold=70, length_threshold=5.0, splice_threshold=45, path_precision=2)
+            gsvg = open(gout, encoding="utf-8").read()
+    finally:
+        for n in os.listdir(tmp):
+            try:
+                os.remove(os.path.join(tmp, n))
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmp)
+        except OSError:
+            pass
+    cw, ch = col_q.size
+    lw, lh = line_img.size
+    inner = re.search(r"<svg[^>]*>([\s\S]*)</svg>", lsvg).group(1).replace('fill="#000000"', 'fill="#121212"')
+    ginner = re.search(r"<svg[^>]*>([\s\S]*)</svg>", gsvg).group(1).replace('fill="#000000"', 'fill="#%02x%02x%02x"' % ((gray_val,) * 3)) if gsvg else ""
+    sc = "scale(%.5f %.5f)" % (cw / lw, ch / lh)
+    svg = csvg.replace("</svg>", '<g transform="%s">%s</g><g transform="%s">%s</g></svg>' % (sc, ginner, sc, inner))   # 색 → 회색 가는 선 → 검정 선 순으로 겹친다
+    return svg, (cw, ch)
