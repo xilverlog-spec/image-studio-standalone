@@ -1564,7 +1564,8 @@ class VectorizeRequest(BaseModel):
     image_base64: str
     # "clean": 3배 확대 + 노이즈 제거 후 변환 — 모서리가 반듯하고 일러스트처럼 깔끔(기본, 2026-10-06 실측으로 채택).
     # "faithful": 원본 해상도 그대로 변환 — 질감/잔무늬까지 따라가지만 모서리가 뭉개지고 경로가 많다.
-    mode: str = "clean"
+    # "smooth"(2026-10-15, 기본): 색을 대표색으로 묶고 경계를 부드럽게 한 뒤 변환 — 수채·그라데이션·연한 면 그림도 깨지지 않는다(services/vector_smooth.py).
+    mode: str = "smooth"
 
 
 @router.post("/image/vectorize")
@@ -1600,8 +1601,12 @@ async def vectorize_image(request: VectorizeRequest):
                 src_img = flat
             else:
                 src_img = src_img.convert("RGB")
-            clean = request.mode != "faithful"
-            if clean:
+            smooth = request.mode == "smooth"
+            clean = request.mode == "clean"
+            if smooth:
+                from services.vector_smooth import quantize_smooth
+                src_img, _pal = quantize_smooth(src_img)
+            elif clean:
                 from PIL import ImageFilter as _PILFilter
                 factor = min(3.0, max(1.0, 3600 / max(src_img.size)))
                 if factor > 1.0:
@@ -1611,19 +1616,17 @@ async def vectorize_image(request: VectorizeRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"이미지 형식을 읽을 수 없습니다: {e}")
 
-        trace_params = (
-            dict(filter_speckle=12, color_precision=5, layer_difference=24, corner_threshold=75,
-                 length_threshold=6.0, splice_threshold=45, path_precision=2)
-            if clean else
-            dict(filter_speckle=4, color_precision=6, layer_difference=16, corner_threshold=60,
-                 length_threshold=4.0, splice_threshold=45, path_precision=3)
-        )
-        await asyncio.to_thread(
-            vtracer.convert_image_to_svg_py,
-            tmp_in, tmp_out,
-            colormode="color", hierarchical="stacked", mode="spline", max_iterations=10,
-            **trace_params,
-        )
+        if smooth:
+            from services.vector_smooth import VTRACER_SMOOTH
+            trace_kwargs = dict(VTRACER_SMOOTH)
+        else:
+            trace_kwargs = dict(colormode="color", hierarchical="stacked", mode="spline", max_iterations=10, **(
+                dict(filter_speckle=12, color_precision=5, layer_difference=24, corner_threshold=75,
+                     length_threshold=6.0, splice_threshold=45, path_precision=2)
+                if clean else
+                dict(filter_speckle=4, color_precision=6, layer_difference=16, corner_threshold=60,
+                     length_threshold=4.0, splice_threshold=45, path_precision=3)))
+        await asyncio.to_thread(vtracer.convert_image_to_svg_py, tmp_in, tmp_out, **trace_kwargs)
 
         with open(tmp_out, "r", encoding="utf-8") as f:
             svg_text = f.read()

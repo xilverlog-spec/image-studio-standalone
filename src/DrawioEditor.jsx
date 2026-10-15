@@ -65,7 +65,7 @@ export default function DrawioEditor({ active = true, addToast, apiFetch, incomi
   const [vecBusy, setVecBusy] = useState(false);
   const [vec, setVec] = useState(null); // { svg, w, h, name, pathCount }
   const vecFileRef = useRef(null);
-  const [vecMode, setVecMode] = useState('clean');
+  const [vecMode, setVecMode] = useState('smooth');
   const refFileRef = useRef(null);
   const projRef = useRef(null);
 
@@ -365,7 +365,8 @@ export default function DrawioEditor({ active = true, addToast, apiFetch, incomi
               색과 모양은 따라오지만 글자는 모양으로 변환돼 수정할 수 없고, 평평한 색의 단순한 그림일수록 결과가 좋습니다.
             </p>
             <select value={vecMode} onChange={(e) => setVecMode(e.target.value)} style={inputBase} disabled={vecBusy}>
-              <option value="clean">깔끔하게 (일러스트처럼, 권장)</option>
+              <option value="smooth">부드럽게 (권장 · 수채·그라데이션·연한 면 그림도 깨지지 않게)</option>
+              <option value="clean">깔끔하게 (평평한 색 일러스트)</option>
               <option value="faithful">원본에 가깝게 (질감 유지, 거침)</option>
             </select>
             <button style={smallBtn(false)} onClick={() => vecFileRef.current?.click()} disabled={vecBusy}>
