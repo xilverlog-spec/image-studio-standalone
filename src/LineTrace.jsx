@@ -46,6 +46,7 @@ export default function LineTrace({ addToast, apiFetch }) {
   const [readText, setReadText] = useState(false);
   const [withFills, setWithFills] = useState(false);
   const [method, setMethod] = useState('auto'); // auto = 이미지를 보고 선 도식/색 면 도식을 자동 판별
+  const [colorStyle, setColorStyle] = useState('precise'); // 색 면 도식 변환 스타일: precise = 원본 색을 최대한 따라감(기존), smooth = 색을 묶고 경계를 부드럽게
   const [skipAi, setSkipAi] = useState(false); // 고급: 빠른 확인용으로 AI 재생성 단계를 건너뛴다(기본은 항상 AI로 깨끗하게 다시 그린 뒤 추출)
   const [progress, setProgress] = useState({ stage: '', done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,7 @@ export default function LineTrace({ addToast, apiFetch }) {
       const res = await apiFetch('/v1/image/linetrace/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: source.src.split(',').pop(), read_text: readText, fills: withFills, redraw: !skipAi, method }),
+        body: JSON.stringify({ image_base64: source.src.split(',').pop(), read_text: readText, fills: withFills, redraw: !skipAi, method, smooth: colorStyle === 'smooth' }),
       });
       const started = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof started.detail === 'string' ? started.detail : '작업을 시작하지 못했습니다.');
@@ -211,6 +212,13 @@ export default function LineTrace({ addToast, apiFetch }) {
               <option value="lines">선 도식 — 선을 찾아 반듯한 단선으로</option>
               <option value="color">색 면 도식 — 색 영역 그대로 벡터로</option>
               <option value="perspective">원근 모델 캡처·렌더 — AI가 선 도면으로 다시 그려 벡터로 (약 3분)</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>
+            색 면 도식 변환 스타일 (색 면으로 판단되거나 위에서 '색 면 도식'을 고른 경우에 적용)
+            <select value={colorStyle} onChange={(e) => setColorStyle(e.target.value)} style={inputBase} data-testid="color-style">
+              <option value="precise">정밀 — 원본 색과 질감을 최대한 따라감 (기존)</option>
+              <option value="smooth">부드럽게 — 수채·그라데이션·연한 면 그림이 짜글짜글 깨지지 않게 (새 방식)</option>
             </select>
           </label>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, cursor: 'pointer' }}>

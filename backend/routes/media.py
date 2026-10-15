@@ -1827,6 +1827,8 @@ class LineTraceStartRequest(BaseModel):
     max_panels: Optional[int] = None  # 시험용: 앞의 N칸만 처리
     # 'auto'(기본): 이미지를 보고 선 도식/색 면 도식을 자동 판별. 'lines': 선 추출 고정, 'color': 색 영역 그대로 벡터화 고정.
     method: str = "auto"
+    # 색 면 도식 변환 스타일: False = 정밀(원본 색을 최대한 따라감, 기존), True = 부드럽게(색을 대표색으로 묶고 경계를 부드럽게 — 수채·그라데이션·연한 면 그림용)
+    smooth: bool = False
 
 
 @router.post("/image/linetrace/start")
@@ -1846,7 +1848,7 @@ async def linetrace_start(request: LineTraceStartRequest):
         except Exception as e:
             print(f"[LINETRACE] OCR 실패(글자는 모양 그대로 옮김): {e}")
     # start_job 은 도식 종류 판별(이미지 분석)을 하므로 이벤트 루프를 막지 않게 별도 스레드에서 부른다
-    job_id = await asyncio.to_thread(line_pipeline.start_job, png, request.read_text, request.fills, request.redraw, ocr, request.max_panels, request.method)
+    job_id = await asyncio.to_thread(line_pipeline.start_job, png, request.read_text, request.fills, request.redraw, ocr, request.max_panels, request.method, request.smooth)
     return {"status": "success", "job_id": job_id}
 
 

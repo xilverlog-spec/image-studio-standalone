@@ -172,8 +172,10 @@ def slim_svg_paths(svg):
 COLOR_FILTER_SPECKLE = 8   # 작은 얼룩 제거 크기. 4 → 8 로 올리면 경로가 절반으로 줄고 글자·점선은 그대로(12 이상은 작은 글자가 뭉개짐)
 
 
-def vectorize_color(png_bytes):
-    """색 영역을 그대로 따서 SVG 로(원본 해상도, vtracer). 반환: (svg_text, (W, H))"""
+def vectorize_color(png_bytes, smooth=False):
+    """색 영역을 그대로 따서 SVG 로(원본 해상도, vtracer). 반환: (svg_text, (W, H))
+    smooth=True(2026-10-15, 화면의 '부드럽게'를 고르면): 색을 대표색으로 묶고 경계를 부드럽게 정리한 뒤 변환한다 — 수채·그라데이션·흐린 화살표·연한 면 그림이
+    층층이 쪼개져 짜글짜글해지는 것을 막는다(services/vector_smooth.py). False 면 예전 방식(색 단계를 잘게 쪼개 원본 색을 최대한 따라감)."""
     import vtracer
     im = Image.open(io.BytesIO(png_bytes))
     if im.mode in ("RGBA", "LA", "P"):
@@ -193,12 +195,16 @@ def vectorize_color(png_bytes):
     k = min(3.0, max(1.0, 2000.0 / max(orig_size)))
     work = im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS) if k > 1.0 else im
     try:
+        if smooth:
+            from services.vector_smooth import quantize_smooth, VTRACER_SMOOTH
+            work, _pal = quantize_smooth(im)
+            trace = dict(VTRACER_SMOOTH)
+        else:
+            trace = dict(colormode="color", hierarchical="stacked", mode="spline", max_iterations=10,
+                         filter_speckle=COLOR_FILTER_SPECKLE, color_precision=8, layer_difference=6, corner_threshold=60,
+                         length_threshold=4.0, splice_threshold=45, path_precision=3)
         work.save(tmp_in, "PNG")
-        vtracer.convert_image_to_svg_py(
-            tmp_in, tmp_out, colormode="color", hierarchical="stacked", mode="spline", max_iterations=10,
-            filter_speckle=COLOR_FILTER_SPECKLE, color_precision=8, layer_difference=6, corner_threshold=60,
-            length_threshold=4.0, splice_threshold=45, path_precision=3,
-        )
+        vtracer.convert_image_to_svg_py(tmp_in, tmp_out, **trace)
         with open(tmp_out, "r", encoding="utf-8") as f:
             svg = f.read()
         return _finish_color_svg(slim_svg_paths(svg), im, work.size), orig_size

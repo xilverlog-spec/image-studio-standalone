@@ -326,12 +326,12 @@ def _run(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels=None
             _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
-def _run_color(job_id, png_bytes, kind_info):
+def _run_color(job_id, png_bytes, kind_info, smooth=False):
     """색 면(블록) 도식: 선 추출 대신 색 영역 그대로 벡터화한다(AI 재생성 없음, 수 초)."""
     job = JOBS[job_id]
     _update(job, status="running", stage="색 면 도식으로 판단 — 색 영역 그대로 벡터 변환 중")
     try:
-        svg, (W, H) = diagram_kind.vectorize_color(png_bytes)
+        svg, (W, H) = diagram_kind.vectorize_color(png_bytes, smooth=smooth)
         stats = {"method": "color", "kind": kind_info, "panels": 1, "lines": 0, "arrows": 0, "text_lines": 0, "text_editable": 0,
                  "size": [W, H], "redraw_used": False, "ai_panels": 0, "fallback_panels": 0, "panel_info": []}
         _update(job, status="done", stage="완료", svg=svg, stats=stats, warnings=[], finished=time.time(), done=1, total=1)
@@ -380,7 +380,7 @@ def _run_perspective(job_id, png_bytes, kind_info, redraw):
             _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
-def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None, method="auto"):
+def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=None, max_panels=None, method="auto", smooth=False):
     now = time.time()
     with _JOBS_LOCK:
         for k in [k for k, v in JOBS.items() if now - v.get("created", now) > JOB_TTL]:
@@ -403,7 +403,7 @@ def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=No
         return job_id
     if use_color:
         JOBS[job_id]["stage"] = "색 면 도식으로 판단"
-        threading.Thread(target=_run_color, args=(job_id, png_bytes, kind_info), daemon=True).start()
+        threading.Thread(target=_run_color, args=(job_id, png_bytes, kind_info, smooth), daemon=True).start()
         return job_id
     threading.Thread(target=_run, args=(job_id, png_bytes, read_text, fills, redraw, ocr_texts, max_panels), daemon=True).start()
     return job_id
