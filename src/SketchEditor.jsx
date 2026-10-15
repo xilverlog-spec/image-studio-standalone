@@ -217,6 +217,14 @@ export default function SketchEditor({ spec, onChange, disabled }) {
             </div>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showLegend} onChange={(e) => setGlobal({ showLegend: e.target.checked })} />하단 범례 표시(개념도)</label>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시(개념도)</label>
+            {norm.textBlock && (
+              <div style={{ ...sec, gap: 6, background: 'rgba(240,176,0,0.08)' }} data-testid="textblock-panel">
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>오른쪽 문구 블록</span>
+                <label style={lab}>제목(줄바꿈 가능)<textarea rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} value={norm.textBlock.title} onChange={(e) => setGlobal({ textBlock: { ...norm.textBlock, title: e.target.value } }, 'tbtitle')} data-testid="textblock-title" /></label>
+                {[0, 1, 2].map((i) => <label key={i} style={lab}>부제 {i + 1}<input style={input} value={norm.textBlock.subs[i] || ''} onChange={(e) => { const n = [...norm.textBlock.subs]; while (n.length < 3) n.push(''); n[i] = e.target.value; setGlobal({ textBlock: { ...norm.textBlock, subs: n.filter((t, k) => t || k < 2) } }, `tbsub${i}`); }} /></label>)}
+                <div style={lab}>강조색<Colors value={norm.textBlock.accent} onChange={(c) => setGlobal({ textBlock: { ...norm.textBlock, accent: c } })} /></div>
+              </div>
+            )}
             <label style={lab}>제목<input style={input} value={norm.title} onChange={(e) => setGlobal({ title: e.target.value }, 'title')} /></label>
             <label style={lab}>부제<input style={input} value={norm.subtitle} onChange={(e) => setGlobal({ subtitle: e.target.value }, 'subtitle')} /></label>
             <label style={lab}>범례: 화살표<input style={input} value={norm.legend.wind} onChange={(e) => setGlobal({ legend: { ...norm.legend, wind: e.target.value } }, 'lgw')} /></label>

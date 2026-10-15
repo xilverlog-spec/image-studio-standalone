@@ -9,6 +9,7 @@ export const SUBJECT_KINDS = {
   site: '배치도·대지',
   sketch: '손스케치(펜으로 그린 개념 스케치)',
   freeform: '자유 해석(입체·수채·사진 등 그 밖의 스케치)',
+  axon: '분석 축측도(평면도 → 입체 + 바람·일조)',
   other: '그 외(지원 안 함)',
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec } from './conceptDiagram/sketch';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -157,6 +157,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [subjectKind, setSubjectKind] = useState('auto');
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
   const [reading, setReading] = useState(false);
+  // 분석 축측도 옵션: 남쪽 방향(도면에서 어느 쪽인지), 벽 높이, 시점(평면을 돌리는 각도)
+  const [axonSouth, setAxonSouth] = useState('bottom'); const [axonHeight, setAxonHeight] = useState(0.04); const [axonRot, setAxonRot] = useState(-15);
+  const [axonNote, setAxonNote] = useState(null); // 참고 이미지에서 읽은 구성(그릴 수 있는 것 / 못 그리는 것)
   // 유료 '정밀 읽기' 사용 가능 여부(서버 .env 에 결제 연결된 키·모델이 있을 때만 버튼이 나타난다)
   const [paidVision, setPaidVision] = useState({ available: false });
   useEffect(() => { let off = false; apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (!off && j) setPaidVision(j); }).catch(() => {}); return () => { off = true; }; }, []);
@@ -185,7 +188,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const pickSubject = async (file) => {
     if (!file) return;
-    try { setSubjectImage(await readResizedPng(file)); setRead(null); dropOldResult(); }
+    try { setSubjectImage(await readResizedPng(file)); setRead(null); setAxonNote(null); dropOldResult(); }
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
   const pickStyle = async (file) => {
@@ -232,6 +235,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     return rd;
   };
 
+  // 분석 축측도: 내 평면 도면의 벽을 이미지에서 직접 뽑아 입체로 세운다(서버, AI 없음, 1초 안팎)
+  const fetchAxon = async () => {
+    const res = await apiFetch('/v1/image/plan-axon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), rot: axonRot, height: axonHeight }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+    const j = await res.json(); return { svg: j.svg, vb: j.vb, proj: j.proj, plan_size: j.plan_size, opts: { rot: axonRot, height: axonHeight } };
+  };
+
   // 소재 이미지 읽기: 구조로 읽고, 읽은 모습을 바로 보여 준다
   const readImage = async (opts) => {
     if (!subjectImage || reading) return null;
@@ -239,8 +249,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const paid = !!(opts && opts.paid === true);   // '정밀 읽기(유료)': 상위 모델로 한 번만 읽는다(무료로 몰래 대체하지 않는다)
     setReading(true);
     try {
-      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch' && subjectKind !== 'freeform'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
+      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch' && subjectKind !== 'freeform' && subjectKind !== 'axon'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
+      if (subjectKind === 'axon') { // 입체 바탕만 먼저 보여 준다(바람·일조 표시와 문구는 '다이어그램 만들기'에서 AI 가 정한다)
+        const ax = await fetchAxon(); const rd = { kind: 'axon', axon: ax, title: '', subs: [], winds: [], sun: null, referenceParts: [], unsupported: [], askedText: null };
+        setRead(rd); setReadOrig(rd); setSelBox(0); setResult({ type: 'sketch', spec: makeAxonSpec(rd), isReadPreview: true, ver: Date.now() });
+        addToast?.('success', '입체 바탕을 만들었습니다', '도면의 벽을 뽑아 입체로 세웠습니다. 바람·일조 표시와 문구는 "다이어그램 만들기"에서 붙입니다.'); return rd;
+      }
       if (subjectKind === 'freeform') { const rd = await readFreeform({ fresh, paid }); if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); return rd; }
       if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const cacheKey = hashStr(subjectImage);
@@ -332,6 +347,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
+    if (read.kind === 'axon') { // 입체 바탕(옵션이 바뀌었으면 다시 만들고) + AI 가 바람·일조·문구를 정한다
+      let ax = read.axon; if (ax.opts && (ax.opts.rot !== axonRot || ax.opts.height !== axonHeight)) ax = await fetchAxon();
+      const imgs = [subjectImage, ...(styleImage ? [styleImage] : [])]; let rd = null; let last = null;
+      for (let k = 0; k < 2 && !rd; k++) { try { rd = normalizeAxonRead(await callAI(buildAxonPrompt(askText(), { south: axonSouth, hasRef: !!styleImage }), imgs), ax); } catch (e) { last = e; } }
+      if (!rd) throw last || new Error('분석 표시를 읽지 못했습니다.');
+      setRead({ ...rd, askedText: askText() }); setAxonNote({ parts: rd.referenceParts, unsupported: rd.unsupported, empty: !userText.trim() });
+      return { type: 'sketch', spec: makeAxonSpec(rd), ver: Date.now() };
+    }
     if (read.kind === 'freeform') { // 읽을 때 이미 설명을 반영했으므로 그대로 그린다(설명을 바꿨으면 새 설명으로 다시 읽는다)
       const rd = read.askedText === askText() ? read : await readFreeform({ fresh: true });
       return { type: 'sketch', spec: makeFreeformSpec(rd), ver: Date.now() };
@@ -449,7 +472,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>1. 설명</span>
           <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
-            placeholder={'예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
+            placeholder={subjectKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
+          {(subjectKind === 'axon' || (styleImage && subjectImage)) && (
+            <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: userText.trim() ? 'var(--text-tertiary, #64748b)' : '#9a3412', background: userText.trim() ? 'transparent' : '#fff7ed', padding: userText.trim() ? 0 : '6px 8px', borderRadius: 6 }} data-testid="concept-hint">
+              {userText.trim() ? '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' : '⚠️ 설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화'}
+            </p>
+          )}
         </div>
 
         {staleText && userText.trim() && (
@@ -476,6 +504,31 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <option value="auto">이미지 종류: 자동 판단</option>
                     {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
+                  {subjectKind === 'axon' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="axon-options">
+                      <p style={slotNote}>내 평면 도면의 벽을 이미지에서 직접 뽑아 입체로 세우고, 그 위에 바람 띠·일조 경로와 오른쪽 문구를 얹습니다. 어두운 벽선이 있는 깨끗한 평면도에서 가장 잘 됩니다.</p>
+                      <label style={{ ...slotNote, display: 'flex', flexDirection: 'column', gap: 3 }}>남쪽 방향(도면에서 어느 쪽이 남쪽인가요?)
+                        <select value={axonSouth} onChange={(e) => setAxonSouth(e.target.value)} style={inputBase} disabled={reading || busy} data-testid="axon-south">
+                          <option value="bottom">도면의 아래쪽</option><option value="top">도면의 위쪽</option><option value="left">도면의 왼쪽</option><option value="right">도면의 오른쪽</option>
+                        </select>
+                      </label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <label style={{ ...slotNote, flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>벽 높이
+                          <select value={axonHeight} onChange={(e) => setAxonHeight(Number(e.target.value))} style={inputBase} disabled={reading || busy}><option value={0.025}>낮게</option><option value={0.04}>보통</option><option value={0.06}>높게</option></select>
+                        </label>
+                        <label style={{ ...slotNote, flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>시점(회전)
+                          <select value={axonRot} onChange={(e) => setAxonRot(Number(e.target.value))} style={inputBase} disabled={reading || busy}><option value={-30}>왼쪽으로 크게</option><option value={-15}>왼쪽으로 조금</option><option value={0}>정면</option><option value={15}>오른쪽으로 조금</option><option value={30}>오른쪽으로 크게</option></select>
+                        </label>
+                      </div>
+                      {axonNote && (
+                        <div style={{ ...slotNote, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="axon-note">
+                          <b>참고 이미지에서 읽은 구성</b>: {axonNote.parts.length ? axonNote.parts.join(' · ') : '(참고 이미지 없음)'}<br />
+                          <b>이 도구가 못 그리는 것</b>: {axonNote.unsupported.length ? axonNote.unsupported.join(' · ') : '없음'}
+                          {axonNote.empty && <><br /><span style={{ color: '#9a3412' }}>설명이 비어 있어 AI가 개념을 임의로 정했습니다. 설명을 적고 다시 만들어 보세요.</span></>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {subjectKind === 'freeform' && <p style={slotNote}>평면 도면이 아닌 그림(입체·투시·수채·사진 등)용입니다. 틀에 맞추지 않고 그림이 말하는 개념을 이해해서, 고정 요소(회색)와 움직이거나 강조된 요소(노랑), 회전·이동·흐름 화살표로 단순하게 다시 그립니다. 설명(1번)이 읽을 때 쓰이므로 설명을 바꾸면 새로 읽습니다. 결과는 클릭해서 바로 고칠 수 있습니다.</p>}
                   {subjectKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>

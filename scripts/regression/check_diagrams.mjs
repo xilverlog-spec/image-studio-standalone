@@ -11,7 +11,7 @@ const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize } from ${fwd(sketch)};`);
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, axonProject } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -276,6 +276,33 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     if (m.sketchMirrorCopy(g0, 'nope', 50).id !== '') throw new Error('없는 요소 복제는 아무것도 만들지 않아야 함');
     return m.renderSketch(r.spec);
   });
+}
+
+// 분석 축측도: 입체 바탕 + 바람 띠 + 일조 호·해 아이콘 + 오른쪽 문구 블록이 편집 가능한 spec 으로 만들어지고 그려진다
+{
+  const axon = { svg: '<g><path d="M0 0 L100 0 L100 60 L0 60 Z" fill="#ddd"/></g>', vb: [-60, -40, 120, 100], proj: { rot: -15, elev: 38, cx: 500, cy: 300, hgt: 40 }, plan_size: [1000, 600] };
+  const raw = { reference: { parts: ['입체 평면', '바람 띠'], unsupported: [] }, title: '전 세대 남향배치\n맞통풍 극대화', subs: ['채광 확보', '맞통풍'], winds: [{ from: [900, 300], to: [100, 320], label: '' }, { from: [900, 600], to: [100, 620] }, { from: [5, 5] }], sun: { from: [1150, 100], via: [1250, 500], to: [1150, 900] } };
+  run('분석 축측도: 읽기 정리 → spec → 그리기(바탕·바람·해·문구)', () => {
+    const rd = m.normalizeAxonRead(raw, axon);
+    if (rd.winds.length !== 2 || !rd.sun || rd.referenceParts.length !== 2) throw new Error(`읽기 정리 오류 winds=${rd.winds.length}`);
+    if (!rd.title.includes(String.fromCharCode(10))) throw new Error('제목의 줄바꿈이 바뀌지 않음');
+    const sp2 = m.makeAxonSpec(rd);
+    if (sp2.layout !== 'axon' || !sp2.base || sp2.winds.length !== 3 || sp2.memos[0].icon !== 'sun' || sp2.textBlock.subs.length !== 2) throw new Error('spec 구성 오류');
+    if (sp2.winds[0].form !== 'soft' || sp2.winds[2].shape !== 'arc' || sp2.winds[2].head !== 'both' || sp2.winds[2].dash !== 'dashed') throw new Error('바람 띠(번짐)·일조 호(점선, 양쪽 화살촉) 모양이 아님');
+    const r = m.renderSketch(sp2, { interactive: true });
+    if (!r.svg.includes('data-base="1"') || !r.svg.includes('남향배치') || !r.svg.includes('stroke-linecap="round"')) throw new Error('바탕·문구가 그려지지 않음');
+    if (/data-eid=[^>]*data-base|data-base[^>]*data-eid/.test(r.svg)) throw new Error('바탕이 선택·끌기에 반응하면 안 됨');
+    const n2 = m.normalizeSketch(JSON.parse(JSON.stringify(sp2))); if (!n2.base || !n2.textBlock || n2.layout !== 'axon') throw new Error('정규화에서 바탕·문구가 사라짐');
+    const bad = m.normalizeSketch({ ...sp2, base: { svg: 5, vb: [1, 2], rect: [0, 0, 1, 1] }, textBlock: 'x' }); if (bad.base !== null) throw new Error('잘못된 바탕은 버려야 함');
+    return r;
+  });
+  const p0 = m.axonProject(axon, [0, 0, 100, 83.3], [500, 500], 0);
+  if (!(p0[0] > 0 && p0[0] < 100 && p0[1] > 0 && p0[1] < 83.3)) fails.push(`평면 가운데가 바탕 안에 안 놓임 ${p0}`);
+  const hi = m.axonProject(axon, [0, 0, 100, 83.3], [500, 500], 1);
+  if (!(hi[1] < p0[1])) fails.push('벽 윗면 점이 바닥 점보다 위에 놓여야 함');
+  try { m.normalizeAxonRead({ winds: [] }, null); fails.push('바탕이 없으면 오류여야 함'); } catch { /* 의도된 오류 */ }
+  const pr = m.buildAxonPrompt('남향 맞통풍', { south: 'left', hasRef: true });
+  if (!pr.includes('남향 맞통풍') || !pr.includes('도면의 왼쪽') || !pr.includes('두 번째 이미지')) fails.push('분석 축측도 프롬프트에 설명·방향·참고 안내가 없음');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

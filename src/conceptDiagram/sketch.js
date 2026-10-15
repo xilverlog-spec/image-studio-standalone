@@ -410,6 +410,71 @@ export function makeSketchSpec(read, ann, style = 'concept') {
   };
 }
 
+// ── 1-3) 분석 축측도: 내 평면 도면의 벽을 입체로 세운 바탕(서버, AI 없음) 위에 바람·일조 표시와 문구를 얹는다 ──
+export const AXON_COLORS = { wind: '#F0B000', sun: '#F0B000', accent: '#F0B000' };
+export const SOUTH_LABEL = { bottom: '도면의 아래쪽', top: '도면의 위쪽', left: '도면의 왼쪽', right: '도면의 오른쪽' };
+export function buildAxonPrompt(userText, opts = {}) {
+  const south = SOUTH_LABEL[opts.south] || SOUTH_LABEL.bottom;
+  return `당신은 건축 설계사무소의 분석 다이어그램 설계자다. 첫 번째 이미지는 건축가의 평면도(내 도면)${opts.hasRef ? '이고 두 번째 이미지는 만들고 싶은 느낌의 참고 이미지' : ''}다. 프로그램이 평면도의 벽을 입체(축측)로 세운 바탕을 만들어 주므로, 당신은 그 위에 얹을 분석 표시(바람 띠·일조 경로)와 오른쪽 문구만 JSON 으로 출력한다(설명/코드펜스 금지).
+[건축가의 설명] ${userText || '(없음 — 참고 이미지가 있으면 그 개념을 따르고, 없으면 평면에서 읽히는 맞통풍·채광만 간단히 표시한다. 설명에 없는 수치·주장은 쓰지 않는다)'}
+[방향] 남쪽은 ${south}이다(설명에 다른 말이 있으면 그것을 따른다). 위치는 평면도 이미지 전체를 0~1000 으로 정규화한 좌표 [y, x] 이고 왼쪽 위가 [0,0]이다.
+
+스키마:
+{
+ "reference": { "parts": ["참고 이미지에서 읽은 구성 요소를 짧게(예: 입체 평면, 바람 띠, 일조 경로 호, 문구 블록). 참고 이미지가 없으면 빈 배열"], "unsupported": ["이 도구가 못 그리는 요소(없으면 빈 배열)"] },
+ "title": "문구 블록의 제목: 설명의 핵심을 굵은 두 줄로(줄바꿈은 \\n, 한 줄 14자 이내)",
+ "subs": ["부제 한 줄(25자 이내)", "부제 한 줄"],
+ "winds": [ {"from":[y,x], "to":[y,x], "label":"6자 이내 또는 빈 문자열"} ],
+ "sun": { "from":[y,x], "via":[y,x], "to":[y,x] } | null
+}
+규칙:
+- winds: 맞통풍·환기처럼 평면 안을 가로질러 흐르는 바람을 3~6개. 한쪽 면의 창·발코니(남쪽 쪽)에서 들어와 반대쪽 면의 창으로 빠지게, 실제 방·거실·창 위치를 지나게 적는다. 서로 거의 평행하게 흩어서 적는다. 설명이 바람·환기와 무관하면 빈 배열.
+- sun: 일조(남향)가 요청에 있을 때만. 평면 바깥 남쪽 둘레에서 도는 호로, from 과 to 는 도면 밖(남쪽 쪽 가장자리 바깥), via 는 호가 지나는 가운데 점이다. 없으면 null.
+- title/subs 는 건축가의 설명을 근거로만 쓴다(설명에 없는 개념을 지어내지 않는다). 모든 글자는 한국어.
+- reference.unsupported 에는 참고 이미지에 있지만 이 도구가 그릴 수 없는 것(예: 사진 같은 재질, 사람·가구 입체)을 적는다.`;
+}
+
+export function normalizeAxonRead(parsed, axon) {
+  if (!parsed || typeof parsed !== 'object') throw new Error('분석 표시를 읽은 결과가 비어 있습니다.');
+  if (!axon || !axon.svg) throw new Error('입체 바탕이 없습니다.');
+  const okPt = (p) => Array.isArray(p) && p.length === 2 && p.every((v) => Number.isFinite(Number(v)));
+  const cl = (v) => Math.min(1000, Math.max(-300, Number(v)));   // 평면 밖(남쪽 바깥)도 허용
+  const pt = (p) => [cl(p[0]), cl(p[1])];
+  const winds = (Array.isArray(parsed.winds) ? parsed.winds : []).slice(0, 8).map((w) => (okPt(w?.from) && okPt(w?.to) ? { from: pt(w.from), to: pt(w.to), label: String(w.label ?? '').trim().slice(0, 10) } : null)).filter(Boolean);
+  const sn = parsed.sun && okPt(parsed.sun.from) && okPt(parsed.sun.to) ? { from: pt(parsed.sun.from), to: pt(parsed.sun.to), via: okPt(parsed.sun.via) ? pt(parsed.sun.via) : null } : null;
+  const strs = (a) => (Array.isArray(a) ? a : []).map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 6);
+  return { kind: 'axon', axon, title: String(parsed.title ?? '').replace(/\\n/g, '\n').slice(0, 60), subs: strs(parsed.subs).slice(0, 3).map((t) => t.slice(0, 40)), winds, sun: sn, referenceParts: strs(parsed.reference?.parts), unsupported: strs(parsed.reference?.unsupported) };
+}
+
+// 평면 위의 점([y,x] 0~1000) → 화면(vb) 좌표 → 다이어그램 좌표. z = 벽 높이에 대한 비율(0 = 바닥, 1 = 벽 윗면)
+export function axonProject(axon, rect, yx, zr = 0) {
+  const { proj, plan_size: ps, vb } = axon;
+  const x = (yx[1] / 1000) * ps[0]; const y = (yx[0] / 1000) * ps[1]; const ra = (proj.rot * Math.PI) / 180; const eb = (proj.elev * Math.PI) / 180;
+  const dx = x - proj.cx; const dy = y - proj.cy; const u = dx * Math.cos(ra) - dy * Math.sin(ra); const v = dx * Math.sin(ra) + dy * Math.cos(ra);
+  const X = u; const Y = v * Math.sin(eb) - zr * proj.hgt * Math.cos(eb);
+  return [rect[0] + ((X - vb[0]) / vb[2]) * (rect[2] - rect[0]), rect[1] + ((Y - vb[1]) / vb[3]) * (rect[3] - rect[1])];
+}
+
+// 읽은 분석 표시 → 편집 가능한 spec(입체 바탕 + 바람 번짐 띠 + 일조 점선 호와 해 아이콘 + 오른쪽 문구 블록)
+export function makeAxonSpec(read) {
+  const ax = read.axon; const rect = [0, 0, 100, (100 * ax.vb[3]) / ax.vb[2]];
+  const hold = (p, z) => axonProject(ax, rect, p, z).map((v) => Math.round(v * 10) / 10);
+  const winds = read.winds.map((w, i) => ({ id: `w${i + 1}`, pts: [hold(w.from, 1.1), hold(w.to, 1.1)], smooth: true, head: 'none', dash: 'solid', width: 5.2, color: AXON_COLORS.wind, form: 'soft', shape: 's', bend: 0.65, amp: i % 2 ? -0.5 : 0.5, via: null, inLabel: '', outLabel: '' })); // 라벨 말풍선은 달지 않는다(참고 그림처럼 깔끔하게; 필요하면 편집에서 추가)
+  const memos = [];
+  if (read.sun) {
+    const a = hold(read.sun.from, 0); const z = hold(read.sun.to, 0); const mid = read.sun.via ? hold(read.sun.via, 0) : [(a[0] + z[0]) / 2, (a[1] + z[1]) / 2 + 8];
+    const L = Math.hypot(z[0] - a[0], z[1] - a[1]) || 1; const nx = -(z[1] - a[1]) / L; const ny = (z[0] - a[0]) / L;
+    const amp = Math.max(-1.2, Math.min(1.2, ((mid[0] - a[0]) * nx + (mid[1] - a[1]) * ny) / (L * 0.25)));
+    winds.push({ id: `w${winds.length + 1}`, pts: [a, z], smooth: true, head: 'both', dash: 'dashed', width: 5.5, color: AXON_COLORS.sun, form: 'line', shape: 'arc', bend: 1, amp: Math.abs(amp) < 0.12 ? 0.5 : amp, via: null, inLabel: '', outLabel: '' });
+    const t = 0.3; const sx = (1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * ((a[0] + z[0]) / 2 + nx * (Math.abs(amp) < 0.12 ? 0.5 : amp) * L * 0.5) + t * t * z[0]; const sy = (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * ((a[1] + z[1]) / 2 + ny * (Math.abs(amp) < 0.12 ? 0.5 : amp) * L * 0.5) + t * t * z[1];
+    memos.push({ id: 'm1', x: Math.round(sx * 10) / 10, y: Math.round(sy * 10) / 10, text: '', size: 38, color: AXON_COLORS.sun, icon: 'sun' });
+  }
+  const all = [[rect[0], rect[1]], [rect[2], rect[3]], ...winds.flatMap((w) => w.pts), ...memos.map((m) => [m.x, m.y])];
+  const [x0, y0, x1, y1] = bbox(all); const px = (x1 - x0) * 0.04; const py = (y1 - y0) * 0.04;
+  return { title: '', subtitle: '', style: 'concept', layout: 'axon', frame: [x0 - px, y0 - py, x1 + px, y1 + py], base: { svg: ax.svg, vb: ax.vb, rect, proj: ax.proj, plan_size: ax.plan_size }, blocks: [], lines: [], winds, memos,
+    textBlock: { title: read.title, subs: read.subs, accent: AXON_COLORS.accent }, legend: { wind: '바람', core: '코어', opening: '개구부' }, notes: [] };
+}
+
 // ── 3) 정규화(편집 중 잘못된 값이 들어와도 그려지게) ─────────────
 export function normalizeSketch(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
@@ -432,25 +497,31 @@ export function normalizeSketch(raw) {
     via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
-  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222' }));
+  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '' }));
+  // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
+  const bs = s.base && typeof s.base === 'object' ? s.base : null;
+  const base = bs && typeof bs.svg === 'string' && bs.svg.length < 3000000 && Array.isArray(bs.vb) && bs.vb.length === 4 && bs.vb.every((v) => Number.isFinite(Number(v))) && bs.vb[2] > 0 && bs.vb[3] > 0 && Array.isArray(bs.rect) && bs.rect.length === 4 && bs.rect.every((v) => Number.isFinite(Number(v)))
+    ? { svg: bs.svg, vb: bs.vb.map(Number), rect: bs.rect.map(Number), ...(bs.proj ? { proj: bs.proj } : {}), ...(Array.isArray(bs.plan_size) ? { plan_size: bs.plan_size } : {}) } : null;
+  const tbs = s.textBlock && typeof s.textBlock === 'object' ? s.textBlock : null;
+  const textBlock = tbs ? { title: String(tbs.title ?? ''), subs: (Array.isArray(tbs.subs) ? tbs.subs : []).slice(0, 4).map(String), accent: isHex(tbs.accent) ? tbs.accent : '#F0B000' } : null;
   const f = Array.isArray(s.frame) && s.frame.length === 4 ? s.frame.map((v) => num(v, 0)) : null;
-  const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...lines.flatMap((l) => l.pts)];
+  const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...lines.flatMap((l) => l.pts), ...(base ? [[base.rect[0], base.rect[1]], [base.rect[2], base.rect[3]]] : [])];
   const frame = f && f[2] > f[0] && f[3] > f[1] ? f : (all.length ? bbox(all) : [0, 0, 100, 100]);
   if (frame[2] - frame[0] < 1) frame[2] = frame[0] + 1;
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, base, textBlock,
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
 
 // ── 4) 렌더 ──────────────────────────────────────────────────
-const W = 1200; const H = 760; const AREA = [70, 150, 780, 640]; const AREA_CONCEPT = [70, 190, 1130, 690];
+const W = 1200; const H = 760; const AREA = [70, 150, 780, 640]; const AREA_CONCEPT = [70, 190, 1130, 690]; const AREA_AXON = [30, 90, 800, 720];
 export const SKETCH_SIZE = [W, H];
 // 다이어그램 좌표(0~100) ↔ 그림 좌표(1200x760). 틀(frame)은 편집해도 바뀌지 않아 요소를 옮겨도 전체가 다시 확대·축소되지 않는다
 export function sketchView(raw) {
-  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame; const AR = spec.style === 'concept' ? AREA_CONCEPT : AREA;
+  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame; const AR = spec.layout === 'axon' ? AREA_AXON : spec.style === 'concept' ? AREA_CONCEPT : AREA;
   const K = Math.min((AR[2] - AR[0]) / (fx1 - fx0), (AR[3] - AR[1]) / (fy1 - fy0));
   const ox = AR[0] + (AR[2] - AR[0] - (fx1 - fx0) * K) / 2; const oy = AR[1] + (AR[3] - AR[1] - (fy1 - fy0) * K) / 2;
   return { K, toScreen: ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K], toDiag: ([px, py]) => [fx0 + (px - ox) / K, fy0 + (py - oy) / K] };
@@ -597,7 +668,7 @@ function drawWindForm(w, geo, pres, dashAttr) {
 export function renderSketch(raw, opts = {}) {
   const spec = normalizeSketch(raw);
   const { interactive = false, selected = '' } = opts;
-  const C = PALETTE[spec.style];
+  const C = spec.layout === 'axon' ? { ...PALETTE.concept, bg: '#FFFFFF' } : PALETTE[spec.style]; // 분석 축측도는 참고 그림처럼 흰 바탕
   const pres = spec.style === 'pres';
   const concept = spec.style === 'concept';
   const filledHead = pres || concept;
@@ -624,6 +695,10 @@ export function renderSketch(raw, opts = {}) {
   }
   if (pres && spec.title) o.push('<rect x="0" y="36" width="12" height="22" fill="#1E88C8"/>');
 
+  if (spec.base) { // 입체 바탕: 평면에서 뽑은 벽체. 클릭·끌기에 반응하지 않는다
+    const bb = spec.base; const a = P([bb.rect[0], bb.rect[1]]); const z = P([bb.rect[2], bb.rect[3]]); const sx = (z[0] - a[0]) / bb.vb[2]; const sy = (z[1] - a[1]) / bb.vb[3];
+    o.push(`<g data-base="1" pointer-events="none" transform="translate(${(a[0] - bb.vb[0] * sx).toFixed(2)} ${(a[1] - bb.vb[1] * sy).toFixed(2)}) scale(${sx.toFixed(5)} ${sy.toFixed(5)})">${bb.svg}</g>`);
+  }
   const R = (b) => { const a = P([b.rect[0], b.rect[1]]); const z = P([b.rect[2], b.rect[3]]); return [a[0], a[1], z[0] - a[0], z[1] - a[1]]; };
   const slabs = spec.blocks.filter((b) => b.kind === 'slab').sort((p, q) => (q.rect[2] - q.rect[0]) * (q.rect[3] - q.rect[1]) - (p.rect[2] - p.rect[0]) * (p.rect[3] - p.rect[1]));
   const cores = spec.blocks.filter((b) => b.kind === 'core');
@@ -718,6 +793,12 @@ export function renderSketch(raw, opts = {}) {
   // 메모(자유 글자)
   spec.memos.forEach((m) => {
     const [x, y] = P([m.x, m.y]);
+    if (m.icon === 'sun') { // 해 아이콘: 동그라미 + 12개 빛살(크기 = size)
+      const r = m.size * 0.42; const rays = Array.from({ length: 12 }, (_, k) => { const t = (k * Math.PI) / 6; const r1 = r * 1.35; const r2 = r * (k % 2 ? 1.75 : 2.05); return `<line x1="${(x + Math.cos(t) * r1).toFixed(1)}" y1="${(y + Math.sin(t) * r1).toFixed(1)}" x2="${(x + Math.cos(t) * r2).toFixed(1)}" y2="${(y + Math.sin(t) * r2).toFixed(1)}" stroke="${m.color}" stroke-width="${(m.size * 0.11).toFixed(1)}" stroke-linecap="round"/>`; }).join('');
+      o.push(`<g${eid(m.id)}><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 2.2).toFixed(1)}" fill="${m.color}" fill-opacity="0.18"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${m.color}"/>${rays}</g>`);
+      if (selected === m.id) sel.push(`<rect x="${(x - r * 2.3).toFixed(1)}" y="${(y - r * 2.3).toFixed(1)}" width="${(r * 4.6).toFixed(1)}" height="${(r * 4.6).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`);
+      return;
+    }
     o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${m.size}" font-weight="${concept ? 600 : 700}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${eid(m.id)}>${esc(m.text)}</text>`);
     if (selected === m.id) { const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58), 0) + 12; sel.push(`<rect x="${(x - wd / 2).toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`); }
   });
@@ -760,6 +841,12 @@ export function renderSketch(raw, opts = {}) {
   if (!concept && openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
   if (!concept && cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
   if (!concept) spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
+  if (spec.textBlock && (spec.textBlock.title || spec.textBlock.subs.length)) { // 오른쪽 문구 블록: 제목(굵게) → 강조색 밑줄과 ▼ → 부제 줄들
+    const tb = spec.textBlock; const cxm = 985; const tl = tb.title.split('\n').slice(0, 3); let ty = 300 - Math.max(0, tl.length - 2) * 26;
+    tl.forEach((t) => { o.push(`<text x="${cxm}" y="${ty}" text-anchor="middle" font-family="${FONT}" font-size="44" font-weight="800" fill="${C.text}">${esc(t)}</text>`); ty += 58; });
+    const ly = ty + 6; o.push(`<line x1="805" y1="${ly}" x2="1165" y2="${ly}" stroke="${tb.accent}" stroke-width="2.6"/><polygon points="${cxm - 14},${ly} ${cxm + 14},${ly} ${cxm},${ly + 13}" fill="${tb.accent}"/>`);
+    let sy2 = ly + 58; tb.subs.forEach((t) => { o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="26" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${o.join('')}</svg>`;
   return { svg, width: W, height: H };
 }

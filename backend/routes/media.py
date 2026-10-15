@@ -1818,6 +1818,38 @@ async def linetrace_image(request: LineTraceRequest):
     return {"status": "success", "svg": result["svg"], "stats": result["stats"], "warning": warning}
 
 
+# ── 2026-10-15: 평면 도면 → 축측(입체) 벽체 바탕(분석 축측도의 바탕). 완전 로컬, AI 없음 ──
+class PlanAxonRequest(BaseModel):
+    image_base64: str
+    rot: float = -15.0      # 평면을 돌리는 각도(도)
+    elev: float = 38.0      # 내려다보는 각도(도)
+    height: float = 0.04    # 벽 높이(긴 변 대비 비율)
+
+
+@router.post("/image/plan-axon")
+async def plan_axon(request: PlanAxonRequest):
+    try:
+        from services import plan_axon as _pa
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"축측도에 필요한 라이브러리가 없습니다(scikit-image, scipy): {e}")
+    try:
+        data = base64.b64decode(request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 디코딩 실패: {e}")
+    rot = max(-80.0, min(80.0, request.rot))
+    elev = max(15.0, min(70.0, request.elev))
+    height = max(0.01, min(0.12, request.height))
+    try:
+        res = await asyncio.to_thread(_pa.build_axon, data, rot, elev, height)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except BaseException as e:
+        if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            raise
+        raise HTTPException(status_code=500, detail=f"축측도 만들기 실패: {e}")
+    return {"status": "success", **res}
+
+
 class LineTraceStartRequest(BaseModel):
     image_base64: str
     read_text: bool = False

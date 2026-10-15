@@ -60,6 +60,34 @@ for mode, depth in (("render", "material"), ("facade", "redesign"), ("reference"
     p = am.common_prompt(mode, "", ["facade"], depth, [""], ["warm timber slats"], True) + " " + am.variant_phrase(mode, "sunny" if mode != "facade" else "glass", depth)
     check(not content_safety.find_blocked_terms(p), f"긴 지시문 안전 필터 오탐: {mode}/{depth}")
 
+# 분석 축측도 바탕(평면 도면 → 입체 벽체): 합성 평면은 만들어지고, 벽이 아닌 그림은 엉뚱하게 세우지 않고 거절해야 한다
+from PIL import Image as _Img, ImageDraw as _Draw
+from services import plan_axon
+def _png(im):
+    import io
+    b = io.BytesIO(); im.save(b, "PNG"); return b.getvalue()
+_plan = _Img.new("RGB", (1000, 640), "white"); _d = _Draw.Draw(_plan)
+for box in ((60, 80, 940, 560),):
+    _d.rectangle(box, outline=(25, 25, 25), width=14)
+for seg in ((400, 80, 400, 330), (400, 330, 940, 330), (230, 560, 230, 330), (700, 330, 700, 560)):
+    _d.line(seg, fill=(35, 35, 35), width=10)
+_d.rectangle((150, 120, 340, 300), fill=(205, 190, 175))
+_d.text((180, 200), "ROOM", fill=(0, 0, 0))
+_r = plan_axon.build_axon(_png(_plan))
+check(_r["svg"].startswith("<g>") and "<path" in _r["svg"] and "nan" not in _r["svg"].lower(), "축측 바탕 SVG 이상")
+check(len(_r["vb"]) == 4 and all(v == v and abs(v) < 1e5 for v in _r["vb"]) and _r["vb"][2] > 0 and _r["vb"][3] > 0, "축측 바탕 viewBox 이상")
+check(_r["stats"]["black"] >= 1 and _r["plan_size"][0] == 1000, "축측 바탕에서 벽을 못 찾음")
+_txt = _Img.new("RGB", (1000, 640), "white"); _dt = _Draw.Draw(_txt)
+for i in range(6):
+    _dt.text((100 + i * 120, 300), "R1 L D/K", fill=(0, 0, 0))
+_rej = 0
+for _bad in (_txt, _Img.new("RGB", (800, 500), (90, 90, 90)), _Img.new("RGB", (800, 500), "white")):
+    try:
+        plan_axon.build_axon(_png(_bad))
+    except ValueError:
+        _rej += 1
+check(_rej == 3, f"벽이 아닌 그림(글자·단색·빈 그림)은 거절해야 함: {_rej}/3")
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

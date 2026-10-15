@@ -341,7 +341,7 @@ def _run_color(job_id, png_bytes, kind_info, smooth=False):
         _update(job, status="error", stage="실패", error=str(e)[:300], finished=time.time())
 
 
-def _run_perspective(job_id, png_bytes, kind_info, redraw):
+def _run_perspective(job_id, png_bytes, kind_info, redraw, smooth=False):
     """원근 모델 캡처·렌더·사진: AI(FLUX Kontext)가 선화로 다시 그린 것을 그대로 벡터화한다(선을 아이소 방향으로 맞추지 않는다).
     AI 를 못 쓰면 색 영역 그대로 벡터화한다(원본 복사본이라 용량이 크다고 경고)."""
     job = JOBS[job_id]
@@ -368,7 +368,7 @@ def _run_perspective(job_id, png_bytes, kind_info, redraw):
                 warnings.append("원근 이미지는 AI가 선화로 다시 그리므로 건물 세부(유리 안쪽 구조, 작은 부재)가 원본과 다를 수 있습니다. 원본과 비교해 확인하세요.")
                 used = "perspective"
             else:
-                svg, (W, H) = diagram_kind.vectorize_color(png_bytes)
+                svg, (W, H) = diagram_kind.vectorize_color(png_bytes, smooth=smooth)   # AI 재생성을 못 쓰면 색 영역 변환으로 대체한다(화면에서 '부드럽게'를 골랐으면 그 방식으로)
                 used = "color"
             stats = {"method": used, "kind": kind_info, "panels": 1, "lines": 0, "arrows": 0, "text_lines": 0, "text_editable": 0,
                      "size": [W, H], "redraw_used": line is not None, "ai_panels": 1 if line is not None else 0, "fallback_panels": 0 if line is not None else 1,
@@ -399,7 +399,7 @@ def start_job(png_bytes, read_text=False, fills=False, redraw=True, ocr_texts=No
             use_color = False
     if use_persp:
         JOBS[job_id]["stage"] = "원근 캡처·렌더로 판단"
-        threading.Thread(target=_run_perspective, args=(job_id, png_bytes, kind_info, redraw), daemon=True).start()
+        threading.Thread(target=_run_perspective, args=(job_id, png_bytes, kind_info, redraw, smooth), daemon=True).start()
         return job_id
     if use_color:
         JOBS[job_id]["stage"] = "색 면 도식으로 판단"

@@ -203,6 +203,16 @@ export default function LineTrace({ addToast, apiFetch }) {
           변환하면 자동으로 AI(이 PC의 무료 모델)가 먼저 깨끗한 선화로 다시 그리고, 그 결과에서 선을 추출합니다. 칸 하나당 약 3분이 걸립니다.
           AI가 형태를 바꾼 칸은 원본에서 직접 추출합니다. 글자는 원본 그대로 옮깁니다.
         </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="smooth-box">
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>색 그림 변환 스타일</span>
+          <select value={colorStyle} onChange={(e) => { setColorStyle(e.target.value); if (e.target.value === 'smooth') setMethod('color'); }} style={inputBase} data-testid="color-style">
+            <option value="precise">정밀 — 원본 색과 질감을 최대한 따라감 (기존)</option>
+            <option value="smooth">부드럽게 — 수채·그라데이션·연한 면 그림이 짜글짜글 깨지지 않게 (새 방식)</option>
+          </select>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>
+            {colorStyle === 'smooth' ? '“부드럽게”를 고르면 색 면 방식(AI 없이 몇 초)으로 변환합니다. 색을 묶어 정리하므로 아주 미세한 질감은 줄어듭니다. 선 도식이나 원근 캡처에는 쓰지 않습니다.' : '색으로 칠한 그림이 깨져 나오면 “부드럽게”를 골라 다시 변환해 보세요.'}
+          </span>
+        </div>
         <details>
           <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>고급</summary>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>
@@ -212,13 +222,6 @@ export default function LineTrace({ addToast, apiFetch }) {
               <option value="lines">선 도식 — 선을 찾아 반듯한 단선으로</option>
               <option value="color">색 면 도식 — 색 영역 그대로 벡터로</option>
               <option value="perspective">원근 모델 캡처·렌더 — AI가 선 도면으로 다시 그려 벡터로 (약 3분)</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>
-            색 면 도식 변환 스타일 (색 면으로 판단되거나 위에서 '색 면 도식'을 고른 경우에 적용)
-            <select value={colorStyle} onChange={(e) => setColorStyle(e.target.value)} style={inputBase} data-testid="color-style">
-              <option value="precise">정밀 — 원본 색과 질감을 최대한 따라감 (기존)</option>
-              <option value="smooth">부드럽게 — 수채·그라데이션·연한 면 그림이 짜글짜글 깨지지 않게 (새 방식)</option>
             </select>
           </label>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, cursor: 'pointer' }}>
