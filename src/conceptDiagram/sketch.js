@@ -843,9 +843,10 @@ export function renderSketch(raw, opts = {}) {
   if (!concept) spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
   if (spec.textBlock && (spec.textBlock.title || spec.textBlock.subs.length)) { // 오른쪽 문구 블록: 제목(굵게) → 강조색 밑줄과 ▼ → 부제 줄들
     const tb = spec.textBlock; const cxm = 985; const tl = tb.title.split('\n').slice(0, 3); let ty = 300 - Math.max(0, tl.length - 2) * 26;
-    tl.forEach((t) => { o.push(`<text x="${cxm}" y="${ty}" text-anchor="middle" font-family="${FONT}" font-size="44" font-weight="800" fill="${C.text}">${esc(t)}</text>`); ty += 58; });
+    const wlen = (t) => [...t].reduce((a, ch) => a + (/\s/.test(ch) ? 0.45 : ch.charCodeAt(0) > 255 ? 1 : 0.62), 0) || 1; const tfs = Math.max(26, Math.min(44, 372 / Math.max(...tl.map(wlen), 1))); // 길면 글자를 줄여 오른쪽 칸 안에 맞춘다
+    tl.forEach((t) => { o.push(`<text x="${cxm}" y="${ty}" text-anchor="middle" font-family="${FONT}" font-size="${tfs.toFixed(1)}" font-weight="800" fill="${C.text}">${esc(t)}</text>`); ty += tfs * 1.32; });
     const ly = ty + 6; o.push(`<line x1="805" y1="${ly}" x2="1165" y2="${ly}" stroke="${tb.accent}" stroke-width="2.6"/><polygon points="${cxm - 14},${ly} ${cxm + 14},${ly} ${cxm},${ly + 13}" fill="${tb.accent}"/>`);
-    let sy2 = ly + 58; tb.subs.forEach((t) => { o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="26" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
+    let sy2 = ly + 58; tb.subs.forEach((t) => { const sfs = Math.max(18, Math.min(26, 372 / wlen(t))); o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="${sfs.toFixed(1)}" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${o.join('')}</svg>`;
   return { svg, width: W, height: H };

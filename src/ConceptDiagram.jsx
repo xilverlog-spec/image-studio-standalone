@@ -158,7 +158,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
   const [reading, setReading] = useState(false);
   // 분석 축측도 옵션: 남쪽 방향(도면에서 어느 쪽인지), 벽 높이, 시점(평면을 돌리는 각도)
-  const [axonSouth, setAxonSouth] = useState('bottom'); const [axonHeight, setAxonHeight] = useState(0.04); const [axonRot, setAxonRot] = useState(-15);
+  const [axonSouth, setAxonSouth] = useState('bottom'); const [axonHeight, setAxonHeight] = useState(0.04); const [axonRot, setAxonRot] = useState(-15); const [axonTexture, setAxonTexture] = useState(true);
   const [axonNote, setAxonNote] = useState(null); // 참고 이미지에서 읽은 구성(그릴 수 있는 것 / 못 그리는 것)
   // 유료 '정밀 읽기' 사용 가능 여부(서버 .env 에 결제 연결된 키·모델이 있을 때만 버튼이 나타난다)
   const [paidVision, setPaidVision] = useState({ available: false });
@@ -237,9 +237,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 분석 축측도: 내 평면 도면의 벽을 이미지에서 직접 뽑아 입체로 세운다(서버, AI 없음, 1초 안팎)
   const fetchAxon = async () => {
-    const res = await apiFetch('/v1/image/plan-axon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), rot: axonRot, height: axonHeight }) });
+    const res = await apiFetch('/v1/image/plan-axon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), rot: axonRot, height: axonHeight, texture: axonTexture }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
-    const j = await res.json(); return { svg: j.svg, vb: j.vb, proj: j.proj, plan_size: j.plan_size, opts: { rot: axonRot, height: axonHeight } };
+    const j = await res.json(); return { svg: j.svg, vb: j.vb, proj: j.proj, plan_size: j.plan_size, opts: { rot: axonRot, height: axonHeight, texture: axonTexture } };
   };
 
   // 소재 이미지 읽기: 구조로 읽고, 읽은 모습을 바로 보여 준다
@@ -348,7 +348,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 소재 이미지를 읽은 구조 + (있으면) 스타일 참고 이미지로 다이어그램 생성
   const generateFromRead = async (read) => {
     if (read.kind === 'axon') { // 입체 바탕(옵션이 바뀌었으면 다시 만들고) + AI 가 바람·일조·문구를 정한다
-      let ax = read.axon; if (ax.opts && (ax.opts.rot !== axonRot || ax.opts.height !== axonHeight)) ax = await fetchAxon();
+      let ax = read.axon; if (ax.opts && (ax.opts.rot !== axonRot || ax.opts.height !== axonHeight || ax.opts.texture !== axonTexture)) ax = await fetchAxon();
       const imgs = [subjectImage, ...(styleImage ? [styleImage] : [])]; let rd = null; let last = null;
       for (let k = 0; k < 2 && !rd; k++) { try { rd = normalizeAxonRead(await callAI(buildAxonPrompt(askText(), { south: axonSouth, hasRef: !!styleImage }), imgs), ax); } catch (e) { last = e; } }
       if (!rd) throw last || new Error('분석 표시를 읽지 못했습니다.');
@@ -520,6 +520,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                           <select value={axonRot} onChange={(e) => setAxonRot(Number(e.target.value))} style={inputBase} disabled={reading || busy}><option value={-30}>왼쪽으로 크게</option><option value={-15}>왼쪽으로 조금</option><option value={0}>정면</option><option value={15}>오른쪽으로 조금</option><option value={30}>오른쪽으로 크게</option></select>
                         </label>
                       </div>
+                      <label style={{ ...slotNote, display: 'flex', gap: 6, alignItems: 'flex-start', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={axonTexture} onChange={(e) => setAxonTexture(e.target.checked)} disabled={reading || busy} style={{ marginTop: 2 }} data-testid="axon-texture" />
+                        <span>바닥에 내 도면 그림 입히기(가구·바닥 질감·방 이름이 입체 바닥에 그대로 보입니다. 끄면 벽만 있는 단순한 모형)</span>
+                      </label>
                       {axonNote && (
                         <div style={{ ...slotNote, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="axon-note">
                           <b>참고 이미지에서 읽은 구성</b>: {axonNote.parts.length ? axonNote.parts.join(' · ') : '(참고 이미지 없음)'}<br />

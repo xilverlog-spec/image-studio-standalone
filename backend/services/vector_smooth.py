@@ -85,9 +85,10 @@ VTRACER_SMOOTH = dict(colormode="color", hierarchical="stacked", mode="spline", 
 
 # ── 선 + 색 분리 변환(2026-10-15): 선은 선대로, 색은 색대로 따로 변환해서 겹친다 ──
 LINE_DARK = 105        # 이 밝기보다 어두운 화소를 '선'으로 본다
-LINE_BLUR = 1.1        # 선 마스크를 흐렸다가 다시 자르는 정도(계단·짜글짜글함 제거)
-LINE_CUT = 0.42        # 다시 자르는 문턱(낮출수록 가는 선이 남는다)
-THIN_CONTRAST = 38     # 가는 회색 선으로 볼 최소 대비(주변 밝기와의 차이)
+LINE_BLUR = 0.6        # 선 마스크를 흐렸다가 다시 자르는 정도(계단·짜글짜글함 제거, 너무 크면 가는 선이 끊긴다)
+LINE_CUT = 0.36        # 다시 자르는 문턱(낮출수록 가는 선이 남는다)
+LINE_WEAK = 150        # 가는 선 화소로 이어 붙일 최대 밝기
+THIN_CONTRAST = 40     # 가는 선으로 볼 최소 대비(주변 밝기와의 차이)
 
 
 def vectorize_hybrid(img, k=10, sigma=1.9):
@@ -104,18 +105,15 @@ def vectorize_hybrid(img, k=10, sigma=1.9):
     big = img.resize((max(1, round(w0 * f)), max(1, round(h0 * f))), Image.LANCZOS) if abs(f - 1.0) > 0.02 else img
     a = np.asarray(big).astype(np.float32)
     lum = a.mean(-1)
-    dark = ndi.binary_opening(lum < LINE_DARK, structure=np.ones((2, 2)))
-    soft = ndi.gaussian_filter(dark.astype(np.float32), LINE_BLUR) > LINE_CUT
-    line_img = Image.fromarray(np.where(soft, 0, 255).astype(np.uint8), "L")
-    # 가는 회색 선(밝기 105~190, 주변보다 뚜렷이 어두운 가는 선): 넓은 회색 면은 닫기-원본(블랙 탑햇)에서 빠지므로 선만 남는다. 검정과 따로 회색으로 칠한다
+    # 선 마스크: 확실한 어두운 화소(강) + 거기에 이어진, 주변보다 뚜렷이 어두운 가는 선 화소(약, 안티앨리어싱으로 흐려진 1px 선) — 가는 선이 점선처럼 끊기지 않게 이어 붙인다
     win = max(5, int(round(0.004 * max(lum.shape))) | 1)
-    top = ndi.minimum_filter(ndi.maximum_filter(lum, size=win), size=win) - lum
-    thin = (top > THIN_CONTRAST) & (lum >= LINE_DARK) & (lum < 200) & ~ndi.binary_dilation(dark, iterations=2)
-    thin = ndi.binary_opening(thin, structure=np.ones((2, 2))) if thin.any() else thin
-    gray_val = int(np.clip(np.median(lum[thin]), 90, 170)) if thin.sum() > 50 else 128
-    gsoft = ndi.gaussian_filter(thin.astype(np.float32), LINE_BLUR) > LINE_CUT
-    gline_img = Image.fromarray(np.where(gsoft, 0, 255).astype(np.uint8), "L")
-    grow = ndi.binary_dilation(dark | thin, iterations=2)
+    top = ndi.minimum_filter(ndi.maximum_filter(lum, size=win), size=win) - lum      # 블랙 탑햇: 넓은 회색 면은 빠지고 가는 선만 남는다
+    strong = lum < LINE_DARK
+    weak = (lum < LINE_WEAK) & (top > THIN_CONTRAST)
+    dark = ndi.binary_propagation(strong, mask=strong | weak)
+    soft = ndi.gaussian_filter(dark.astype(np.float32), LINE_BLUR) > LINE_CUT          # 흐렸다가 다시 자르면 계단이 사라진 부드러운 윤곽이 된다
+    line_img = Image.fromarray(np.where(soft, 0, 255).astype(np.uint8), "L")
+    grow = ndi.binary_dilation(dark, iterations=2)
     idx = ndi.distance_transform_edt(grow, return_distances=False, return_indices=True)
     filled = a.copy()
     filled[grow] = a[idx[0][grow], idx[1][grow]]
@@ -123,18 +121,12 @@ def vectorize_hybrid(img, k=10, sigma=1.9):
     tmp = tempfile.mkdtemp(prefix="hyb_")
     try:
         lin, lout, cin, cout = (os.path.join(tmp, n) for n in ("l_in.png", "l_out.svg", "c_in.png", "c_out.svg"))
-        gin, gout = os.path.join(tmp, "g_in.png"), os.path.join(tmp, "g_out.svg")
         line_img.save(lin)
-        gline_img.save(gin)
         col_q.save(cin)
-        vtracer.convert_image_to_svg_py(lin, lout, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=8, corner_threshold=70, length_threshold=5.0, splice_threshold=45, path_precision=2)
+        vtracer.convert_image_to_svg_py(lin, lout, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=3, corner_threshold=70, length_threshold=4.0, splice_threshold=45, path_precision=2)
         vtracer.convert_image_to_svg_py(cin, cout, colormode="color", hierarchical="stacked", mode="spline", filter_speckle=12, color_precision=8, layer_difference=4, corner_threshold=85, length_threshold=7.0, splice_threshold=55, path_precision=2, max_iterations=10)
         csvg = open(cout, encoding="utf-8").read()
         lsvg = open(lout, encoding="utf-8").read()
-        gsvg = ""
-        if thin.sum() > 50:
-            vtracer.convert_image_to_svg_py(gin, gout, colormode="binary", hierarchical="stacked", mode="spline", filter_speckle=6, corner_threshold=70, length_threshold=5.0, splice_threshold=45, path_precision=2)
-            gsvg = open(gout, encoding="utf-8").read()
     finally:
         for n in os.listdir(tmp):
             try:
@@ -148,7 +140,5 @@ def vectorize_hybrid(img, k=10, sigma=1.9):
     cw, ch = col_q.size
     lw, lh = line_img.size
     inner = re.search(r"<svg[^>]*>([\s\S]*)</svg>", lsvg).group(1).replace('fill="#000000"', 'fill="#121212"')
-    ginner = re.search(r"<svg[^>]*>([\s\S]*)</svg>", gsvg).group(1).replace('fill="#000000"', 'fill="#%02x%02x%02x"' % ((gray_val,) * 3)) if gsvg else ""
-    sc = "scale(%.5f %.5f)" % (cw / lw, ch / lh)
-    svg = csvg.replace("</svg>", '<g transform="%s">%s</g><g transform="%s">%s</g></svg>' % (sc, ginner, sc, inner))   # 색 → 회색 가는 선 → 검정 선 순으로 겹친다
+    svg = csvg.replace("</svg>", '<g transform="scale(%.5f %.5f)">%s</g></svg>' % (cw / lw, ch / lh, inner))   # 색 위에 선을 겹친다
     return svg, (cw, ch)

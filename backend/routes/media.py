@@ -1824,6 +1824,7 @@ class PlanAxonRequest(BaseModel):
     rot: float = -15.0      # 평면을 돌리는 각도(도)
     elev: float = 38.0      # 내려다보는 각도(도)
     height: float = 0.04    # 벽 높이(긴 변 대비 비율)
+    texture: bool = True    # 바닥에 원본 도면 그림(가구·색·질감)을 입힐지
 
 
 @router.post("/image/plan-axon")
@@ -1840,7 +1841,7 @@ async def plan_axon(request: PlanAxonRequest):
     elev = max(15.0, min(70.0, request.elev))
     height = max(0.01, min(0.12, request.height))
     try:
-        res = await asyncio.to_thread(_pa.build_axon, data, rot, elev, height)
+        res = await asyncio.to_thread(_pa.build_axon, data, rot, elev, height, request.texture)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except BaseException as e:

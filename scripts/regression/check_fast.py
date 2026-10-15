@@ -77,6 +77,8 @@ _r = plan_axon.build_axon(_png(_plan))
 check(_r["svg"].startswith("<g>") and "<path" in _r["svg"] and "nan" not in _r["svg"].lower(), "축측 바탕 SVG 이상")
 check(len(_r["vb"]) == 4 and all(v == v and abs(v) < 1e5 for v in _r["vb"]) and _r["vb"][2] > 0 and _r["vb"][3] > 0, "축측 바탕 viewBox 이상")
 check(_r["stats"]["black"] >= 1 and _r["plan_size"][0] == 1000, "축측 바탕에서 벽을 못 찾음")
+_rt = plan_axon.build_axon(_png(_plan), texture=True)
+check("<image" in _rt["svg"] and "url(#axfloor)" in _rt["svg"] and "<image" not in _r["svg"], "바닥 질감(원본 도면 그림) 입히기 이상")
 _txt = _Img.new("RGB", (1000, 640), "white"); _dt = _Draw.Draw(_txt)
 for i in range(6):
     _dt.text((100 + i * 120, 300), "R1 L D/K", fill=(0, 0, 0))

@@ -289,6 +289,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     const sp2 = m.makeAxonSpec(rd);
     if (sp2.layout !== 'axon' || !sp2.base || sp2.winds.length !== 3 || sp2.memos[0].icon !== 'sun' || sp2.textBlock.subs.length !== 2) throw new Error('spec 구성 오류');
     if (sp2.winds[0].form !== 'soft' || sp2.winds[2].shape !== 'arc' || sp2.winds[2].head !== 'both' || sp2.winds[2].dash !== 'dashed') throw new Error('바람 띠(번짐)·일조 호(점선, 양쪽 화살촉) 모양이 아님');
+    const longT = m.renderSketch({ ...sp2, textBlock: { ...sp2.textBlock, title: '맞통풍과 수변조망을 극대화하는\n남향 배치 계획안' } }).svg; const fsz = Number((longT.match(/font-size="([\d.]+)" font-weight="800"/) || [])[1]); if (!(fsz > 0 && fsz < 44)) throw new Error('긴 제목은 글자를 줄여 칸 안에 맞춰야 함: ' + fsz);
     const r = m.renderSketch(sp2, { interactive: true });
     if (!r.svg.includes('data-base="1"') || !r.svg.includes('남향배치') || !r.svg.includes('stroke-linecap="round"')) throw new Error('바탕·문구가 그려지지 않음');
     if (/data-eid=[^>]*data-base|data-base[^>]*data-eid/.test(r.svg)) throw new Error('바탕이 선택·끌기에 반응하면 안 됨');

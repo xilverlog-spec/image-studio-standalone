@@ -124,7 +124,7 @@ def extract_walls(im):
     return wall, (gray | ring) & ~ndi.binary_dilation(wall, iterations=2), floor   # 구조벽(검정) 자리는 회색 띠에서 비워 윗면이 가려지지 않게 한다
 
 
-def build_axon(png_bytes, rot=DEFAULT_ROT, elev=DEFAULT_ELEV, height=DEFAULT_HEIGHT):
+def build_axon(png_bytes, rot=DEFAULT_ROT, elev=DEFAULT_ELEV, height=DEFAULT_HEIGHT, texture=False):
     """돌려주는 값: dict(svg=<g>…</g>, vb=[x,y,w,h], proj={rot,elev,cx,cy,hgt}, plan_size=[W,H], stats={...})"""
     im = _load(png_bytes)
     W, H = im.size
@@ -152,8 +152,8 @@ def build_axon(png_bytes, rot=DEFAULT_ROT, elev=DEFAULT_ELEV, height=DEFAULT_HEI
         return u, v * math.sin(eb) - z * math.cos(eb), v
 
     faces = []   # (정렬 키, 그릴 SVG 조각 만드는 데 쓸 점 목록들, 칠, 선, evenodd 여부)
-    for P in floor_polys:
-        faces.append((-1e12, [[proj(x, y, 0)[:2] for x, y in P]], "#f6f6f4", "#cfcfcf"))
+    for P in floor_polys:   # 질감을 입히면 단색 바닥은 그리지 않는다(그림을 덮지 않게)
+        faces.append((-1e12, [[proj(x, y, 0)[:2] for x, y in P]], "none" if texture else "#f6f6f4", "#cfcfcf"))
     for shapes, top_fill, kind in [(gray_shapes, "#d9d9d9", "g"), (black_shapes, "#1b1b1b", "b")]:
         for outer, holes in shapes:
             rings = [outer] + holes
@@ -178,6 +178,17 @@ def build_axon(png_bytes, rot=DEFAULT_ROT, elev=DEFAULT_ELEV, height=DEFAULT_HEI
         d = "".join("M" + " L".join("%.1f %.1f" % (x, y) for x, y in ring) + "Z" for ring in f[1])
         return '<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="0.7" stroke-linejoin="round"/>' % (d, f[2], f[3])
     body = "".join(piece(f) for f in faces)
+    if texture and floor_polys:   # 바닥에 원본 도면 그림(가구·색·질감)을 그대로 입힌다: 평면 → 화면 변환은 아핀이라 <image> 에 행렬 하나로 놓는다
+        import base64
+        import io
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=84)
+        a_, b_, c_, d_ = math.cos(ra), math.sin(eb) * math.sin(ra), -math.sin(ra), math.sin(eb) * math.cos(ra)
+        e_ = -cx * math.cos(ra) + cy * math.sin(ra)
+        f_ = -(cx * math.sin(ra) + cy * math.cos(ra)) * math.sin(eb)
+        clip = "".join("M" + " L".join("%.1f %.1f" % (x, y) for x, y in P) + "Z" for P in floor_polys)
+        body = ('<g transform="matrix(%.6f %.6f %.6f %.6f %.2f %.2f)"><clipPath id="axfloor"><path d="%s"/></clipPath>'
+                '<image href="data:image/jpeg;base64,%s" width="%d" height="%d" clip-path="url(#axfloor)"/></g>' % (a_, b_, c_, d_, e_, f_, clip, base64.b64encode(buf.getvalue()).decode(), W, H)) + body
     return {
         "svg": "<g>%s</g>" % body, "vb": [round(v, 1) for v in vb],
         "proj": {"rot": rot, "elev": elev, "cx": cx, "cy": cy, "hgt": round(hgt, 2)},
