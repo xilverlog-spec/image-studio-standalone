@@ -542,7 +542,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     <button style={{ ...btn(false, reading || busy), marginTop: 6 }} disabled={reading || busy}
                       title={`상위 모델(${paidVision.model})로 한 번 읽습니다. 유료이며 누를 때만 호출됩니다.`}
                       onClick={() => { if (window.confirm(`유료 정밀 읽기를 1회 실행합니다.
-예상 비용 약 $${paidVision.est_cost_usd} (오늘 사용 약 $${paidVision.usage_today?.usd ?? 0})
+예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)
+누적 사용 약 ${(paidVision.usage_today?.total_krw ?? 0).toLocaleString()}원 / 총 한도 ${(paidVision.usage_today?.total_limit_krw ?? 0).toLocaleString()}원 (오늘 약 $${paidVision.usage_today?.usd ?? 0})
 계속할까요?`)) readImage({ fresh: true, paid: true }); }}>
                       🔎 정밀 읽기 (유료 · 약 ${paidVision.est_cost_usd})
                     </button>

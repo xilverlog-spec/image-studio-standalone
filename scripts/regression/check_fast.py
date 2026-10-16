@@ -90,6 +90,29 @@ for _bad in (_txt, _Img.new("RGB", (800, 500), (90, 90, 90)), _Img.new("RGB", (8
         _rej += 1
 check(_rej == 3, f"벽이 아닌 그림(글자·단색·빈 그림)은 거절해야 함: {_rej}/3")
 
+# 유료 API 누적 총 한도(원): 장부에 합산되고, 넘기는 호출은 막혀야 한다
+import tempfile as _tf
+from services import paid_image as _pi
+_saved = (_pi._USAGE_FILE, _pi.PAID_TOTAL_LIMIT_KRW, _pi.USD_KRW, _pi.PAID_DAILY_LIMIT_USD)
+try:
+    _pi._USAGE_FILE = os.path.join(_tf.mkdtemp(), "u.json")
+    _pi.PAID_TOTAL_LIMIT_KRW, _pi.USD_KRW, _pi.PAID_DAILY_LIMIT_USD = 1400, 1400.0, 100.0   # 총 한도 $1 로 환산
+    _pi.check_budget_amount(0.5)
+    _pi.record_usage_amount(0.9)
+    check(abs(_pi.usage_total()["usd"] - 0.9) < 1e-9 and _pi.usage_total()["krw"] == 1260 and _pi.usage_total()["remaining_krw"] == 140, "누적 합계·원화 환산 이상")
+    _blocked = False
+    try:
+        _pi.check_budget_amount(0.2)
+    except RuntimeError as _e:
+        _blocked = "1,400원" in str(_e)
+    check(_blocked, "누적 총 한도를 넘는 호출이 막히지 않음")
+    _pi.check_budget_amount(0.05)
+    check(_pi.usage_today()["total_krw"] == 1260 and _pi.usage_today()["total_limit_krw"] == 1400, "usage_today 에 누적 합계가 없음")
+    _pi.PAID_TOTAL_LIMIT_KRW = 0
+    _pi.check_budget_amount(50.0)   # 한도 0 이면 총 한도 검사는 하지 않는다
+finally:
+    _pi._USAGE_FILE, _pi.PAID_TOTAL_LIMIT_KRW, _pi.USD_KRW, _pi.PAID_DAILY_LIMIT_USD = _saved
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

@@ -14,7 +14,7 @@ import time
 from config import (
     DATA_DIR, GEMINI_API_URL, GEMINI_IMAGE_API_KEY, GEMINI_IMAGE_MODEL,
     OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_QUALITY,
-    PAID_COST_GEMINI_USD, PAID_COST_OPENAI_USD, PAID_DAILY_LIMIT_USD,
+    PAID_COST_GEMINI_USD, PAID_COST_OPENAI_USD, PAID_DAILY_LIMIT_USD, PAID_TOTAL_LIMIT_KRW, USD_KRW,
 )
 
 _TIMEOUT_SEC = 240
@@ -43,11 +43,26 @@ def _read_usage() -> dict:
         return {}
 
 
+_TOTAL_KEY = "_total"   # 장부 안의 누적 합계(날짜 기록을 40일 뒤 지워도 합계는 남는다)
+
+
+def usage_total() -> dict:
+    """전체 누적: {'usd', 'count', 'krw', 'limit_krw', 'remaining_krw'} (예상 비용 기준, 환율 USD_KRW 가정)."""
+    with _USAGE_LOCK:
+        t = _read_usage().get(_TOTAL_KEY, {})
+    usd = float(t.get("usd", 0.0))
+    krw = int(round(usd * USD_KRW))
+    limit = int(PAID_TOTAL_LIMIT_KRW)
+    return {"usd": round(usd, 4), "count": int(t.get("count", 0)), "krw": krw, "limit_krw": limit, "remaining_krw": (max(0, limit - krw) if limit > 0 else None)}
+
+
 def usage_today() -> dict:
-    """오늘 누적: {'date', 'usd', 'count', 'limit_usd'} (예상 비용 기준)."""
+    """오늘 누적: {'date', 'usd', 'count', 'limit_usd'} + 전체 누적(total_*) (예상 비용 기준)."""
     with _USAGE_LOCK:
         day = _read_usage().get(_today(), {})
-    return {"date": _today(), "usd": round(float(day.get("usd", 0.0)), 4), "count": int(day.get("count", 0)), "limit_usd": PAID_DAILY_LIMIT_USD}
+    t = usage_total()
+    return {"date": _today(), "usd": round(float(day.get("usd", 0.0)), 4), "count": int(day.get("count", 0)), "limit_usd": PAID_DAILY_LIMIT_USD,
+            "total_usd": t["usd"], "total_krw": t["krw"], "total_limit_krw": t["limit_krw"], "remaining_krw": t["remaining_krw"], "usd_krw": USD_KRW}
 
 
 def estimate_cost(provider: str, n_images: int = 1) -> float:
@@ -56,7 +71,11 @@ def estimate_cost(provider: str, n_images: int = 1) -> float:
 
 
 def check_budget_amount(usd: float, what: str = "이미지") -> None:
-    """usd 를 더 쓰면 하루 한도를 넘게 되는 경우 RuntimeError. 한도 0 이하면 검사하지 않는다."""
+    """usd 를 더 쓰면 누적 총 한도(원) 또는 하루 한도(달러)를 넘게 되는 경우 RuntimeError. 한도 0 이하면 그 검사는 하지 않는다."""
+    if PAID_TOTAL_LIMIT_KRW > 0:
+        t = usage_total()
+        if (t["usd"] + usd) * USD_KRW > PAID_TOTAL_LIMIT_KRW:
+            raise RuntimeError(f"유료 API 누적 총 한도({PAID_TOTAL_LIMIT_KRW:,}원)에 도달했습니다 (현재 약 {t['krw']:,}원 사용, 이번 {what}은 약 {round(usd * USD_KRW):,}원). 더 쓰려면 관리자가 backend/.env 의 PAID_TOTAL_LIMIT_KRW 를 올려야 합니다.")
     if PAID_DAILY_LIMIT_USD <= 0:
         return
     u = usage_today()
@@ -75,7 +94,10 @@ def record_usage_amount(usd: float) -> None:
         day = data.setdefault(_today(), {"usd": 0.0, "count": 0})
         day["usd"] = float(day.get("usd", 0.0)) + usd
         day["count"] = int(day.get("count", 0)) + 1
-        for k in [k for k in data if k < time.strftime("%Y-%m-%d", time.localtime(time.time() - 40 * 86400))]:
+        tot = data.setdefault(_TOTAL_KEY, {"usd": 0.0, "count": 0})
+        tot["usd"] = float(tot.get("usd", 0.0)) + usd
+        tot["count"] = int(tot.get("count", 0)) + 1
+        for k in [k for k in data if k != _TOTAL_KEY and k < time.strftime("%Y-%m-%d", time.localtime(time.time() - 40 * 86400))]:
             data.pop(k, None)   # 40일 지난 기록은 정리
         with open(_USAGE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)

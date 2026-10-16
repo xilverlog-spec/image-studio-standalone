@@ -730,7 +730,8 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         )}
         {paid && usage && (
           <p style={hint} data-testid="aerial-usage">
-            오늘 유료 사용 약 ${usage.usd.toFixed(2)}{usage.limit_usd > 0 ? ` / 한도 $${usage.limit_usd.toFixed(0)}` : ''} ({usage.count}장, 추정치)
+            오늘 유료 사용 약 ${usage.usd.toFixed(2)}{usage.limit_usd > 0 ? ` / 하루 한도 $${usage.limit_usd.toFixed(0)}` : ''} ({usage.count}회, 추정치)
+            {usage.total_limit_krw > 0 && <> · <b>누적 약 {(usage.total_krw || 0).toLocaleString()}원 / 총 한도 {usage.total_limit_krw.toLocaleString()}원</b> (남은 약 {(usage.remaining_krw || 0).toLocaleString()}원)</>}
           </p>
         )}
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
