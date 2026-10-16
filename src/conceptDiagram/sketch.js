@@ -501,7 +501,7 @@ export function normalizeSketch(raw) {
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
   const bs = s.base && typeof s.base === 'object' ? s.base : null;
   const base = bs && typeof bs.svg === 'string' && bs.svg.length < 3000000 && Array.isArray(bs.vb) && bs.vb.length === 4 && bs.vb.every((v) => Number.isFinite(Number(v))) && bs.vb[2] > 0 && bs.vb[3] > 0 && Array.isArray(bs.rect) && bs.rect.length === 4 && bs.rect.every((v) => Number.isFinite(Number(v)))
-    ? { svg: bs.svg, vb: bs.vb.map(Number), rect: bs.rect.map(Number), ...(bs.proj ? { proj: bs.proj } : {}), ...(Array.isArray(bs.plan_size) ? { plan_size: bs.plan_size } : {}) } : null;
+    ? { svg: bs.svg, vb: bs.vb.map(Number), rect: bs.rect.map(Number), ...(bs.proj ? { proj: bs.proj } : {}), ...(Array.isArray(bs.plan_size) ? { plan_size: bs.plan_size } : {}), ...(bs.isImage ? { isImage: true } : {}) } : null;
   const tbs = s.textBlock && typeof s.textBlock === 'object' ? s.textBlock : null;
   const textBlock = tbs ? { title: String(tbs.title ?? ''), subs: (Array.isArray(tbs.subs) ? tbs.subs : []).slice(0, 4).map(String), accent: isHex(tbs.accent) ? tbs.accent : '#F0B000' } : null;
   const f = Array.isArray(s.frame) && s.frame.length === 4 ? s.frame.map((v) => num(v, 0)) : null;

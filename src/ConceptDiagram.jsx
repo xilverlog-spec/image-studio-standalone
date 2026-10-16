@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, renderSketch } from './conceptDiagram/sketch';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -162,7 +162,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [axonNote, setAxonNote] = useState(null); // 참고 이미지에서 읽은 구성(그릴 수 있는 것 / 못 그리는 것)
   // 유료 '정밀 읽기' 사용 가능 여부(서버 .env 에 결제 연결된 키·모델이 있을 때만 버튼이 나타난다)
   const [paidVision, setPaidVision] = useState({ available: false });
-  useEffect(() => { let off = false; apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (!off && j) setPaidVision(j); }).catch(() => {}); return () => { off = true; }; }, []);
+  // 유료 이미지 생성 공급자(키가 있는 것만)와 누적 사용액. 키가 없으면 유료 버튼은 아예 나타나지 않는다
+  const [paidImg, setPaidImg] = useState({ providers: [], usage: null }); const [paidProvider, setPaidProvider] = useState(''); const [paidImgBusy, setPaidImgBusy] = useState(false);
+  const [axonVector, setAxonVector] = useState(null); // 유료로 매끈하게 다시 그리기 전의 벡터 결과(되돌리기용)
+  const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
+  const refreshPaid = () => {
+    apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
+    apiFetch('/v1/image/options').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) { const ps = (j.paid_providers || []).filter((p) => p.available); setPaidImg({ providers: ps, usage: j.paid_usage || null }); setPaidProvider((cur) => (ps.some((p) => p.id === cur) ? cur : ps[0]?.id || '')); } }).catch(() => {});
+  };
+  useEffect(() => { refreshPaid(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [readOrig, setReadOrig] = useState(null); // AI 가 처음 읽은 값(편집 되돌리기용)
   const [selBox, setSelBox] = useState(0);
   const subjectFileRef = useRef(null);
@@ -188,7 +196,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const pickSubject = async (file) => {
     if (!file) return;
-    try { setSubjectImage(await readResizedPng(file)); setRead(null); setAxonNote(null); dropOldResult(); }
+    try { setSubjectImage(await readResizedPng(file)); setRead(null); setAxonNote(null); setAxonVector(null); dropOldResult(); }
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
   const pickStyle = async (file) => {
@@ -350,7 +358,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (read.kind === 'axon') { // 입체 바탕(옵션이 바뀌었으면 다시 만들고) + AI 가 바람·일조·문구를 정한다
       let ax = read.axon; if (ax.opts && (ax.opts.rot !== axonRot || ax.opts.height !== axonHeight || ax.opts.texture !== axonTexture)) ax = await fetchAxon();
       const imgs = [subjectImage, ...(styleImage ? [styleImage] : [])]; let rd = null; let last = null;
-      for (let k = 0; k < 2 && !rd; k++) { try { rd = normalizeAxonRead(await callAI(buildAxonPrompt(askText(), { south: axonSouth, hasRef: !!styleImage }), imgs), ax); } catch (e) { last = e; } }
+      const po = paidStepRef.current ? { paid: true } : {}; // 유료로 만들기: 바람·일조·문구를 정하는 AI 단계를 상위 모델로
+      for (let k = 0; k < (paidStepRef.current ? 1 : 2) && !rd; k++) { try { rd = normalizeAxonRead(await callAI(buildAxonPrompt(askText(), { south: axonSouth, hasRef: !!styleImage }), imgs, po), ax); } catch (e) { last = e; } }
       if (!rd) throw last || new Error('분석 표시를 읽지 못했습니다.');
       setRead({ ...rd, askedText: askText() }); setAxonNote({ parts: rd.referenceParts, unsupported: rd.unsupported, empty: !userText.trim() });
       return { type: 'sketch', spec: makeAxonSpec(rd), ver: Date.now() };
@@ -361,8 +370,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     }
     if (read.kind === 'sketch') {
       let ann;
-      try { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); }
-      catch { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); } // 응답을 해석하지 못하면 한 번 더
+      const po = paidStepRef.current ? { paid: true } : {}; // 유료로 만들기: 이름·설명·바람 방향 정하기를 상위 모델로(실패하면 무료로 몰래 바꾸지 않고 사유를 보여 준다)
+      try { ann = await callAI(buildSketchAnnotatePrompt(read, askText()), [], po); }
+      catch (e1) { if (paidStepRef.current) throw e1; ann = await callAI(buildSketchAnnotatePrompt(read, askText()), []); } // 응답을 해석하지 못하면 한 번 더(무료일 때만)
       return { type: 'sketch', spec: makeSketchSpec(read, ann), ver: Date.now() };
     }
     const askPrompt = buildSubjectPrompt(read, askText(), !!styleImage);
@@ -400,8 +410,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const mustRef = useRef([]);
   const askText = () => [userText.trim(), mustRef.current.length ? `[반드시 결과의 제목·칩·주석 글자에 그대로 포함할 표현] ${mustRef.current.join(', ')}` : ''].filter(Boolean).join('\n');
 
-  const generate = async (must) => {
+  const generate = async (must, gopts) => {
     mustRef.current = Array.isArray(must) ? must : [];
+    paidStepRef.current = !!(gopts && gopts.paid === true);
     if (!canGenerate) return;
     setGenError('');
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
@@ -421,7 +432,45 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`);
     } finally {
       setBusy(false);
+      if (paidStepRef.current) refreshPaid();   // 오늘·누적 사용액 갱신
+      paidStepRef.current = false;
     }
+  };
+
+  // ── 분석 축측도 '유료로 매끈하게 다시 그리기': 지금 결과(글자 뺀 초안) + 내 도면 + 참고 이미지를 이미지 생성 모델에 보내 새로 그리게 하고, 그 그림을 바탕으로 쓰고 문구는 편집 가능한 글자로 얹는다 ──
+  const svgToPngB64 = (svg, w, h) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); const im = new Image();
+    im.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(im, 0, 0, w, h); URL.revokeObjectURL(url); resolve(c.toDataURL('image/png').split(',').pop()); };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('초안을 이미지로 바꾸지 못했습니다.')); }; im.src = url;
+  });
+  const urlToJpegDataUrl = async (url, maxLong = 1600) => {
+    const blob = await (await fetch(url)).blob(); const u = URL.createObjectURL(blob);
+    try {
+      const im = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('생성된 이미지를 읽지 못했습니다.')); i.src = u; });
+      const k = Math.min(1, maxLong / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(im, 0, 0, c.width, c.height); return { url: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height };
+    } finally { URL.revokeObjectURL(u); }
+  };
+  const polishAxon = async () => {
+    const sp = result?.spec; const prov = paidImg.providers.find((p) => p.id === paidProvider) || paidImg.providers[0];
+    if (!sp || sp.layout !== 'axon' || !prov || paidImgBusy) return;
+    const krw = Math.round((prov.est_cost_usd || 0) * (paidImg.usage?.usd_krw || 1400));
+    if (!window.confirm(`유료 이미지 생성(${prov.label})을 1회 실행합니다.\n예상 비용 약 $${(prov.est_cost_usd || 0).toFixed(2)}(약 ${krw.toLocaleString()}원)\n누적 사용 약 ${(paidImg.usage?.total_krw ?? 0).toLocaleString()}원 / 총 한도 ${(paidImg.usage?.total_limit_krw ?? 0).toLocaleString()}원\n\n내 도면·참고 이미지·초안이 외부 서버로 전송됩니다(대외비 자료는 올리지 마세요).\n계속할까요?`)) return;
+    setPaidImgBusy(true); setGenError('');
+    try {
+      const draft = await svgToPngB64(renderSketch({ ...sp, textBlock: null }).svg, 1200, 760);
+      const refs = [...(subjectImage ? [{ role: 'plan', base64: toB64(subjectImage) }] : []), ...(styleImage ? [{ role: 'style', base64: toB64(styleImage) }] : [])];
+      const prompt = `Redraw image 1 as a polished, professional architectural analysis diagram of a Korean apartment unit. Keep exactly the composition of image 1: a 3D axonometric cutaway of the unit, soft translucent yellow-orange airflow ribbons passing through the unit, and a dashed yellow sun-path arc with a sun icon below it. ${subjectImage ? 'Image 2 is the original floor plan: keep its room layout, wall positions, proportions and the black structural walls exactly; show a light wood floor and subtle furniture.' : ''} ${styleImage ? 'The last image is a style reference: match its clean white background, soft gradients and line weight, but do not copy its content.' : ''} Pure white background. Do NOT draw any text, letters, numbers or logos anywhere. Keep the right 30% of the canvas completely empty white.`;
+      const res = await apiFetch('/v1/image/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, provider: prov.id, aspect_ratio: '3:2', input_image_base64: draft, reference_images: refs, external_consent: true }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      const data = await res.json(); const img = await urlToJpegDataUrl(`/generated/${data.filename}`);
+      const rect = [0, 0, 100, (100 * img.h) / img.w];
+      const next = { ...sp, base: { svg: `<g><image href="${img.url}" x="0" y="0" width="${img.w}" height="${img.h}"/></g>`, vb: [0, 0, img.w, img.h], rect, isImage: true }, winds: [], memos: [], frame: [-1, -1, 101, rect[3] + 1] };
+      if (!sp.base?.isImage) setAxonVector(sp);
+      setResult({ type: 'sketch', spec: next, ver: Date.now() });
+      addToast?.('success', '유료 이미지 생성 완료', `${prov.label} · 문구는 편집 가능한 글자로 얹었습니다. 마음에 안 들면 "벡터 버전으로 되돌리기"를 누르세요.`);
+    } catch (e) { addToast?.('error', '유료 이미지 생성 실패', e.message); setGenError(`유료 이미지 생성 실패: ${e.message}`); }
+    finally { setPaidImgBusy(false); refreshPaid(); }
   };
 
   // 박스 편집: 읽은 값을 바꾸고, 지금 화면이 '읽은 모습 미리보기'면 바로 다시 그린다
@@ -612,6 +661,27 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
+          {(((subjectKind === 'sketch' || subjectKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb' }} data-testid="paid-box">
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>유료 옵션 (선택 · 누르는 때만 호출 · 누적 총 한도 적용)</span>
+              {(paidImg.usage || paidVision.usage_today) && <span style={{ fontSize: 11, color: '#92400e' }} data-testid="paid-usage">누적 약 {((paidImg.usage || paidVision.usage_today).total_krw ?? 0).toLocaleString()}원 / 총 한도 {((paidImg.usage || paidVision.usage_today).total_limit_krw ?? 0).toLocaleString()}원</span>}
+              {(subjectKind === 'sketch' || subjectKind === 'axon') && readMode && paidVision.available && (
+                <button style={btn(false, !canGenerate)} disabled={!canGenerate} data-testid="paid-generate" title={`상위 모델(${paidVision.model})로 AI 단계를 한 번 실행합니다.`}
+                  onClick={() => { if (window.confirm(`유료로 만들기를 1회 실행합니다.\nAI 단계(${subjectKind === 'axon' ? '바람·일조·문구 정하기' : '이름·설명·바람 방향 붙이기'})를 상위 모델(${paidVision.model})로 호출합니다.\n예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)\n계속할까요?`)) generate(undefined, { paid: true }); }}>
+                  🔎 유료로 만들기 (AI 단계를 상위 모델로 · 약 ${paidVision.est_cost_usd})
+                </button>
+              )}
+              {result?.spec?.layout === 'axon' && paidImg.providers.length > 0 && (
+                <>
+                  {paidImg.providers.length > 1 && <select value={paidProvider} onChange={(e) => setPaidProvider(e.target.value)} style={inputBase} disabled={paidImgBusy} data-testid="paid-provider">{paidImg.providers.map((p) => <option key={p.id} value={p.id}>{p.label} · 약 ${(p.est_cost_usd || 0).toFixed(2)}/장</option>)}</select>}
+                  <button style={btn(false, paidImgBusy || busy)} disabled={paidImgBusy || busy} data-testid="paid-polish" onClick={polishAxon}>
+                    {paidImgBusy ? '유료 이미지 생성 중… (약 1분)' : `🎨 유료로 매끈하게 다시 그리기 (이미지 생성 · 약 $${((paidImg.providers.find((p) => p.id === paidProvider) || paidImg.providers[0])?.est_cost_usd || 0).toFixed(2)})`}
+                  </button>
+                  {axonVector && result?.spec?.base?.isImage && <button style={btn(false, paidImgBusy)} disabled={paidImgBusy} data-testid="paid-restore" onClick={() => { setResult({ type: 'sketch', spec: axonVector, ver: Date.now() }); setAxonVector(null); }}>↩ 벡터 버전으로 되돌리기</button>}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {coverage.length > 0 && (
