@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, renderSketch } from './conceptDiagram/sketch';
 
@@ -155,7 +155,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [genError, setGenError] = useState('');       // 마지막 생성/읽기 실패 사유(실패하면 이전 그림이 그대로 보이므로 화면에 계속 알린다)
   const [result, setResult] = useState(null); // { type, spec, baseImage? }
   const [subjectKind, setSubjectKind] = useState('auto');
+  const [autoKind, setAutoKind] = useState(null);     // 자동 판단이 정한 읽기 방식(손스케치·분석 축측도 …)
+  const [autoInfo, setAutoInfo] = useState(null);     // 자동 판단 근거 { type, reason }
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
+  const effKind = subjectKind === 'auto' ? (autoKind || (read?.kind && SUBJECT_KINDS[read.kind] ? read.kind : '')) : subjectKind; // 화면 안내에 쓰는 '지금 적용되는' 종류
   const [reading, setReading] = useState(false);
   // 분석 축측도 옵션: 남쪽 방향(도면에서 어느 쪽인지), 벽 높이, 시점(평면을 돌리는 각도)
   const [axonSouth, setAxonSouth] = useState('bottom'); const [axonHeight, setAxonHeight] = useState(0.04); const [axonRot, setAxonRot] = useState(-15); const [axonTexture, setAxonTexture] = useState(true);
@@ -196,12 +199,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const pickSubject = async (file) => {
     if (!file) return;
-    try { setSubjectImage(await readResizedPng(file)); setRead(null); setAxonNote(null); setAxonVector(null); dropOldResult(); }
+    try { setSubjectImage(await readResizedPng(file)); setRead(null); setAutoKind(null); setAutoInfo(null); setAxonNote(null); setAxonVector(null); dropOldResult(); }
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
   const pickStyle = async (file) => {
     if (!file) return;
-    try { setStyleImage(await readResizedPng(file)); }
+    try { setStyleImage(await readResizedPng(file)); if (subjectKind === 'auto' && (autoKind === 'plan' || autoKind === 'axon')) { setRead(null); setAutoKind(null); setAutoInfo(null); } } // 참고 이미지를 나중에 넣으면 평면도의 자동 판단(평면 다이어그램/분석 축측도)을 다시 한다
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
 
@@ -243,6 +246,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     return rd;
   };
 
+  // 이미지 종류 자동 판별: AI 가 한 번 보고(무료, 결과 저장) 알맞은 읽기 방식으로 보낸다. 실패하면 null → 예전 자동 읽기로 대체
+  const resolveAutoKind = async () => {
+    const key = `cls:${hashStr(subjectImage)}`; let info = skCacheGet(key);
+    if (!info) {
+      try { info = normalizeSubjectType(await callAI(buildSubjectClassifyPrompt(), [subjectImage])); skCachePut(key, info); }
+      catch { return null; }
+    }
+    const kind = routeSubject(info.type, { hasRef: !!styleImage, text: userText });
+    setAutoKind(kind); setAutoInfo(info);
+    addToast?.('success', `이미지를 "${SUBJECT_TYPE_LABEL[info.type]}"로 판단했습니다`, `${SUBJECT_KINDS[kind]} 방식으로 읽습니다. ${info.reason} (바꾸려면 아래 "이미지 종류 직접 지정")`);
+    return kind;
+  };
+
   // 분석 축측도: 내 평면 도면의 벽을 이미지에서 직접 뽑아 입체로 세운다(서버, AI 없음, 1초 안팎)
   const fetchAxon = async () => {
     const res = await apiFetch('/v1/image/plan-axon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: subjectImage.split(',').pop(), rot: axonRot, height: axonHeight, texture: axonTexture }) });
@@ -257,15 +273,23 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const paid = !!(opts && opts.paid === true);   // '정밀 읽기(유료)': 상위 모델로 한 번만 읽는다(무료로 몰래 대체하지 않는다)
     setReading(true);
     try {
-      const useGrid = subjectKind !== 'form' && subjectKind !== 'sketch' && subjectKind !== 'freeform' && subjectKind !== 'axon'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
+      let kind = subjectKind; let autoRouted = false;
+      if (kind === 'auto') { // 종류를 고르지 않았으면 AI 가 한 번 보고 정한다(실패하면 예전 자동 읽기)
+        const k0 = await resolveAutoKind(); if (k0) { kind = k0; autoRouted = true; }
+      }
+      const useGrid = kind !== 'form' && kind !== 'sketch' && kind !== 'freeform' && kind !== 'axon'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
-      if (subjectKind === 'axon') { // 입체 바탕만 먼저 보여 준다(바람·일조 표시와 문구는 '다이어그램 만들기'에서 AI 가 정한다)
-        const ax = await fetchAxon(); const rd = { kind: 'axon', axon: ax, title: '', subs: [], winds: [], sun: null, referenceParts: [], unsupported: [], askedText: null };
+      if (kind === 'axon') { // 입체 바탕만 먼저 보여 준다(바람·일조 표시와 문구는 '다이어그램 만들기'에서 AI 가 정한다)
+        let ax = null;
+        try { ax = await fetchAxon(); } catch (e) { if (!autoRouted) throw e; kind = 'plan'; setAutoKind('plan'); addToast?.('info', '벽을 뽑지 못해 평면 다이어그램으로 읽습니다', e.message); }
+      if (ax) {
+        const rd = { kind: 'axon', axon: ax, title: '', subs: [], winds: [], sun: null, referenceParts: [], unsupported: [], askedText: null };
         setRead(rd); setReadOrig(rd); setSelBox(0); setResult({ type: 'sketch', spec: makeAxonSpec(rd), isReadPreview: true, ver: Date.now() });
         addToast?.('success', '입체 바탕을 만들었습니다', '도면의 벽을 뽑아 입체로 세웠습니다. 바람·일조 표시와 문구는 "다이어그램 만들기"에서 붙입니다.'); return rd;
       }
-      if (subjectKind === 'freeform') { const rd = await readFreeform({ fresh, paid }); if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); return rd; }
-      if (subjectKind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
+      }
+      if (kind === 'freeform') { const rd = await readFreeform({ fresh, paid }); if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); return rd; }
+      if (kind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const cacheKey = hashStr(subjectImage);
         const forceSketch = !!(opts && opts.forceSketch === true); // '평면 스케치로 다시 읽기': 입체 그림으로 판단돼 자유 해석으로 읽던 것을 되돌린다
         if (forceSketch) skCachePut(`${cacheKey}:view3d`, false);
@@ -315,7 +339,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       }
       let r = null; let lastErr = null;
       for (let attempt = 0; attempt < 2 && !r; attempt++) { // 잘못 읽히면(뭉개짐 등) 한 번 더 읽는다
-        try { r = normalizeRead(await callAI(buildReadPrompt(subjectKind, { grid: useGrid }), [gridded]), subjectKind); }
+        try { r = normalizeRead(await callAI(buildReadPrompt(kind, { grid: useGrid }), [gridded]), kind); }
         catch (e) { lastErr = e; }
       }
       if (!r) throw lastErr;
@@ -521,8 +545,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>1. 설명</span>
           <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
-            placeholder={subjectKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
-          {(subjectKind === 'axon' || (styleImage && subjectImage)) && (
+            placeholder={effKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
+          {(effKind === 'axon' || (styleImage && subjectImage)) && (
             <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: userText.trim() ? 'var(--text-tertiary, #64748b)' : '#9a3412', background: userText.trim() ? 'transparent' : '#fff7ed', padding: userText.trim() ? 0 : '6px 8px', borderRadius: 6 }} data-testid="concept-hint">
               {userText.trim() ? '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' : '⚠️ 설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화'}
             </p>
@@ -549,11 +573,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               </div>
               {readMode && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
-                  <select value={subjectKind} onChange={(e) => { setSubjectKind(e.target.value); setRead(null); }} style={inputBase} disabled={reading || busy}>
+                  <div style={{ ...slotNote, padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.7)', border: '1px solid var(--border-color)' }} data-testid="auto-kind">
+                    {subjectKind === 'auto'
+                      ? (autoKind ? <>🤖 <b>자동 판단</b>: {autoInfo ? SUBJECT_TYPE_LABEL[autoInfo.type] : ''} → <b>{SUBJECT_KINDS[autoKind]}</b> 방식으로 읽습니다.</> : <>🤖 <b>자동 판단</b>: 이미지를 올리고 만들기(또는 미리 읽기)를 누르면 AI가 종류를 알아서 정합니다.</>)
+                      : <>✋ <b>직접 지정</b>: {SUBJECT_KINDS[subjectKind]}</>}
+                  </div>
+                  <details>
+                    <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>이미지 종류 직접 지정 (보통은 필요 없습니다)</summary>
+                    <select value={subjectKind} onChange={(e) => { setSubjectKind(e.target.value); setRead(null); setAutoKind(null); setAutoInfo(null); }} style={inputBase} disabled={reading || busy}>
                     <option value="auto">이미지 종류: 자동 판단</option>
                     {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
-                  {subjectKind === 'axon' && (
+                  </details>
+                  {effKind === 'axon' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="axon-options">
                       <p style={slotNote}>내 평면 도면의 벽을 이미지에서 직접 뽑아 입체로 세우고, 그 위에 바람 띠·일조 경로와 오른쪽 문구를 얹습니다. 어두운 벽선이 있는 깨끗한 평면도에서 가장 잘 됩니다.</p>
                       <label style={{ ...slotNote, display: 'flex', flexDirection: 'column', gap: 3 }}>남쪽 방향(도면에서 어느 쪽이 남쪽인가요?)
@@ -582,12 +614,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                       )}
                     </div>
                   )}
-                  {subjectKind === 'freeform' && <p style={slotNote}>평면 도면이 아닌 그림(입체·투시·수채·사진 등)용입니다. 틀에 맞추지 않고 그림이 말하는 개념을 이해해서, 고정 요소(회색)와 움직이거나 강조된 요소(노랑), 회전·이동·흐름 화살표로 단순하게 다시 그립니다. 설명(1번)이 읽을 때 쓰이므로 설명을 바꾸면 새로 읽습니다. 결과는 클릭해서 바로 고칠 수 있습니다.</p>}
-                  {subjectKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
+                  {effKind === 'freeform' && <p style={slotNote}>평면 도면이 아닌 그림(입체·투시·수채·사진 등)용입니다. 틀에 맞추지 않고 그림이 말하는 개념을 이해해서, 고정 요소(회색)와 움직이거나 강조된 요소(노랑), 회전·이동·흐름 화살표로 단순하게 다시 그립니다. 설명(1번)이 읽을 때 쓰이므로 설명을 바꾸면 새로 읽습니다. 결과는 클릭해서 바로 고칠 수 있습니다.</p>}
+                  {effKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>
                     {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
-                  {(subjectKind === 'sketch' || subjectKind === 'freeform') && paidVision.available && (
+                  {(effKind === 'sketch' || effKind === 'freeform') && paidVision.available && (
                     <button style={{ ...btn(false, reading || busy), marginTop: 6 }} disabled={reading || busy}
                       title={`상위 모델(${paidVision.model})로 한 번 읽습니다. 유료이며 누를 때만 호출됩니다.`}
                       onClick={() => { if (window.confirm(`유료 정밀 읽기를 1회 실행합니다.
@@ -604,7 +636,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                       {read.fromCache && (
                         <><br /><b>저장된 읽기 결과입니다</b>(같은 그림을 전에 읽은 결과라 AI 를 다시 부르지 않았습니다). <button style={{ ...btn(true, reading || busy), padding: '3px 8px', fontSize: 11.5, marginTop: 4 }} disabled={reading || busy} onClick={() => readImage({ fresh: true })} data-testid="reread-fresh">새로 읽기</button></>
                       )}
-                      {read.kind === 'freeform' && subjectKind === 'sketch' && (
+                      {read.kind === 'freeform' && effKind !== 'freeform' && (
                         <><br />입체·채색 그림으로 판단해 자유 해석으로 읽었습니다. <button style={{ ...btn(false, reading || busy), padding: '3px 8px', fontSize: 11.5, marginTop: 4 }} disabled={reading || busy} onClick={() => readImage({ fresh: true, forceSketch: true })}>평면 스케치로 다시 읽기</button></>
                       )}
                     </p>
@@ -661,13 +693,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
-          {(((subjectKind === 'sketch' || subjectKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (
+          {(((effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb' }} data-testid="paid-box">
               <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>유료 옵션 (선택 · 누르는 때만 호출 · 누적 총 한도 적용)</span>
               {(paidImg.usage || paidVision.usage_today) && <span style={{ fontSize: 11, color: '#92400e' }} data-testid="paid-usage">누적 약 {((paidImg.usage || paidVision.usage_today).total_krw ?? 0).toLocaleString()}원 / 총 한도 {((paidImg.usage || paidVision.usage_today).total_limit_krw ?? 0).toLocaleString()}원</span>}
-              {(subjectKind === 'sketch' || subjectKind === 'axon') && readMode && paidVision.available && (
+              {(effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available && (
                 <button style={btn(false, !canGenerate)} disabled={!canGenerate} data-testid="paid-generate" title={`상위 모델(${paidVision.model})로 AI 단계를 한 번 실행합니다.`}
-                  onClick={() => { if (window.confirm(`유료로 만들기를 1회 실행합니다.\nAI 단계(${subjectKind === 'axon' ? '바람·일조·문구 정하기' : '이름·설명·바람 방향 붙이기'})를 상위 모델(${paidVision.model})로 호출합니다.\n예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)\n계속할까요?`)) generate(undefined, { paid: true }); }}>
+                  onClick={() => { if (window.confirm(`유료로 만들기를 1회 실행합니다.\nAI 단계(${effKind === 'axon' ? '바람·일조·문구 정하기' : '이름·설명·바람 방향 붙이기'})를 상위 모델(${paidVision.model})로 호출합니다.\n예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)\n계속할까요?`)) generate(undefined, { paid: true }); }}>
                   🔎 유료로 만들기 (AI 단계를 상위 모델로 · 약 ${paidVision.est_cost_usd})
                 </button>
               )}

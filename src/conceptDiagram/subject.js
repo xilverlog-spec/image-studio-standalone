@@ -13,6 +13,36 @@ export const SUBJECT_KINDS = {
   other: '그 외(지원 안 함)',
 };
 
+// ── 이미지 종류 자동 판별(2026-10-16): 사용자가 종류를 고르지 않아도 AI 가 한 번 보고 알맞은 읽기 방식으로 보낸다 ──
+export const SUBJECT_TYPES = ['hand_sketch', 'artwork_3d', 'building_photo', 'plan_drawing', 'site_plan', 'other'];
+export const SUBJECT_TYPE_LABEL = { hand_sketch: '손으로 그린 개념 스케치', artwork_3d: '입체 스케치·수채·일러스트', building_photo: '건물 사진·렌더', plan_drawing: '벽이 그려진 평면도', site_plan: '배치도·대지', other: '그 밖의 그림' };
+export function buildSubjectClassifyPrompt() {
+  return `첨부된 이미지가 어떤 종류의 그림인지 JSON 으로만 답한다(설명/코드펜스 금지).
+{"type":"hand_sketch|artwork_3d|building_photo|plan_drawing|site_plan|other","reason":"한국어 한 줄"}
+- hand_sketch: 펜·연필로 그린 납작한 개념 스케치(상자·빗금·화살표·평면이나 단면 모양)
+- artwork_3d: 입체(투시·축측)로 그린 스케치·수채·일러스트·모형 도식(색칠이나 음영이 있고 입체로 보이는 그림)
+- building_photo: 건물 외관·내부 사진, 렌더, SketchUp 캡처
+- plan_drawing: 벽이 선으로 그려진 평면도(CAD 평면·분양 평면, 방 이름과 치수가 있음)
+- site_plan: 대지·배치도·항공 지도처럼 건물과 땅을 위에서 본 그림
+- other: 그 외`;
+}
+export function normalizeSubjectType(parsed) {
+  const t = String(parsed?.type ?? '').toLowerCase().trim();
+  return { type: SUBJECT_TYPES.includes(t) ? t : 'other', reason: String(parsed?.reason ?? '').slice(0, 80) };
+}
+// 설명·참고 이미지에 '분석' 단서(바람·일조 등)가 있으면 평면도를 분석 축측도로, 없으면 기존 평면 다이어그램으로 보낸다
+const ANALYSIS_CUES = /바람|통풍|환기|일조|채광|남향|조망|축측|입체|아이소/;
+export function routeSubject(type, { hasRef = false, text = '' } = {}) {
+  switch (type) {
+    case 'hand_sketch': return 'sketch';
+    case 'artwork_3d': return 'freeform';
+    case 'building_photo': return 'form';
+    case 'plan_drawing': return hasRef || ANALYSIS_CUES.test(text) ? 'axon' : 'plan';
+    case 'site_plan': return 'site';
+    default: return 'freeform';
+  }
+}
+
 const READ_SCHEMA = `{
   "kind": "form" | "plan" | "site" | "other",
   "summary": "이미지가 무엇이고 어떻게 읽었는지 한국어 한두 문장(예: 평면도로 판단. 방 7개, 중앙 복도형)",

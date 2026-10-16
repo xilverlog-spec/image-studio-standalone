@@ -8,10 +8,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const spec = path.resolve(here, '../../src/conceptDiagram/spec.js');
 const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
+const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, axonProject } from ${fwd(sketch)};`);
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, axonProject } from ${fwd(sketch)};
+export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -304,6 +306,21 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   try { m.normalizeAxonRead({ winds: [] }, null); fails.push('바탕이 없으면 오류여야 함'); } catch { /* 의도된 오류 */ }
   const pr = m.buildAxonPrompt('남향 맞통풍', { south: 'left', hasRef: true });
   if (!pr.includes('남향 맞통풍') || !pr.includes('도면의 왼쪽') || !pr.includes('두 번째 이미지')) fails.push('분석 축측도 프롬프트에 설명·방향·참고 안내가 없음');
+}
+
+// 이미지 종류 자동 판별: 분류 결과 → 읽기 방식 경로, 이상한 응답은 안전하게 처리
+{
+  const R = m.routeSubject;
+  const expect = (cond, msg) => { if (!cond) fails.push('자동 판별: ' + msg); else ok++; };
+  expect(R('hand_sketch') === 'sketch' && R('artwork_3d') === 'freeform' && R('building_photo') === 'form' && R('site_plan') === 'site', '기본 경로(스케치·입체 그림·사진·배치도)');
+  expect(R('plan_drawing') === 'plan', '단서 없는 평면도는 평면 다이어그램');
+  expect(R('plan_drawing', { hasRef: true }) === 'axon', '참고 이미지가 있는 평면도는 분석 축측도');
+  for (const t of ['맞통풍을 보여줘', '남향 채광 분석', '일조와 조망', '입체로']) expect(R('plan_drawing', { text: t }) === 'axon', `분석 단서 '${t}' → 분석 축측도`);
+  expect(R('plan_drawing', { text: '공용과 사적 공간 구분' }) === 'plan', '분석 단서 없는 설명은 평면 다이어그램');
+  expect(R('other') === 'freeform' && R('엉뚱') === 'freeform' && R(undefined) === 'freeform', '모르는 종류는 자유 해석');
+  expect(m.normalizeSubjectType({ type: 'Hand_Sketch', reason: 'x' }).type === 'hand_sketch' && m.normalizeSubjectType({ type: 'zzz' }).type === 'other' && m.normalizeSubjectType(null).type === 'other', '분류 응답 정리');
+  expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음');
+  expect(m.SUBJECT_TYPES.every((t) => m.buildSubjectClassifyPrompt().includes(t)), '분류 프롬프트에 모든 종류가 있음');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');
