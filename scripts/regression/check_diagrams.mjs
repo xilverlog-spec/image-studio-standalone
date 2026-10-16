@@ -12,7 +12,7 @@ const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, axonProject } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
@@ -317,10 +317,27 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(R('plan_drawing', { hasRef: true }) === 'axon', '참고 이미지가 있는 평면도는 분석 축측도');
   for (const t of ['맞통풍을 보여줘', '남향 채광 분석', '일조와 조망', '입체로']) expect(R('plan_drawing', { text: t }) === 'axon', `분석 단서 '${t}' → 분석 축측도`);
   expect(R('plan_drawing', { text: '공용과 사적 공간 구분' }) === 'plan', '분석 단서 없는 설명은 평면 다이어그램');
+  for (const t of ['동선을 표시한 다이어그램', '동선을 나타내는 건축다이어그램을 만들어줘', '부서별 조닝', 'zoning diagram']) expect(R('plan_drawing', { text: t }) === 'edit', `동선·조닝 요청 '${t}' → AI 이미지 편집`);
+  expect(R('plan_drawing', { text: '통풍과 동선' }) === 'axon' && R('plan_drawing', { text: '동선', hasRef: true }) === 'axon', '분석 단서·참고 이미지가 있으면 동선 요청이어도 분석 축측도가 우선');
+  expect(R('site_plan', { text: '동선' }) === 'site' && R('hand_sketch', { text: '동선' }) === 'sketch', '평면도가 아니면 동선 단서가 있어도 경로가 바뀌지 않음');
   expect(R('other') === 'freeform' && R('엉뚱') === 'freeform' && R(undefined) === 'freeform', '모르는 종류는 자유 해석');
   expect(m.normalizeSubjectType({ type: 'Hand_Sketch', reason: 'x' }).type === 'hand_sketch' && m.normalizeSubjectType({ type: 'zzz' }).type === 'other' && m.normalizeSubjectType(null).type === 'other', '분류 응답 정리');
-  expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음');
+  expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon', 'edit'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음');
   expect(m.SUBJECT_TYPES.every((t) => m.buildSubjectClassifyPrompt().includes(t)), '분류 프롬프트에 모든 종류가 있음');
+}
+// 도면 위에 표시(AI 이미지 편집) 결과: 그림을 바탕으로 깔고 제목·범례가 편집 가능한 글자로 얹힌다
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('이미지 편집 결과: ' + msg); else ok++; };
+  const url = 'data:image/jpeg;base64,/9j/AAAA';
+  const sp = m.makeEditSpec({ imageUrl: url, w: 1743, h: 1167, title: '동선 다이어그램', legend: [{ color: '#F61918', kind: 'flow', label: '주 동선' }, { color: '#2870E9', kind: 'zone', label: '위쪽 구역' }, { color: 'bad', label: '무시' }] });
+  const n = m.normalizeSketch(sp);
+  expect(n.layout === 'image' && n.base?.isImage && n.memos.length === 2 && n.title === '동선 다이어그램', 'spec 이 정규화 뒤에도 유지됨(레이아웃·바탕·범례 2개·제목)');
+  const r = m.renderSketch(sp);
+  expect(r.svg.includes('<image href="data:image/jpeg') && r.svg.includes('동선 다이어그램') && r.svg.includes('━ 주 동선') && r.svg.includes('■ 위쪽 구역') && r.svg.includes('#F61918'), '그림·제목·범례 글자(동선 ━, 구역 ■)가 그려짐');
+  const v = m.sketchView(sp); const p0 = v.toScreen([0, 0]); const p1 = v.toScreen([100, 100 * 1167 / 1743]);
+  expect(p0[0] >= 30 - 0.5 && p1[0] <= 1170 + 0.5 && p1[1] <= 735 + 0.5 && p1[0] - p0[0] > 600, '그림이 화면 영역 안에 크게 놓임');
+  const sp0 = m.makeEditSpec({ imageUrl: url, w: 800, h: 600, legend: [] });
+  expect(m.renderSketch(sp0).svg.includes('<image') && m.normalizeSketch(sp0).memos.length === 0, '범례가 없어도 그려짐');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

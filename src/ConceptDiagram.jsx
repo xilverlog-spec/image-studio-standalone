@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, renderSketch } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch } from './conceptDiagram/sketch';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -168,12 +168,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 유료 이미지 생성 공급자(키가 있는 것만)와 누적 사용액. 키가 없으면 유료 버튼은 아예 나타나지 않는다
   const [paidImg, setPaidImg] = useState({ providers: [], usage: null }); const [paidProvider, setPaidProvider] = useState(''); const [paidImgBusy, setPaidImgBusy] = useState(false);
   const [axonVector, setAxonVector] = useState(null); // 유료로 매끈하게 다시 그리기 전의 벡터 결과(되돌리기용)
+  const [editAvail, setEditAvail] = useState(null);  // 서버에 'AI 이미지 편집(Qwen)' 환경이 있는지(없으면 자동 판단이 평면 다이어그램으로 대신한다)
+  const [editProg, setEditProg] = useState(null);    // 진행 중인 AI 이미지 편집 { stage, percent, sec }
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
   const refreshPaid = () => {
     apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
     apiFetch('/v1/image/options').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) { const ps = (j.paid_providers || []).filter((p) => p.available); setPaidImg({ providers: ps, usage: j.paid_usage || null }); setPaidProvider((cur) => (ps.some((p) => p.id === cur) ? cur : ps[0]?.id || '')); } }).catch(() => {});
   };
-  useEffect(() => { refreshPaid(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshPaid(); apiFetch('/v1/image/diagram-edit/options').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setEditAvail(j); }).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [readOrig, setReadOrig] = useState(null); // AI 가 처음 읽은 값(편집 되돌리기용)
   const [selBox, setSelBox] = useState(0);
   const subjectFileRef = useRef(null);
@@ -204,7 +208,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const pickStyle = async (file) => {
     if (!file) return;
-    try { setStyleImage(await readResizedPng(file)); if (subjectKind === 'auto' && (autoKind === 'plan' || autoKind === 'axon')) { setRead(null); setAutoKind(null); setAutoInfo(null); } } // 참고 이미지를 나중에 넣으면 평면도의 자동 판단(평면 다이어그램/분석 축측도)을 다시 한다
+    try { setStyleImage(await readResizedPng(file)); if (subjectKind === 'auto' && (autoKind === 'plan' || autoKind === 'axon' || autoKind === 'edit')) { setRead(null); setAutoKind(null); setAutoInfo(null); } } // 참고 이미지를 나중에 넣으면 평면도의 자동 판단(평면 다이어그램/분석 축측도)을 다시 한다
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
 
@@ -253,9 +257,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       try { info = normalizeSubjectType(await callAI(buildSubjectClassifyPrompt(), [subjectImage])); skCachePut(key, info); }
       catch { return null; }
     }
-    const kind = routeSubject(info.type, { hasRef: !!styleImage, text: userText });
+    let kind = routeSubject(info.type, { hasRef: !!styleImage, text: userText });
+    if (kind === 'edit' && editAvail && editAvail.available === false) { kind = 'plan'; addToast?.('info', 'AI 이미지 편집 환경이 이 서버에 없어 평면 다이어그램으로 만듭니다', '동선·구역 표시는 큰 도면에서 품질이 떨어질 수 있습니다.'); }
     setAutoKind(kind); setAutoInfo(info);
-    addToast?.('success', `이미지를 "${SUBJECT_TYPE_LABEL[info.type]}"로 판단했습니다`, `${SUBJECT_KINDS[kind]} 방식으로 읽습니다. ${info.reason} (바꾸려면 아래 "이미지 종류 직접 지정")`);
+    addToast?.('success', `이미지를 "${SUBJECT_TYPE_LABEL[info.type]}"로 판단했습니다`, `${SUBJECT_KINDS[kind]} 방식으로 ${kind === 'edit' ? '그립니다(무료, 약 3~6분)' : '읽습니다'}. ${info.reason} (바꾸려면 아래 "이미지 종류 직접 지정")`);
     return kind;
   };
 
@@ -276,6 +281,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       let kind = subjectKind; let autoRouted = false;
       if (kind === 'auto') { // 종류를 고르지 않았으면 AI 가 한 번 보고 정한다(실패하면 예전 자동 읽기)
         const k0 = await resolveAutoKind(); if (k0) { kind = k0; autoRouted = true; }
+      }
+      if (kind === 'edit') { // 미리 읽을 것이 없다: '다이어그램 만들기'를 누르면 서버가 도면을 보고 지시문을 쓰고 직접 그린다
+        const rd = { kind: 'edit', summary: 'AI 이미지 편집 방식입니다. 도면의 선·글자는 원본 그대로 두고 색과 동선만 얹습니다(무료, 약 3~6분).', askedText: null };
+        setRead(rd); setReadOrig(rd); setSelBox(0); addToast?.('info', '이 방식은 미리 읽기가 없습니다', '“다이어그램 만들기”를 누르면 서버가 도면을 보고 직접 그립니다(약 3~6분).'); return rd;
       }
       const useGrid = kind !== 'form' && kind !== 'sketch' && kind !== 'freeform' && kind !== 'axon'; // 손스케치는 눈금 없이 원본 그대로 읽는 편이 위치가 훨씬 정확하다(시험: 도형 겹침 0.46 → 0.85)
       const gridded = useGrid ? await withGrid(subjectImage) : subjectImage;
@@ -434,6 +443,33 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const mustRef = useRef([]);
   const askText = () => [userText.trim(), mustRef.current.length ? `[반드시 결과의 제목·칩·주석 글자에 그대로 포함할 표현] ${mustRef.current.join(', ')}` : ''].filter(Boolean).join('\n');
 
+  // 도면 위에 표시(AI 이미지 편집): 서버가 (지시문 작성 → 로컬 AI 편집 → 원본 위 합성)을 하는 동안 진행 상황을 보여 주고, 끝나면 그림을 바탕으로 깔고 제목·범례를 편집 가능한 글자로 얹는다
+  const runDiagramEdit = async () => {
+    setBusy(true); setEditProg({ stage: '시작하는 중', percent: 1, sec: 0 });
+    const t0 = Date.now();
+    try {
+      const res = await apiFetch('/v1/image/diagram-edit/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: toB64(subjectImage), text: askText() }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      const { job_id: jobId } = await res.json();
+      let job = null;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (!aliveRef.current) return;
+        const sr = await apiFetch(`/v1/image/diagram-edit/status/${jobId}`);
+        if (!sr.ok) throw new Error((await sr.json().catch(() => ({}))).detail || `HTTP ${sr.status}`);
+        job = await sr.json();
+        setEditProg({ stage: job.stage, percent: job.percent || 0, sec: Math.round((Date.now() - t0) / 1000) });
+        if (job.status === 'done') break;
+        if (job.status === 'error') throw new Error(job.error || 'AI 이미지 편집에 실패했습니다.');
+      }
+      const r = job.result; const img = await urlToJpegDataUrl(r.image, 2000);
+      setResult({ type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }), ver: Date.now() });
+      addToast?.('success', '다이어그램 생성 완료', `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
+      if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
+    } catch (e) { addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`); }
+    finally { setBusy(false); setEditProg(null); }
+  };
+
   const generate = async (must, gopts) => {
     mustRef.current = Array.isArray(must) ? must : [];
     paidStepRef.current = !!(gopts && gopts.paid === true);
@@ -441,10 +477,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     setGenError('');
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
     let readNow = read;
+    if (readMode && readNow && subjectKind === 'auto' && autoInfo && ['plan', 'axon', 'edit'].includes(readNow.kind)) { // 설명·참고 이미지를 바꿔서 평면도에 알맞은 방식(평면 다이어그램/분석 축측도/AI 이미지 편집)이 달라졌으면 다시 정한다
+      const want = routeSubject(autoInfo.type, { hasRef: !!styleImage, text: userText });
+      if (['plan', 'axon', 'edit'].includes(want) && want !== readNow.kind) readNow = null;
+    }
     if (readMode && !readNow) {
       readNow = await readImage();
       if (!readNow) return;
     }
+    if (readMode && readNow && readNow.kind === 'edit') { await runDiagramEdit(); return; }
     setBusy(true);
     try {
       const next = readMode ? await generateFromRead(readNow) : await generateFromText();
@@ -518,7 +559,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const url = URL.createObjectURL(new Blob([rendered.svg], { type: 'image/svg+xml' }));
     const img = new Image();
     img.onload = () => {
-      const c = document.createElement('canvas'); c.width = rendered.width * 2; c.height = rendered.height * 2;
+      const c = document.createElement('canvas'); const sc = result?.spec?.layout === 'image' ? 3 : 2; c.width = rendered.width * sc; c.height = rendered.height * sc; // 도면 이미지는 해상도를 더 높여 저장
       const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
       c.toBlob((b) => b && saveBlob(b, `diagram_${stamp()}.png`), 'image/png');
       URL.revokeObjectURL(url);
@@ -575,7 +616,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
                   <div style={{ ...slotNote, padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.7)', border: '1px solid var(--border-color)' }} data-testid="auto-kind">
                     {subjectKind === 'auto'
-                      ? (autoKind ? <>🤖 <b>자동 판단</b>: {autoInfo ? SUBJECT_TYPE_LABEL[autoInfo.type] : ''} → <b>{SUBJECT_KINDS[autoKind]}</b> 방식으로 읽습니다.</> : <>🤖 <b>자동 판단</b>: 이미지를 올리고 만들기(또는 미리 읽기)를 누르면 AI가 종류를 알아서 정합니다.</>)
+                      ? (autoKind ? <>🤖 <b>자동 판단</b>: {autoInfo ? SUBJECT_TYPE_LABEL[autoInfo.type] : ''} → <b>{SUBJECT_KINDS[autoKind]}</b> 방식으로 {autoKind === 'edit' ? '그립니다(무료, 약 3~6분).' : '읽습니다.'}</> : <>🤖 <b>자동 판단</b>: 이미지를 올리고 만들기(또는 미리 읽기)를 누르면 AI가 종류를 알아서 정합니다.</>)
                       : <>✋ <b>직접 지정</b>: {SUBJECT_KINDS[subjectKind]}</>}
                   </div>
                   <details>
@@ -691,8 +732,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </select>
           <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
-            {reading ? '이미지 읽는 중…' : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
+            {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
+          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note">🖼️ <b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 더 빠른 단순 블록 그림은 “이미지 종류 직접 지정 → 평면도”로 만드세요.</p>}
+          {editProg && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
+              <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, #e2e8f0)', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: '#F28C28', transition: 'width .6s' }} /></div>
+              <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{editProg.stage} · {Math.floor(editProg.sec / 60)}분 {editProg.sec % 60}초 경과</span>
+            </div>
+          )}
           {(((effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb' }} data-testid="paid-box">
               <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>유료 옵션 (선택 · 누르는 때만 호출 · 누적 총 한도 적용)</span>

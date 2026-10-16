@@ -113,6 +113,47 @@ try:
 finally:
     _pi._USAGE_FILE, _pi.PAID_TOTAL_LIMIT_KRW, _pi.USD_KRW, _pi.PAID_DAILY_LIMIT_USD = _saved
 
+# 도면 위에 표시(AI 이미지 편집): 합성은 원본 선·글자를 지키고 색·화살표만 가져오는지, 범례는 실제 나온 색만 만드는지(GPU·서버 불필요)
+from PIL import Image, ImageDraw  # noqa: E402
+from services import diagram_edit as de  # noqa: E402
+
+_o = Image.new("RGB", (400, 260), "white")
+_d = ImageDraw.Draw(_o)
+_d.rectangle([20, 20, 380, 240], outline="black", width=3)
+_d.line([200, 20, 200, 240], fill="black", width=3)
+_d.text((60, 120), "ROOM A", fill="black")
+# 모델 출력(가상): 크기가 다르고, 글자는 틀리게(위치 어긋남) 그렸고, 왼쪽 방을 칠했고, 빨간 굵은 화살표와 파란 화살표를 얹었다
+_q = Image.new("RGB", (432, 281), "white")
+_qd = ImageDraw.Draw(_q)
+_qd.rectangle([22, 22, 410, 259], outline="black", width=3)
+_qd.line([216, 22, 216, 259], fill="black", width=3)
+_qd.rectangle([26, 26, 212, 255], fill=(200, 225, 250))        # 왼쪽 방 연한 파랑
+_qd.text((64, 150), "R00M Q", fill="black")                     # 깨진 글자(원본 위치와 다름)
+_qd.line([40, 80, 190, 80], fill=(240, 20, 20), width=9)         # 빨간 화살표
+_qd.line([240, 200, 390, 200], fill=(20, 80, 240), width=9)      # 파란 화살표
+_comp, _arrow = de.composite(_o, _q)
+_oa, _ca = _o.load(), _comp.load()
+check(_comp.size == _o.size, "합성 결과 크기가 원본과 다름")
+check(all(_ca[xy] == (255, 255, 255) for xy in [(300, 130), (250, 100), (350, 230)]), "채우지 않은 오른쪽 방이 흰색을 유지하지 않음")
+_wall = _ca[20, 100]
+check(max(_wall) < 60, "원본의 벽 선이 합성 뒤에도 검은색으로 남지 않음")
+_tint = _ca[60, 60]
+check(_tint[2] > _tint[0] + 15, f"채움 색(연한 파랑)이 얹히지 않음 {_tint}")
+_red = _ca[int(40 * 400 / 432 + 40), int(80 * 260 / 281)]
+check(_arrow.any(), "화살표 마스크가 비어 있음")
+_leg = de.legend_from_result(_comp, _o, _arrow, [{"color": "blue", "kind": "zone", "label": "왼쪽 방"}, {"color": "red", "kind": "flow", "label": "주 동선"}, {"color": "blue", "kind": "flow", "label": "보조 동선"}, {"color": "green", "kind": "flow", "label": "쓰이지 않음"}], min_arrow_px=120)
+_got = sorted((l["kind"], l["label"]) for l in _leg)
+check(_got == [("flow", "보조 동선"), ("flow", "주 동선"), ("zone", "왼쪽 방")], f"범례가 실제 나온 채움·화살표 색만 담지 않음 {_leg}")
+_leg2 = de.legend_from_result(_comp, None, _arrow, [{"color": "red", "kind": "flow", "label": "주 동선"}, {"color": "blue", "kind": "flow", "label": "보조 동선"}], min_arrow_px=120)
+check(all(l["kind"] == "flow" for l in _leg2) and len(_leg2) == 2, "원본이 없으면(사진·3D) 화살표 범례만 나와야 함")
+_leg3 = de.legend_from_result(_comp, _o, _arrow, [{"color": "red", "kind": "flow", "label": "주 동선"}], min_arrow_px=120)
+check(sorted(l["label"] for l in _leg3) == ["주 동선"], f"Gemini 범례에 없는 색은 빠져야 함 {_leg3}")
+check(de.legend_from_result(_o, _o, None, []) == [] and de.legend_from_result(_o, None, __import__("numpy").zeros((260, 400), bool), []) == [], "바뀐 곳이 없으면 범례도 비어야 함")
+check(de.pick_resolution((900, 600)) == 1024 and de.pick_resolution((1743, 1167)) == 1536, "해상도 선택 규칙")
+check(de._parse_json(chr(96) * 3 + 'json' + chr(10) + '{"instruction": "a", "title": "t", "routes": []}' + chr(10) + chr(96) * 3)["title"] == "t", "지시문 JSON 해석(코드펜스)")
+check(de.build_workflow("x.png", "p", 1024, 25, 1)["6"]["inputs"]["images.image_1"] == ["5", 0], "Qwen 작업 흐름의 입력 연결")
+check("조닝 다이어그램" in de.fallback_instruction("조닝 다이어그램") and "Do NOT add any new text" in de.fallback_instruction(""), "대체 지시문에 사용자 요청과 글자 보존 문구가 없음")
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

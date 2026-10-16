@@ -10,6 +10,7 @@ export const SUBJECT_KINDS = {
   sketch: '손스케치(펜으로 그린 개념 스케치)',
   freeform: '자유 해석(입체·수채·사진 등 그 밖의 스케치)',
   axon: '분석 축측도(평면도 → 입체 + 바람·일조)',
+  edit: '도면 위에 표시(AI 이미지 편집 — 도면·글자는 그대로, 색과 동선만 얹기)',
   other: '그 외(지원 안 함)',
 };
 
@@ -32,12 +33,14 @@ export function normalizeSubjectType(parsed) {
 }
 // 설명·참고 이미지에 '분석' 단서(바람·일조 등)가 있으면 평면도를 분석 축측도로, 없으면 기존 평면 다이어그램으로 보낸다
 const ANALYSIS_CUES = /바람|통풍|환기|일조|채광|남향|조망|축측|입체|아이소/;
+// 동선·부서(구역) 표시는 방 수가 많은 도면에서 우리 코드로 다시 짓는 평면 다이어그램보다 'AI 이미지 편집 + 원본 합성'이 훨씬 낫다(2026-10-16 시험)
+export const EDIT_CUES = /동선|조닝|zoning|부서별|구역별/i;
 export function routeSubject(type, { hasRef = false, text = '' } = {}) {
   switch (type) {
     case 'hand_sketch': return 'sketch';
     case 'artwork_3d': return 'freeform';
     case 'building_photo': return 'form';
-    case 'plan_drawing': return hasRef || ANALYSIS_CUES.test(text) ? 'axon' : 'plan';
+    case 'plan_drawing': return hasRef || ANALYSIS_CUES.test(text) ? 'axon' : EDIT_CUES.test(text) ? 'edit' : 'plan';
     case 'site_plan': return 'site';
     default: return 'freeform';
   }

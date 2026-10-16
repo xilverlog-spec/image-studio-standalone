@@ -1893,3 +1893,40 @@ async def linetrace_status(job_id: str):
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다(서버가 재시작되었거나 만료됨).")
     return {k: v for k, v in j.items() if k != "created"}
 
+
+# ── 도면 위에 동선·구역 표시(무료 로컬 AI 이미지 편집 + 원본 합성) ──────────────────────
+class DiagramEditStartRequest(BaseModel):
+    image_base64: str
+    text: str = ""
+    steps: int = 25
+    seed: Optional[int] = None
+
+
+@router.get("/image/diagram-edit/options")
+async def diagram_edit_options():
+    from services import diagram_edit
+    return await asyncio.to_thread(diagram_edit.status_info)
+
+
+@router.post("/image/diagram-edit/start")
+async def diagram_edit_start(request: DiagramEditStartRequest):
+    from services import diagram_edit
+    try:
+        png, _w, _h, _ow, _oh = await asyncio.to_thread(_prepare_upload_png, request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
+    try:
+        job_id = await asyncio.to_thread(diagram_edit.start_job, png, request.text, request.steps, request.seed)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"status": "success", "job_id": job_id}
+
+
+@router.get("/image/diagram-edit/status/{job_id}")
+async def diagram_edit_status(job_id: str):
+    from services import diagram_edit
+    j = diagram_edit.get_job(job_id)
+    if not j:
+        raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다(서버가 재시작되었거나 만료됨).")
+    return {k: v for k, v in j.items() if k != "created"}
+

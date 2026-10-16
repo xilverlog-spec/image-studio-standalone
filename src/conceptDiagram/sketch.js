@@ -455,6 +455,18 @@ export function axonProject(axon, rect, yx, zr = 0) {
   return [rect[0] + ((X - vb[0]) / vb[2]) * (rect[2] - rect[0]), rect[1] + ((Y - vb[1]) / vb[3]) * (rect[3] - rect[1])];
 }
 
+// 도면 위에 표시(AI 이미지 편집) 결과 → 편집 가능한 spec: 합성된 그림을 바탕으로 깔고, 제목은 글자로, 범례는 그림 아래 글자 메모로 얹는다(전부 편집 가능).
+// 범례는 결과 그림에 실제로 나온 화살표 색만 서버가 뽑아 준 것이다.
+export function makeEditSpec({ imageUrl, w, h, title = '', legend = [] }) {
+  const rect = [0, 0, 100, (100 * h) / w];
+  const items = (Array.isArray(legend) ? legend : []).filter((l) => l && /^#[0-9a-fA-F]{6}$/.test(l.color || '')).slice(0, 6);
+  const cols = Math.min(3, Math.max(1, items.length)); const rowH = 3.8; const y0 = rect[3] + 4.2;
+  const memos = items.map((l, i) => ({ id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: l.color, icon: '' }));
+  const bottom = items.length ? y0 + Math.ceil(items.length / cols) * rowH : rect[3];
+  return { title: String(title || ''), subtitle: '', style: 'line', layout: 'image', frame: [-1, -1, 101, bottom + 1.5], base: { svg: `<g><image href="${imageUrl}" x="0" y="0" width="${w}" height="${h}"/></g>`, vb: [0, 0, w, h], rect, isImage: true },
+    blocks: [], lines: [], winds: [], memos, textBlock: null, legend: { wind: '', core: '', opening: '' }, notes: [] };
+}
+
 // 읽은 분석 표시 → 편집 가능한 spec(입체 바탕 + 바람 번짐 띠 + 일조 점선 호와 해 아이콘 + 오른쪽 문구 블록)
 export function makeAxonSpec(read) {
   const ax = read.axon; const rect = [0, 0, 100, (100 * ax.vb[3]) / ax.vb[2]];
@@ -511,17 +523,17 @@ export function normalizeSketch(raw) {
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, base, textBlock,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, base, textBlock,
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
 
 // ── 4) 렌더 ──────────────────────────────────────────────────
-const W = 1200; const H = 760; const AREA = [70, 150, 780, 640]; const AREA_CONCEPT = [70, 190, 1130, 690]; const AREA_AXON = [30, 90, 800, 720];
+const W = 1200; const H = 760; const AREA = [70, 150, 780, 640]; const AREA_CONCEPT = [70, 190, 1130, 690]; const AREA_AXON = [30, 90, 800, 720]; const AREA_IMAGE = [30, 100, 1170, 735];
 export const SKETCH_SIZE = [W, H];
 // 다이어그램 좌표(0~100) ↔ 그림 좌표(1200x760). 틀(frame)은 편집해도 바뀌지 않아 요소를 옮겨도 전체가 다시 확대·축소되지 않는다
 export function sketchView(raw) {
-  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame; const AR = spec.layout === 'axon' ? AREA_AXON : spec.style === 'concept' ? AREA_CONCEPT : AREA;
+  const spec = normalizeSketch(raw); const [fx0, fy0, fx1, fy1] = spec.frame; const AR = spec.layout === 'axon' ? AREA_AXON : spec.layout === 'image' ? AREA_IMAGE : spec.style === 'concept' ? AREA_CONCEPT : AREA;
   const K = Math.min((AR[2] - AR[0]) / (fx1 - fx0), (AR[3] - AR[1]) / (fy1 - fy0));
   const ox = AR[0] + (AR[2] - AR[0] - (fx1 - fx0) * K) / 2; const oy = AR[1] + (AR[3] - AR[1] - (fy1 - fy0) * K) / 2;
   return { K, toScreen: ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K], toDiag: ([px, py]) => [fx0 + (px - ox) / K, fy0 + (py - oy) / K] };
