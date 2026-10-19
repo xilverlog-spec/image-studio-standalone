@@ -1922,6 +1922,38 @@ async def diagram_edit_start(request: DiagramEditStartRequest):
     return {"status": "success", "job_id": job_id}
 
 
+class DiagramEditRegionRequest(BaseModel):
+    image_base64: str
+    region: List[float]                 # [x0, y0, x1, y1] 그림 화소
+    text: str = ""                      # 처음 요청
+    legend: List[dict] = []             # 지금 결과의 범례([{color, kind, label}]) — 같은 색·뜻을 그대로 쓰게 한다
+    hint: str = ""                      # 이 영역만을 위한 추가 요청
+    steps: int = 25
+    seed: Optional[int] = None
+
+
+@router.post("/image/diagram-edit/region/start")
+async def diagram_edit_region_start(request: DiagramEditRegionRequest):
+    from services import diagram_edit
+    if len(request.region) != 4:
+        raise HTTPException(status_code=400, detail="영역은 [x0, y0, x1, y1] 네 값이어야 합니다.")
+    try:
+        png, _w, _h, _ow, _oh = await asyncio.to_thread(_prepare_upload_png, request.image_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지를 읽을 수 없습니다: {e}")
+    try:
+        import io as _io
+        from PIL import Image as _PILImage
+        await asyncio.to_thread(lambda: diagram_edit.crop_box(_PILImage.open(_io.BytesIO(png)).size, request.region))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        job_id = await asyncio.to_thread(diagram_edit.start_region_job, png, request.region, request.text, request.legend, request.hint, request.steps, request.seed)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"status": "success", "job_id": job_id}
+
+
 @router.get("/image/diagram-edit/status/{job_id}")
 async def diagram_edit_status(job_id: str):
     from services import diagram_edit

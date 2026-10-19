@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -47,8 +47,10 @@ function Colors({ value, onChange, allowClear, swatches = SWATCHES }) {
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
-export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick }) {
   const [selected, setSelected] = useState('');
+  const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
+  const regionDrag = useRef(null);
   const [textInfo, setTextInfo] = useState(null); // 마지막으로 누른 글자의 크기(그림 단위) — 몇 pt 인지 알려 주는 데 쓴다
   const past = useRef([]); const future = useRef([]);
   const lastKey = useRef(''); const lastAt = useRef(0);
@@ -107,8 +109,22 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null; // 그림 영역이 접혀 있으면 계산하지 않는다
     return sketchView(specRef.current).toDiag([((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height]);
   };
+  const onRegionMove = (e) => {
+    const d = regionDrag.current; if (!d) return; const p = toDiag(e.clientX, e.clientY); if (!p) return;
+    d.p1 = p; setRegionDraft([Math.min(d.p0[0], p[0]), Math.min(d.p0[1], p[1]), Math.max(d.p0[0], p[0]), Math.max(d.p0[1], p[1])]);
+  };
+  const onRegionUp = () => {
+    window.removeEventListener('pointermove', onRegionMove); const d = regionDrag.current; regionDrag.current = null; setRegionDraft(null);
+    if (!d || !d.p1) return; const r = [Math.min(d.p0[0], d.p1[0]), Math.min(d.p0[1], d.p1[1]), Math.max(d.p0[0], d.p1[0]), Math.max(d.p0[1], d.p1[1])];
+    if (r[2] - r[0] >= 2 && r[3] - r[1] >= 2) onRegionPick?.(r);
+  };
   const onDown = (e) => {
     if (e.button !== 0 || disabled) return;
+    if (regionPick) { // 영역 고르기 모드: 눌러서 끌면 상자가 그려지고, 놓으면 그 영역이 정해진다(요소 선택·이동은 잠시 꺼 둔다)
+      const p0 = toDiag(e.clientX, e.clientY); if (!p0) return; e.preventDefault();
+      regionDrag.current = { p0, p1: null }; setRegionDraft([p0[0], p0[1], p0[0], p0[1]]);
+      window.addEventListener('pointermove', onRegionMove); window.addEventListener('pointerup', onRegionUp, { once: true }); return;
+    }
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
     if (!el) { setSelected(''); return; }
@@ -142,6 +158,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     else {
       const r = snap ? sketchSnapPointG(o, d.id, pt) : { pt, guides: [] }; const hx = /[we]/.test(d.handle); const hy = /[ns]/.test(d.handle); // 움직이는 쪽 방향의 안내선만 쓴다
       next = sketchResizeRect(o, d.id, d.handle, hx ? r.pt[0] : pt[0], hy ? r.pt[1] : pt[1]); gd = r.guides.filter((g) => (g.dim === 'x' ? hx : hy));
+      if (!e.shiftKey) next = sketchLockAspect(next, d.id, d.handle); // 내 이미지는 모서리를 끌 때 원본 비율을 지킨다(Shift: 자유롭게)
     }
     setGuides(gd);
     onChange(next); tick((n) => n + 1);
@@ -199,12 +216,14 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const setRect = (i, v) => { const r = [...sel.el.rect]; r[i] = v; set({ rect: r }, 'rect'); };
 
   const title = { fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' };
-  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: '글자 메모' }[kind];
+  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: '글자 메모' }[kind];
 
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
       <div ref={hostRef} style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
         <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+          {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
+            <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
           {[...axisGuides, ...guides].map((g, i) => {
             const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
             const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
@@ -214,12 +233,12 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             </g>);
           })}
         </svg>
-        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
         <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">✏️ 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
 
-      <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
+      <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sk-side">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={smallBtn(false)} disabled={!past.current.length} onClick={undo} title="Ctrl+Z" data-testid="undo">↶ 되돌리기</button>
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
@@ -351,7 +370,24 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <button style={smallBtn(false)} onClick={() => commit(sketchFlip(norm, selected))} data-testid="flip">⇄ 방향 뒤집기</button>
             </>)}
 
-            {kind === 'block' && (<>
+            {kind === 'block' && sel.el.kind === 'image' && (<>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }} data-testid="img-panel">내가 넣은 이미지입니다. <b>끌어서 옮기고</b>, 모서리 네모 점을 끌어 크기를 바꿉니다(원본 비율 유지, Shift: 자유롭게).</p>
+              <label style={lab}>투명도 {Math.round(sel.el.opacity * 100)}%
+                <input type="range" min="0.05" max="1" step="0.05" value={sel.el.opacity} onChange={(e) => set({ opacity: Number(e.target.value) }, 'op')} data-testid="img-opacity" />
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={smallBtn(sel.el.layer !== 'front')} onClick={() => set({ layer: 'back' })} data-testid="img-back" title="바탕 위, 도형·화살표·글자 아래">맨 뒤로</button>
+                <button style={smallBtn(sel.el.layer === 'front')} onClick={() => set({ layer: 'front' })} data-testid="img-front" title="모든 도형·화살표 위">맨 앞으로</button>
+                {sel.el.ar > 0 && <button style={smallBtn(false)} onClick={() => { const r = sel.el.rect; set({ rect: [r[0], r[1], r[2], r[1] + (r[2] - r[0]) / sel.el.ar] }); }} data-testid="img-ratio">원본 비율로</button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <Num label="왼쪽 X" value={sel.el.rect[0]} onChange={(v) => setRect(0, v)} />
+                <Num label="위쪽 Y" value={sel.el.rect[1]} onChange={(v) => setRect(1, v)} />
+                <Num label="오른쪽 X" value={sel.el.rect[2]} onChange={(v) => setRect(2, v)} />
+                <Num label="아래쪽 Y" value={sel.el.rect[3]} onChange={(v) => setRect(3, v)} />
+              </div>
+            </>)}
+            {kind === 'block' && sel.el.kind !== 'image' && (<>
               <label style={lab}>종류
                 <select style={input} value={sel.el.kind} onChange={(e) => set({ kind: e.target.value })}><option value="slab">판(큰 도형)</option><option value="core">코어(빗금)</option><option value="opening">개구부(점선 캡슐)</option></select>
               </label>

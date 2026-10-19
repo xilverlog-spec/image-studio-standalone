@@ -436,7 +436,7 @@ def _run(job_id, png_bytes, ask, steps, seed):
                 zs = []
                 for i, z in enumerate(L["zones"]):
                     z["mask"].save(os.path.join(_out_dir(), f"{fid}_z{i + 1}.png"))
-                    zs.append({"color": z["color"], "label": z["label"], "mask": f"/generated/{fid}_z{i + 1}.png", "blend": z.get("blend", "multiply")})
+                    zs.append({"color": z["color"], "label": z["label"], "band": _names_for([{"color": z["color"]}])[0], "mask": f"/generated/{fid}_z{i + 1}.png", "blend": z.get("blend", "multiply")})
                 layers = {"base": f"/generated/{fid}_base.png", "arrows": L["arrows"], "zones": zs, "mode": how}
                 legend = L["legend"]
         except Exception as e:  # noqa: BLE001
@@ -467,3 +467,118 @@ def get_job(job_id):
     with _JOBS_LOCK:
         j = JOBS.get(job_id)
         return dict(j) if j else None
+
+
+# ── 일부 영역만 다시 그리기 ─────────────────────────────────────────────────
+# 결과가 마음에 안 들 때 5~7분짜리 전체 작업을 처음부터 다시 하지 않고, 고른 영역(+여유)만 잘라 같은 방식으로 다시 그린 뒤 그 영역의 화살표·구역 색 층만 돌려준다.
+# 합치는 일(그 영역의 옛 화살표 지우기, 구역 마스크 갈아 끼우기)은 화면이 한다 — 사용자가 이미 손으로 고친 다른 부분이 그대로 남아야 하므로.
+
+def crop_box(size, region, margin_frac=0.12, min_side=320):
+    """고른 영역(x0,y0,x1,y1 화소)에 여유를 더한 잘라 낼 상자. 그림 밖으로 안 나가고, 너무 작으면 키운다."""
+    W, H = size
+    x0, y0, x1, y1 = [int(round(v)) for v in region]
+    x0, x1 = sorted((max(0, min(W, x0)), max(0, min(W, x1))))
+    y0, y1 = sorted((max(0, min(H, y0)), max(0, min(H, y1))))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        raise ValueError("고른 영역이 너무 작습니다.")
+    m = max(24, int(margin_frac * max(x1 - x0, y1 - y0)))
+    c = [max(0, x0 - m), max(0, y0 - m), min(W, x1 + m), min(H, y1 + m)]
+    for ax in (0, 1):                      # 한 변이 너무 짧으면 가운데를 지키며 늘린다(AI 가 맥락을 못 보면 엉뚱하게 그린다). 그림 가장자리에서는 반대쪽으로 늘린다
+        lim = W if ax == 0 else H
+        lo, hi = (c[0], c[2]) if ax == 0 else (c[1], c[3])
+        want = min(min_side, lim)
+        if hi - lo < want:
+            mid = (lo + hi) / 2
+            lo = int(round(mid - want / 2))
+            hi = lo + want
+            if lo < 0:
+                lo, hi = 0, want
+            if hi > lim:
+                lo, hi = lim - want, lim
+        if ax == 0:
+            c[0], c[2] = lo, hi
+        else:
+            c[1], c[3] = lo, hi
+    return c, [x0, y0, x1, y1]
+
+
+def region_ask(ask, legend, hint=""):
+    """잘라 낸 조각용 요청문: 원래 요청 + '일부만 보인다' + 이미 정해진 범례(색·뜻)를 그대로 쓰게 한다."""
+    parts = []
+    for l in legend or []:
+        nm = _names_for([l])[0]
+        if nm and l.get("label"):
+            parts.append(f'{nm} = {"zone fill" if l.get("kind") == "zone" else "flow arrow"} "{l["label"]}"')
+    txt = (ask or "").strip() or "동선을 표시한 다이어그램"
+    txt += "\n[이 그림은 큰 도면에서 일부분만 잘라 낸 조각입니다. 조각 안에 보이는 곳에만 표시하고, 잘린 가장자리의 방·건물은 일부만 보일 수 있습니다."
+    if parts:
+        txt += " 범례(색과 뜻을 반드시 이대로 쓸 것): " + "; ".join(parts) + "."
+    if hint and hint.strip():
+        txt += f" 추가 요청: {hint.strip()[:200]}"
+    return txt + "]"
+
+
+def _run_region(job_id, png_bytes, region, ask, legend, hint, steps, seed):
+    job = JOBS[job_id]
+    try:
+        original = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        box, rg = crop_box(original.size, region)
+        crop = original.crop(tuple(box))
+        buf = io.BytesIO()
+        crop.save(buf, "PNG")
+        crop_png = buf.getvalue()
+        _update(job, status="running", stage="1/4 이 영역의 지시문을 쓰는 중(무료 Gemini)", percent=3)
+        instruction, _title, _routes, source = build_instruction(crop_png, region_ask(ask, legend, hint))
+        resolution = pick_resolution(crop.size)
+        _update(job, stage="앞선 그림 작업을 기다리는 중", percent=8)
+        from services import line_pipeline
+        with line_pipeline._RUN_LOCK, _RUN_LOCK:
+            cold = not _up(QWEN_URL)
+            _update(job, stage="2/4 그림 서버를 준비하는 중" + (" (처음에는 1~2분 더 걸립니다)" if cold else ""), percent=10)
+            _free(comfyui_client.COMFYUI_URL)
+            ensure_server()
+            expect = estimate_seconds(resolution, steps, cold)
+
+            def on_wait(el):
+                _update(job, stage=f"3/4 AI 가 이 영역을 다시 그리는 중 (예상 {int(expect // 60) + 1}분 안팎)", percent=min(92, 12 + int(80 * el / expect)))
+            try:
+                out = run_qwen(crop_png, instruction, resolution, steps, seed, on_wait)
+            finally:
+                _free(QWEN_URL)
+        _update(job, stage="4/4 화살표·구역 색을 나누는 중", percent=95)
+        comp, _arrow, how = finish(crop, out)
+        parts = tint_parts(crop, out)
+        from services import diagram_vector as DV
+        L = DV.build_layers(parts, how, [dict(l) for l in (legend or [])])
+        fid = f"diagram_edit_{job_id}"
+        arrows, zones = [], []
+        if L:
+            ox, oy = box[0], box[1]
+            for a in L["arrows"]:
+                a = dict(a)
+                a["pts"] = [[round(p[0] + ox, 1), round(p[1] + oy, 1)] for p in a["pts"]]
+                arrows.append(a)
+            for i, z in enumerate(L["zones"]):
+                nm = _names_for([{"color": z["color"]}])[0]
+                z["mask"].save(os.path.join(_out_dir(), f"{fid}_rz{i + 1}.png"))
+                zones.append({"color": z["color"], "label": z["label"], "band": nm, "mask": f"/generated/{fid}_rz{i + 1}.png", "blend": z.get("blend", "multiply"), "box": box})
+        comp.save(os.path.join(_out_dir(), fid + "_crop.png"))
+        _update(job, status="done", stage="완료", percent=100, result={"region": rg, "crop": box, "mode": how, "arrows": arrows, "zones": zones, "preview": f"/generated/{fid}_crop.png",
+                                                                         "instruction": instruction, "instruction_source": source, "resolution": resolution, "seconds": int(time.time() - job["created"])})
+    except Exception as e:  # noqa: BLE001
+        print(f"[DIAGRAM-EDIT] 영역 다시 그리기 실패: {e}")
+        _update(job, status="error", stage="실패", error=str(e)[:400])
+
+
+def start_region_job(png_bytes, region, ask="", legend=None, hint="", steps=25, seed=None):
+    if not is_available():
+        raise RuntimeError("이 PC 에 Qwen 이미지 편집 환경이 없습니다(C:\\ComfyUI_v041 과 모델 파일 필요).")
+    Image.open(io.BytesIO(png_bytes)).verify()
+    now = time.time()
+    steps = max(8, min(50, int(steps)))
+    seed = int(seed) if seed is not None else int.from_bytes(os.urandom(3), "big")
+    with _JOBS_LOCK:
+        job_id = uuid.uuid4().hex[:12]
+        JOBS[job_id] = {"status": "queued", "stage": "대기 중", "percent": 0, "created": now}
+    threading.Thread(target=_run_region, args=(job_id, png_bytes, region, ask, legend or [], hint, steps, seed), daemon=True).start()
+    return job_id

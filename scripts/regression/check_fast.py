@@ -225,6 +225,30 @@ check(_L3 is not None and len(_L3["arrows"]) == 1 and len(_L3["zones"]) == 1 and
 _b3 = _L3["base"].load()
 check(abs(_b3[215, 60][0] - 150) < 25 and abs(_b3[215, 60][2] - 230) < 25, f"사진 바탕에서 화살표 자리가 둘레 색으로 메워지지 않음 {_b3[215, 60]}")
 check(dv.build_layers(de.tint_parts(_O3, _O3), "model", []) is None and dv.build_layers(de.tint_parts(_o, _o), "overlay", []) is None, "바뀐 게 없으면 층 나누기는 None(합성 그림 그대로 사용)")
+# 얇은 점선 + 떨어진 화살촉, 채도 높은 구역 면(구역 색 띠 제외), 화살촉만 있는 덩어리
+_O5 = Image.new("RGB", (800, 520), "white")
+ImageDraw.Draw(_O5).rectangle([20, 20, 780, 500], outline="black", width=3)
+_Q5 = _O5.copy()
+_q5 = ImageDraw.Draw(_Q5)
+_q5.rectangle([60, 60, 300, 200], fill=(255, 214, 0))             # 구역 범례가 있는 노란색 면(선으로 착각하면 안 됨)
+_x5 = 80
+while _x5 < 600:
+    _q5.line([_x5, 300, _x5 + 4, 300], fill=(20, 170, 40), width=2)   # 가는 초록 점선(점 4, 사이 8)
+    _x5 += 12
+_q5.polygon([(612, 286), (612, 314), (650, 300)], fill=(20, 170, 40))
+_leg5 = [{"color": "#14AA28", "kind": "flow", "label": "보조 동선"}, {"color": "#FFD600", "kind": "zone", "label": "구역"}]
+_L5 = dv.build_layers(de.tint_parts(_O5, _Q5), "overlay", _leg5)
+_g5 = [a for a in _L5["arrows"] if a["band"] == "green"]
+check(len(_L5["arrows"]) == 1 and len(_g5) == 1 and _g5[0]["head"] == "end" and _g5[0]["length"] > 450 and _g5[0]["pts"][-1][0] > 600 and _g5[0]["pts"][0][0] < 100, f"가는 점선 + 화살촉이 한 화살표(끝 화살촉)로 읽히지 않음 {[(a['band'], a['head'], a['length']) for a in _L5['arrows']]}")
+check(all(a["band"] != "yellow" for a in _L5["arrows"]) and len(_L5["zones"]) == 1, "구역 범례가 있는 색 띠의 채움 면을 화살표로 읽음")
+_Q6 = _O5.copy()
+ImageDraw.Draw(_Q6).polygon([(412, 286), (412, 314), (450, 300)], fill=(20, 170, 40))
+_L6 = dv.build_layers(de.tint_parts(_O5, _Q6), "overlay", _leg5[:1])
+check(len(_L6["arrows"]) == 1 and _L6["arrows"][0]["head"] == "end" and _L6["arrows"][0]["pts"][-1][0] > _L6["arrows"][0]["pts"][0][0] + 20 and abs(_L6["arrows"][0]["pts"][0][1] - 300) < 4, f"떨어진 화살촉 하나는 방향이 맞는 짧은 화살표여야 함 {_L6['arrows']}")
+_Q7 = _O5.copy()
+ImageDraw.Draw(_Q7).polygon([(300, 200), (330, 200), (315, 160)], fill=(20, 170, 40))
+_L7 = dv.build_layers(de.tint_parts(_O5, _Q7), "overlay", _leg5[:1])
+check(len(_L7["arrows"]) == 1 and _L7["arrows"][0]["pts"][-1][1] < _L7["arrows"][0]["pts"][0][1] - 20, "위로 향한 화살촉의 방향(끝이 위)")
 
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")

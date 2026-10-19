@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
 import { composePage, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
@@ -22,7 +22,8 @@ const skCachePut = (k, v) => {
 };
 import SketchEditor from './SketchEditor';
 import SvgEditor from './SvgEditor';
-import { applyEdits, hasEdits } from './conceptDiagram/svgedit';
+import { applyEdits, hasEdits, scanSvg, editAddImage } from './conceptDiagram/svgedit';
+import { mergeRegionWinds, mergeRegionZones } from './conceptDiagram/regionMerge';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -189,6 +190,44 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (rep && rep.scale) return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, basis: `📐 페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
     return { ppu: 0.75, basis: '저장한 그림 크기(96dpi) 기준 · 📐 페이지 크기를 정하면 그 용지에서의 pt로 보입니다' };
   };
+  // ── 이 영역만 다시 그리기(AI 이미지 편집 결과): 고른 영역만 잘라 다시 그리고, 그 영역의 화살표·구역 색만 갈아 끼운다 ──
+  const [regionPick, setRegionPick] = useState(false);   // 영역 고르기 모드(그림 위를 끌어 상자를 그린다)
+  const [regionBox, setRegionBox] = useState(null);      // 고른 영역(그림 화소 [x0, y0, x1, y1])
+  const [regionHint, setRegionHint] = useState('');      // 이 영역만을 위한 추가 요청
+  useEffect(() => { setRegionPick(false); setRegionBox(null); }, [result?.ver, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onRegionPick = (r) => {
+    const ai = result?.aiEdit; if (!ai) return; const k = ai.w / 100;
+    const clamp = (v, hi) => Math.max(0, Math.min(hi, Math.round(v * k)));
+    const box = [clamp(r[0], ai.w), clamp(r[1], ai.h), clamp(r[2], ai.w), clamp(r[3], ai.h)];
+    if (box[2] - box[0] < 24 || box[3] - box[1] < 24) { addToast?.('info', '영역이 너무 작습니다', '조금 더 크게 끌어서 고르세요.'); return; }
+    setRegionBox(box); setRegionPick(false);
+  };
+  const runRegionRedraw = async () => {
+    const ai = result?.aiEdit; if (!ai || !regionBox || busy) return;
+    setBusy(true); setEditProg({ stage: '시작하는 중', percent: 1, sec: 0 }); const t0 = Date.now(); const box = regionBox;
+    try {
+      const res = await apiFetch('/v1/image/diagram-edit/region/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: toB64(ai.src), region: box, text: ai.ask, legend: ai.legend, hint: regionHint }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      const { job_id: jobId } = await res.json(); let job = null;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000)); if (!aliveRef.current) return;
+        const sr = await apiFetch(`/v1/image/diagram-edit/status/${jobId}`);
+        if (!sr.ok) throw new Error((await sr.json().catch(() => ({}))).detail || `HTTP ${sr.status}`);
+        job = await sr.json(); setEditProg({ stage: job.stage, percent: job.percent || 0, sec: Math.round((Date.now() - t0) / 1000) });
+        if (job.status === 'done') break; if (job.status === 'error') throw new Error(job.error || '영역을 다시 그리지 못했습니다.');
+      }
+      const rr = job.result; const prev = result.spec;
+      const patches = await Promise.all((rr.zones || []).map(async (z) => ({ color: z.color, label: z.label, band: z.band, blend: z.blend, box: z.box, url: await urlToDataUrl(z.mask) })));
+      const mw = mergeRegionWinds(normalizeSketch(prev), box, rr.arrows, ai.w);
+      const mz = await mergeRegionZones(mw.spec, box, patches, ai.w, ai.h);
+      const spec = { ...mw.spec, zones: mz.zones };
+      setResult((cur) => (cur ? { ...cur, spec, isReadPreview: false, aiEdit: { ...cur.aiEdit, undoSpec: prev } } : cur));
+      setRegionBox(null); setRegionHint('');
+      addToast?.('success', '이 영역을 다시 그렸습니다', `${(rr.seconds / 60).toFixed(1)}분 · 옛 화살표 ${mw.removed}개를 새 화살표 ${mw.added}개로, 구역 색 ${mz.changed}층을 갈아 끼웠습니다. 영역 밖은 그대로입니다.${rr.instruction_source === 'fallback' ? ' (Gemini가 혼잡해 일반 지시문으로 그렸습니다)' : ''}`);
+    } catch (e) { addToast?.('error', '영역 다시 그리기 실패', e.message); }
+    finally { setBusy(false); setEditProg(null); }
+  };
+  const undoRegion = () => setResult((cur) => (cur?.aiEdit?.undoSpec ? { ...cur, spec: cur.aiEdit.undoSpec, aiEdit: { ...cur.aiEdit, undoSpec: null } } : cur));
   const editorTopRef = useRef(null); // 고른 칸의 편집기 맨 위(칸을 더블클릭하면 여기로 스크롤)
   const [pg, setPg] = useState(() => {
     const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'malgun', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222' };
@@ -247,6 +286,68 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!(key && key === lastSvgEdit.current.key && now - lastSvgEdit.current.at < 1000)) { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result?.ver, spec: result?.spec, edits: result?.edits }]; h.future = []; }
     lastSvgEdit.current = { key, at: now };
     setResult((r) => ({ ...r, edits: next, isReadPreview: false }));
+  };
+  // ── 내 이미지 넣기: 사진·로고·스케치 같은 내 파일을 다이어그램 안에(또는 빈 칸에) 넣는다 ──
+  const myImgFileRef = useRef(null);
+  const readMyImage = (file) => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => reject(new Error('이미지로 읽을 수 없는 파일입니다.'));
+      im.onload = () => {
+        const alpha = /png|webp|gif|svg/.test(file.type); // 투명 배경이 있을 수 있는 형식은 PNG 로 둔다
+        const tries = [[1600, alpha], [1200, alpha], [1600, false], [1100, false], [800, false]];
+        for (const [maxLong, keepAlpha] of tries) {
+          const k = Math.min(1, maxLong / Math.max(im.width, im.height)); const w = Math.max(1, Math.round(im.width * k)); const h = Math.max(1, Math.round(im.height * k));
+          const c = document.createElement('canvas'); c.width = w; c.height = h; const cx = c.getContext('2d');
+          if (!keepAlpha) { cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); }
+          cx.drawImage(im, 0, 0, w, h);
+          const url = keepAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
+          if (url.length < 2800000 || maxLong === 800) { resolve({ url, w, h }); return; }
+        }
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+  const insertMyImage = async (file, cellId) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
+    try {
+      const img = await readMyImage(file);
+      const other = !!(pageOn && cellId && cellId !== selCell);            // 끌어다 놓은 칸이 지금 고른 칸이 아니면 그 칸에 넣는다
+      const target = other ? (cells[cellId] || null) : result;
+      let next = null; let msg = '';
+      if (!target) { // 빈 칸·빈 화면: 내 이미지가 바탕이 되는 그림(그 위에 화살표·글자·구역을 얹어 고칠 수 있다)
+        next = { type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: '', legend: [] }), ver: Date.now() };
+        msg = '이 칸을 내 이미지로 채웠습니다. 이 위에 ＋ 화살표·＋ 글자 등을 얹어 고칠 수 있습니다.';
+      } else if (target.type === 'sketch') {
+        next = { ...target, spec: sketchAddImage(normalizeSketch(target.spec), { href: img.url, w: img.w, h: img.h }).spec, isReadPreview: false };
+        msg = '그림 한가운데에 놓였습니다. 끌어서 옮기고 모서리 점으로 크기를 바꾸세요(맨 뒤로/맨 앞으로 순서도 고를 수 있습니다).';
+      } else {
+        const base = renderSpec(target.type, target.spec, target.baseImage ? { baseImage: target.baseImage } : undefined).svg;
+        const vb = (base.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number) || [0, 0, 1000, 700];
+        const r = editAddImage(target.edits, scanSvg(base).sig, { href: img.url, w: img.w, h: img.h, box: vb });
+        next = { ...target, edits: r.edits, isReadPreview: false };
+        const h = textHist.current; h.past = [...h.past.slice(-49), { ver: target.ver, spec: target.spec, edits: target.edits }]; h.future = [];
+        msg = '그림 한가운데에 놓였습니다. 클릭해서 끌어 옮기고 모서리 점으로 크기를 바꾸세요.';
+      }
+      if (other) { pushHistory(); setCells((c) => ({ ...c, [cellId]: next })); setSelCell(cellId); setResult(next); } else setResult(next);
+      addToast?.('success', other ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(cellId) + 1)}에 내 이미지를 넣었습니다` : '내 이미지를 넣었습니다', msg);
+    } catch (e) { addToast?.('error', '이미지를 넣지 못했습니다', e.message); }
+  };
+  // 끌어다 놓기: 파일을 오른쪽 화면(또는 페이지 미리보기의 칸)에 놓으면 그 칸에 들어간다
+  const [dropCell, setDropCell] = useState(''); // 끌고 있는 파일이 올라가 있는 곳: 칸 번호 또는 'pane'
+  const dragHasImage = (e) => { const it = [...(e.dataTransfer?.items || [])]; return it.length ? it.some((x) => x.kind === 'file' && (!x.type || /^image\//.test(x.type))) : [...(e.dataTransfer?.types || [])].includes('Files'); };
+  const hasFiles = (e) => { const it = [...(e.dataTransfer?.items || [])]; return it.length ? it.some((x) => x.kind === 'file') : [...(e.dataTransfer?.types || [])].includes('Files'); };
+  const onPaneDrag = (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (!dragHasImage(e)) { e.dataTransfer.dropEffect = 'none'; setDropCell(''); return; } e.dataTransfer.dropEffect = 'copy'; const id = e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid'); setDropCell(pageOn && id ? id : 'pane'); };
+  const onPaneDrop = (e) => {
+    if (!hasFiles(e)) return; e.preventDefault(); setDropCell(''); // 이미지가 아닌 파일을 놓아도 브라우저가 그 파일을 열어 버려 작업이 사라지지 않게 여기서 막는다
+    const files = [...(e.dataTransfer.files || [])].filter((f) => /^image\//.test(f.type));
+    if (!files.length) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
+    if (files.length > 1) addToast?.('info', '한 번에 한 장씩 넣습니다', `첫 번째 이미지(${files[0].name})만 넣었습니다. 나머지는 다시 끌어다 놓으세요.`);
+    insertMyImage(files[0], pageOn ? e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid') : '');
   };
   const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -604,7 +705,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         } catch (e) { console.warn('층 불러오기 실패, 합성 그림으로 대체', e); spec = null; }
       }
       if (!spec) { const img = await urlToJpegDataUrl(r.image, 2000); spec = makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }); }
-      setResult({ type: 'sketch', spec, ver: Date.now() });
+      setResult({ type: 'sketch', spec, ver: Date.now(), ...(layered ? { aiEdit: { ask: askText(), legend: r.legend || [], w: r.width, h: r.height, src: subjectImage, undoSpec: null } } : {}) });
       addToast?.('success', '다이어그램 생성 완료', layered ? `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 화살표(${spec.winds.length}개)는 선으로, 구역 색(${spec.zones.length}개)은 층으로 나눠 색·위치·곡선을 고칠 수 있습니다` : `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
       if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
       if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
@@ -993,9 +1094,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
           <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
+          <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절)' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다'}>🖼️ 내 이미지 넣기</button>
+          <input ref={myImgFileRef} type="file" accept="image/*" hidden data-testid="my-image-input" onChange={(e) => { insertMyImage(e.target.files?.[0]); e.target.value = ''; }} />
           <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
         </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff', position: 'relative', outline: dropCell === 'pane' ? '3px dashed #F28C28' : 'none', outlineOffset: -6 }} data-testid="drop-pane"
+          onDragEnter={onPaneDrag} onDragOver={onPaneDrag} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCell(''); }} onDrop={onPaneDrop}>
+          {dropCell && (
+            <div style={{ position: 'sticky', top: 0, zIndex: 30, height: 0, overflow: 'visible', pointerEvents: 'none' }} data-testid="drop-hint">
+              <div style={{ margin: '0 auto', width: 'fit-content', padding: '8px 16px', borderRadius: 999, background: '#F28C28', color: '#fff', fontSize: 13, fontWeight: 800, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
+                🖼️ 여기에 놓으면 {dropCell !== 'pane' ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(dropCell) + 1)}에` : (pageOn ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}에` : result ? '이 다이어그램 안에' : '')} 내 이미지가 들어갑니다
+              </div>
+            </div>
+          )}
           {!result && !pageOn && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
               <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
@@ -1019,14 +1130,34 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. 아래 “📄 페이지 배치”에서 다른 칸을 누르면 그 칸의 그림으로 바뀝니다.
             </p>
           )}
+          {result?.aiEdit && result.type === 'sketch' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', margin: '0 0 10px', borderRadius: 8, border: '1px solid #FDBA74', background: '#FFF7ED' }} data-testid="region-bar">
+              {!regionPick && !regionBox && (<>
+                <button style={btn(false, busy)} disabled={busy} onClick={() => { setRegionPick(true); setRegionBox(null); }} data-testid="region-start">🔁 이 영역만 다시 그리기</button>
+                <span style={{ fontSize: 11.5, color: '#9A3412' }}>마음에 안 드는 부분만 골라 다시 그립니다(전체를 다시 만들 때의 5~7분 대신 약 2~4분). 영역 밖은 그대로 두고, 이미 손으로 고친 것도 유지됩니다.</span>
+              </>)}
+              {regionPick && (<>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#9A3412' }} data-testid="region-pick-hint">📐 그림 위에서 다시 그릴 영역을 끌어서 고르세요</span>
+                <button style={btn(false, false)} onClick={() => setRegionPick(false)} data-testid="region-cancel">취소</button>
+              </>)}
+              {regionBox && (<>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#9A3412' }} data-testid="region-size">선택한 영역 {regionBox[2] - regionBox[0]}×{regionBox[3] - regionBox[1]}px</span>
+                <input style={{ flex: '1 1 220px', minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid #FDBA74', fontSize: 12.5 }} placeholder="이 영역만의 추가 요청(선택) 예) 화살표를 현관 쪽으로 이어서" value={regionHint} onChange={(e) => setRegionHint(e.target.value)} disabled={busy} data-testid="region-hint" />
+                <button style={btn(true, busy)} disabled={busy} onClick={runRegionRedraw} data-testid="region-run">{busy ? '다시 그리는 중…' : '다시 그리기 (약 2~4분)'}</button>
+                <button style={btn(false, busy)} disabled={busy} onClick={() => { setRegionBox(null); setRegionPick(true); }}>다시 고르기</button>
+                <button style={btn(false, busy)} disabled={busy} onClick={() => setRegionBox(null)}>취소</button>
+              </>)}
+              {result.aiEdit.undoSpec && !busy && <button style={btn(false, false)} onClick={undoRegion} data-testid="region-undo" title="방금 다시 그린 영역을 이전 모습으로 되돌립니다">↩ 영역 다시 그리기 되돌리기</button>}
+            </div>
+          )}
           {result?.type === 'sketch' && rendered?.svg && (
             <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SketchEditor key={`${selCell}:${result.ver}`} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
+              <SketchEditor key={`${selCell}:${result.ver}`} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
             </div>
           )}
           {result?.type !== 'sketch' && rendered?.svg && (
             <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SvgEditor ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
+              <SvgEditor onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
                 shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'}
                 onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
@@ -1035,7 +1166,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {pageOn && pageModel?.preview && (
             <div style={{ marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
               {result && <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>📄 페이지 배치 · 칸 크기 조절</div>}
-              <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
+              <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
                   const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h;
@@ -1045,8 +1176,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     const [x, y, w, h] = c.rect; const sel = c.id === selCell;
                     return (
                       <React.Fragment key={c.id}>
-                        <div onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
-                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: live && sel ? '2px solid #F28C28' : 'none', background: live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }} />
+                        <div data-cellid={c.id} onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
+                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed #F28C28' : live && sel ? '2px solid #F28C28' : 'none', background: dropCell === c.id ? 'rgba(242,140,40,0.18)' : live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }} />
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
                             style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid #F28C28', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />

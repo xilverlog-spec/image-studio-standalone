@@ -12,15 +12,17 @@ const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
 const pageJs = path.resolve(here, '../../src/conceptDiagram/page.js');
 const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
 const svgeditJs = path.resolve(here, '../../src/conceptDiagram/svgedit.js');
+const regionJs = path.resolve(here, '../../src/conceptDiagram/regionMerge.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
-export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from ${fwd(svgeditJs)};`);
+export { hueOf, bandOf, mergeRegionWinds, featherMap, blendMasks } from ${fwd(regionJs)};
+export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD, editAddImage, editUpdateAdd, editRemoveAdd, SHAPE_FONT, shapeSvg, appendShapes, newShape, editAddShape, editUpdateShape, editRemoveShape, rawShift, rawSetText } from ${fwd(svgeditJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -372,6 +374,11 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(!m.renderSketch({ ...sp, zones: sp.zones.map((z) => ({ ...z, hidden: true })) }).svg.includes('data-zone='), '숨긴 구역 층은 그려지지 않음');
   const filled = m.renderSketch(sp).svg.match(/<marker id="aw_w1"[^>]*>[\s\S]*?<\/marker>/)[0];
   expect(filled.includes('M0 0L10 5L0 10Z') && filled.includes('markerWidth="4"'), '이미지 편집 화살촉은 채운 삼각형');
+  // 그림 한 장이 영역을 채우는 'image' 배치: 오른쪽 설명 칸(구분선·화살표 범례 아이콘)이 그림 위에 겹쳐 그려지지 않음. 다른 배치(손스케치 등)는 그대로
+  const img0 = m.renderSketch(sp).svg;
+  expect(!img0.includes('x1="850"') && !img0.includes('M852 ') && !/<rect x="852"/.test(img0), "'image' 배치에는 오른쪽 설명 칸(구분선·범례 아이콘)이 없음");
+  const plain = m.renderSketch({ ...sp, layout: '', blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 40], name: '방', desc: '' }], winds: sp.winds }).svg;
+  expect(plain.includes('x1="850"') && plain.includes('M852 '), '다른 배치(도면용 손스케치)에는 오른쪽 설명 칸이 그대로 있음');
   // 구역 층 고치기: 색·이름이 연결된 범례 글자에 따라감
   const s2 = m.sketchSetZone(n, 'z1', { color: '#F6B8B3', label: '공용' });
   const mm = s2.memos.find((q) => q.zone === 'z1');
@@ -483,6 +490,164 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     const paths = [...svg.matchAll(/<path\b[^>]*\sd="([^"]*)"/g)].map((q) => q[1]); const rt = paths.every((d) => m.parsePath(d).length > 0 && m.parsePath(m.pathD(m.parsePath(d))).length === m.parsePath(d).length);
     expect(rt, `${k}: 모든 경로가 해석·되쓰기됨`);
   }
+}
+// 내 이미지 넣기: 구조형 결과(edits.adds)와 손스케치류(blocks 의 kind 'image')
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('내 이미지: ' + msg); else ok++; };
+  const S = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#fff"/><circle cx="50" cy="50" r="20" fill="#4CAF50"/><text x="10" y="20">글</text></svg>';
+  const sig = m.scanSvg(S).sig; const HREF = 'data:image/png;base64,iVBORw0KGgo=';
+  const A = m.editAddImage(m.emptyEdits(S), sig, { href: HREF, w: 900, h: 600, box: [0, 0, 400, 300] });
+  const a1 = A.edits.adds[0];
+  expect(A.id === 'a1' && Math.abs(a1.w - 160) < 0.01 && Math.abs(a1.h - 106.67) < 0.02 && Math.abs(a1.x - 120) < 0.01 && Math.abs(a1.y - 96.67) < 0.02 && a1.opacity === 1 && a1.behind === false, `이미지는 그림 한가운데에 원본 비율, 가로 40%로 놓임 (실제 ${JSON.stringify(a1)})`);
+  const tall = m.editAddImage(m.emptyEdits(S), sig, { href: HREF, w: 100, h: 1000, box: [0, 0, 400, 300] }).edits.adds[0];
+  expect(tall.h <= 300 * 0.6 + 0.01 && Math.abs(tall.w / tall.h - 0.1) < 0.002, '아주 길쭉한 이미지는 높이 60% 안으로(비율 유지)');
+  const A2 = m.editAddImage(A.edits, sig, { href: HREF, w: 100, h: 100, box: [0, 0, 400, 300] });
+  expect(A2.id === 'a2' && A2.edits.adds.length === 2 && A.edits.adds.length === 1, '두 번째는 a2, 원본 edits 는 그대로');
+  expect(m.hasEdits({ sig, ops: {}, adds: [a1] }) && !m.hasEdits({ sig, ops: {}, adds: [] }) && m.hasEdits({ sig, ops: {} }) === false, '이미지만 넣어도 수정이 있는 것으로 침');
+  const kept = m.editMove(m.editSet(A.edits, 'e1', { fill: '#D6453D' }), 'e1', 3, 4);
+  expect(kept.adds.length === 1 && m.editRestore(kept, 'e1').adds.length === 1 && m.editDelete(kept, 'e2').adds.length === 1, '도형을 고쳐도 넣은 이미지가 남음');
+  const out = m.applyEdits(S, A.edits).svg;
+  expect(/<image href="data:image\/png;base64,iVBORw0KGgo=" x="120" y="96.67" width="160" height="106.67" preserveAspectRatio="none"\/><\/svg>$/.test(out) && m.scanSvg(out).sig === sig && out.startsWith('<svg'), '맨 앞 이미지는 </svg> 앞에, 구조 지문은 그대로(이미지는 고를 도형이 아님)');
+  const back = m.applyEdits(S, m.editUpdateAdd(A.edits, 'a1', { behind: true })).svg;
+  expect(back.indexOf('<image') > back.indexOf('<rect width="400" height="300" fill="#fff"/>') && back.indexOf('<image') < back.indexOf('<circle') && back.includes('fill="#fff"/><image'), '맨 뒤 이미지는 배경 사각형 바로 뒤(도형 아래)');
+  // 수정이 입혀져 문자열이 길어진 뒤에도 태그가 깨지지 않음(수정 + 편집용 id + 뒤쪽 이미지)
+  let EE = m.editSet(A.edits, 'e0', { fill: '#eeeeee', stroke: '#999999', 'stroke-width': '2' }); EE = m.editUpdateAdd(EE, 'a1', { behind: true });
+  for (const o of [{}, { ids: true }]) {
+    const t = m.applyEdits(S, EE, o).svg;
+    const doc = [...t.matchAll(/<image\b/g)].every((q) => t[q.index - 1] === '>') && (t.match(/<rect\b/g) || []).length === 1 && /<rect [^>]*fill="#eeeeee"[^>]*\/><image/.test(t);
+    expect(doc && m.scanSvg(t).sig === sig, `수정·편집용 id 가 있어도 뒤쪽 이미지가 태그 사이(배경 사각형 뒤)에 들어감 ${JSON.stringify(o)}`);
+  }
+  const it = m.applyEdits(S, A.edits, { ids: true }).svg;
+  expect(it.includes('data-eid="a1"') && (it.match(/<image\b/g) || []).length === 1, '편집용 출력의 이미지에는 data-eid');
+  expect(m.applyEdits(S, { sig: 'stale', ops: { e1: { set: { fill: '#000' } } }, adds: [a1] }).svg.includes('<image') && !m.applyEdits(S, { sig: 'stale', ops: { e1: { set: { fill: '#000' } } }, adds: [a1] }).svg.includes('#000'), '구조가 달라져도 내가 넣은 이미지는 그려지고, 옛 도형 수정만 빠짐');
+  expect(m.editUpdateAdd(A.edits, 'a1', { x: 5 }).adds[0].x === 5 && A.edits.adds[0].x === 120 && m.editRemoveAdd(A.edits, 'a1', sig).adds === undefined && m.applyEdits(S, m.editRemoveAdd(A.edits, 'a1', sig)).svg === S, '이미지 고치기·지우기(불변), 지우면 그림이 원래대로');
+  expect(m.applyEdits(S.replace('<rect width="400" height="300" fill="#fff"/>', ''), m.editUpdateAdd(A.edits, 'a1', { behind: true })).svg.indexOf('<image') < m.applyEdits(S, A.edits).svg.indexOf('<circle'), '배경 사각형이 없어도 맨 뒤 이미지는 <svg> 바로 뒤');
+  // 손스케치류
+  const base = m.makeEditSpec({ imageUrl: 'data:image/jpeg;base64,/9j/AAAA', w: 961, h: 600, title: '', legend: [] });
+  const n0 = m.normalizeSketch(base);
+  const r = m.sketchAddImage(n0, { href: HREF, w: 800, h: 400 });
+  const n1 = m.normalizeSketch(r.spec); const b = n1.blocks.find((x) => x.id === r.id);
+  expect(b && b.kind === 'image' && b.href === HREF && b.layer === 'back' && b.opacity === 1 && Math.abs(b.ar - 2) < 1e-9, '손스케치류: 이미지 블록이 만들어지고 정규화 뒤에도 유지(href·층·비율)');
+  expect(Math.abs((b.rect[2] - b.rect[0]) / (b.rect[3] - b.rect[1]) - 2) < 0.05 && b.rect[0] >= n1.frame[0] && b.rect[2] <= n1.frame[2] && b.rect[1] >= n1.frame[1] && b.rect[3] <= n1.frame[3], '그림 틀 안 한가운데에 원본 비율로');
+  const r2 = m.sketchAddImage(n1, { href: HREF, w: 100, h: 100 });
+  expect(r2.id !== r.id && m.normalizeSketch(r2.spec).blocks.filter((x) => x.kind === 'image').length === 2, '두 번째 이미지는 다른 id');
+  const bad = m.normalizeSketch({ ...n1, blocks: [{ ...b, href: '' }, { ...b, id: 'z', href: 'x'.repeat(6500000) }] });
+  expect(bad.blocks.every((x) => x.kind === 'slab' && !x.href), 'href 가 없거나 너무 큰 이미지 블록은 이미지로 안 침');
+  const svgBack = m.renderSketch({ ...n1, blocks: n1.blocks.map((x) => (x.id === r.id ? x : x)).concat([{ id: 'zz', kind: 'slab', rect: [10, 10, 30, 30], name: '', desc: '', fill: '' }]) }, { interactive: true }).svg;
+  expect(svgBack.includes(`<image href="${HREF}"`) && svgBack.includes(`data-eid="${r.id}"`) && svgBack.indexOf(`data-eid="${r.id}"`) < svgBack.indexOf('data-eid="zz"'), '렌더: 맨 뒤 이미지는 도형보다 먼저 그려지고 눌러서 고를 수 있음');
+  const front = m.renderSketch({ ...n1, blocks: n1.blocks.map((x) => (x.id === r.id ? { ...x, layer: 'front' } : x)).concat([{ id: 'zz', kind: 'slab', rect: [10, 10, 30, 30], name: '', desc: '', fill: '' }]), memos: [{ id: 'm1', x: 50, y: 50, text: '메모', size: 14, color: '#222222' }] }, { interactive: true }).svg;
+  expect(front.indexOf('data-eid="zz"') < front.indexOf(`data-eid="${r.id}"`) && front.indexOf(`data-eid="${r.id}"`) < front.indexOf('data-eid="m1"'), '맨 앞 이미지는 도형 위·글자 아래');
+  expect(!m.renderSketch(n1).svg.includes('data-eid') && m.renderSketch(n1).svg.includes('opacity') === false, '저장용 출력에는 편집용 속성이 없고 투명도 1 이면 opacity 없음');
+  expect(m.renderSketch({ ...n1, blocks: n1.blocks.map((x) => (x.id === r.id ? { ...x, opacity: 0.4 } : x)) }).svg.includes('opacity="0.4"'), '투명도가 그려짐');
+  // 모서리 끌기에서 비율 유지
+  const sized = m.normalizeSketch({ ...n1, blocks: n1.blocks.map((x) => (x.id === r.id ? { ...x, rect: [10, 10, 50, 30] } : x)) });
+  const drag = m.sketchResizeRect(sized, r.id, 'se', 70, 34); const locked = m.sketchLockAspect(drag, r.id, 'se'); const lb = locked.blocks.find((x) => x.id === r.id).rect;
+  expect(Math.abs((lb[2] - lb[0]) / (lb[3] - lb[1]) - 2) < 0.02 && lb[0] === 10 && lb[1] === 10 && lb[2] === 70, '오른쪽 아래 모서리: 반대(왼쪽 위)는 고정, 가로를 따라 세로가 비율대로');
+  const nw = m.sketchLockAspect(m.sketchResizeRect(sized, r.id, 'nw', 0, 0), r.id, 'nw').blocks.find((x) => x.id === r.id).rect;
+  expect(nw[2] === 50 && nw[3] === 30 && Math.abs((nw[2] - nw[0]) / (nw[3] - nw[1]) - 2) < 0.02, '왼쪽 위 모서리: 오른쪽 아래 고정');
+  expect(m.sketchLockAspect(m.sketchResizeRect(sized, r.id, 'e', 80, 0), r.id, 'e').blocks.find((x) => x.id === r.id).rect[3] === 30 && m.sketchLockAspect(drag, 'zz', 'se') === drag, '변(e)을 끌면 비율 고정 없음, 이미지가 아닌 요소는 그대로');
+}
+// 구조형 결과에 새로 그려 넣는 글자·사각형·원·화살표(edits.shapes)
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('새 도형: ' + msg); else ok++; };
+  const S = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#fff"/><defs><marker id="a"><path d="M0 0L10 5L0 10Z"/></marker></defs><circle cx="50" cy="50" r="20" fill="#4CAF50"/><text x="10" y="20">글</text></svg>';
+  const sc = m.scanSvg(S); const sig = sc.sig; const BL = sc.els.filter((e) => e.kind === 'e').length;
+  expect(m.SHAPE_FONT === m.ENGINE_FONT, '새 글자의 글꼴이 렌더러 글꼴(ENGINE_FONT)과 같아 페이지 글꼴 바꿈이 먹음');
+  const t1 = m.shapeSvg({ id: 's1', kind: 'text', text: 'A<B & C', x: 10, y: 20, size: 18, fill: '#111111' });
+  expect(t1.includes('>A&lt;B &amp; C</text>') && t1.includes('font-size="18"') && t1.includes('text-anchor="middle"') && !t1.includes('tspan'), '글자: 특수문자 이스케이프, 한 줄은 tspan 없이');
+  const t2 = m.shapeSvg({ id: 's1', kind: 'text', text: '가\n나\n다', x: 10, y: 20, size: 20 });
+  expect((t2.match(/<tspan/g) || []).length === 3 && t2.includes('dy="0"') && (t2.match(/dy="25"/g) || []).length === 2, '글자: 여러 줄은 줄마다 tspan(줄 간격 1.25배)');
+  expect(m.shapeSvg({ kind: 'rect', x: 1, y: 2, w: 30, h: 20 }).startsWith('<rect x="1" y="2" width="30" height="20" rx="6" fill="#FFFFFF" stroke="#222222"') && m.shapeSvg({ kind: 'ellipse', cx: 5, cy: 6, rx: 7, ry: 8 }).startsWith('<ellipse cx="5" cy="6" rx="7" ry="8"'), '사각형·원 기본 모양');
+  const ar = m.shapeSvg({ id: 's3', kind: 'arrow', x1: 0, y1: 0, x2: 50, y2: 10, color: '#3E8E41', sw: 5, head: 'both' });
+  expect(ar.includes('<marker id="svm_s3"') && ar.includes('fill="context-stroke"') && ar.includes('marker-end="url(#svm_s3)"') && ar.includes('marker-start="url(#svm_s3)"') && ar.includes('d="M0 0L50 10"') && ar.includes('stroke="#3E8E41"'), '화살표: 선 + 화살촉 마커(선 색을 따라감, 양쪽)');
+  expect(m.shapeSvg({ id: 's4', kind: 'arrow', x1: 0, y1: 0, x2: 5, y2: 5, color: '#123456', head: 'none' }).includes('marker-end') === false && m.shapeSvg({ id: 's4', kind: 'arrow', x1: 0, y1: 0, x2: 5, y2: 5, color: '#123456', ctx: false }).includes('<path d="M0 0L10 5L0 10Z" fill="#123456"/>'), '화살촉 없음 / context-stroke 미지원 브라우저는 색을 직접 지정');
+  expect(m.shapeSvg({ kind: 'nope' }) === '' && m.appendShapes(S, null) === S && m.appendShapes(S, []) === S, '알 수 없는 종류는 빈 값, 도형이 없으면 그림 그대로');
+  let E = m.emptyEdits(S);
+  const r1 = m.editAddShape(E, sig, m.newShape('text', [0, 0, 400, 300])); E = r1.edits;
+  const r2_ = m.editAddShape(E, sig, m.newShape('rect', [0, 0, 400, 300])); E = r2_.edits;
+  const r3 = m.editAddShape(E, sig, m.newShape('arrow', [0, 0, 400, 300])); E = r3.edits;
+  expect(r1.id === 's1' && r2_.id === 's2' && r3.id === 's3' && r3.index === 2 && E.shapes.length === 3 && m.hasEdits(E), '추가 순서대로 s1·s2·s3, 도형만 있어도 수정이 있는 것');
+  const out = m.applyEdits(S, E); const sc2 = m.scanSvg(out.svg);
+  const leaf = sc2.els.filter((e) => e.kind === 'e');
+  expect(out.ok && out.sig === sig && out.baseLeaf === BL && leaf.length === BL + 3 && leaf.slice(0, BL).every((e, i) => e.id === `e${i}`) && leaf[BL].tag === 'text' && leaf[BL + 1].tag === 'rect' && leaf[BL + 2].tag === 'path', '그림 본래의 요소 번호는 그대로, 새 도형은 그 뒤 번호');
+  expect(out.svg.endsWith('/></svg>') && out.svg.indexOf('<marker id="svm_s3"') > out.svg.indexOf('<text x="10" y="20">') && m.scanSvg(S).sig === sig, '새 도형은 그림 맨 끝에 붙고(맨 위에 그려짐) 마커 정의는 요소로 안 셈');
+  expect(Math.abs(E.shapes[0].x - 200) < 0.01 && Math.abs(E.shapes[0].y - 150) < 0.01 && E.shapes[0].size >= 14 && E.shapes[0].size <= 40, '새 글자는 그림 한가운데, 크기는 그림에 비례(14~40)');
+  let E2 = m.editSet(E, `e${BL + 1}`, { fill: '#D6453D' }); E2 = m.editMove(E2, `e${BL}`, 5, 6); E2 = m.editSet(E2, `e${BL + 2}`, { stroke: '#000000', 'stroke-dasharray': '9 6' });
+  const o2 = m.applyEdits(S, E2).svg;
+  expect(/<rect [^>]*rx="6" fill="#D6453D"/.test(o2) && /<text [^>]*transform="translate\(5 6\)"/.test(o2) && /<path d="M[^"]*" fill="none" stroke="#000000"[^>]*stroke-dasharray="9 6"/.test(o2), '새 도형도 같은 편집기 수정(색·이동·선 종류)이 입혀짐');
+  expect(m.editUpdateShape(E, 's1', { text: '고침' }).shapes[0].text === '고침' && E.shapes[0].text === '글자' && m.applyEdits(S, m.editUpdateShape(E, 's1', { text: '고침' })).svg.includes('>고침</text>'), '글자 내용 고치기(불변)');
+  let E3 = m.editSet(E, `e${BL}`, { fill: '#111111' }); E3 = m.editSet(E3, `e${BL + 2}`, { stroke: '#2222CC' }); E3 = m.editSet(E3, 'e1', { fill: '#999999' });
+  const rm = m.editRemoveShape(E3, 's2', BL);
+  expect(rm.shapes.length === 2 && rm.shapes.map((q) => q.id).join() === 's1,s3' && rm.ops[`e${BL}`]?.set.fill === '#111111' && rm.ops[`e${BL + 1}`]?.set.stroke === '#2222CC' && rm.ops[`e${BL + 2}`] === undefined && rm.ops.e1.set.fill === '#999999' && E3.shapes.length === 3, '도형을 지우면 그 뒤 도형의 번호·수정이 한 칸씩 당겨지고, 그림 본래 요소의 수정과 원본은 그대로');
+  const rmAll = m.editRemoveShape(m.editRemoveShape(m.editRemoveShape(E, 's1', BL), 's2', BL), 's3', BL);
+  expect(rmAll.shapes === undefined && m.editRemoveShape(E, 'nope', BL) === E && m.applyEdits(S, rmAll).svg === S, '모두 지우면 그림이 원래대로');
+  expect(Object.keys(m.editRemoveShape(m.editSet(E, `e${BL + 1}`, { fill: '#123123' }), 's2', BL).ops).length === 0, '지운 도형의 수정은 버림');
+  const stale = m.applyEdits(S.replace('<circle', '<ellipse'), { ...E2, sig: 'old' }).svg;
+  expect(stale.includes('>글자</text>') && !stale.includes('#D6453D'), '그림 구조가 달라지면 새 도형은 남고 옛 수정은 적용되지 않음');
+  const it = m.applyEdits(S, E, { ids: true }).svg;
+  expect(it.includes(`data-eid="e${BL}"`) && it.includes(`data-eid="e${BL + 2}"`) && /data-hit="1"/.test(it), '편집용 출력에서 새 도형도 고를 수 있음');
+  const mix = m.applyEdits(S, m.editUpdateAdd(m.editAddImage(E2, sig, { href: 'data:image/png;base64,iVBORw0KGgo=', w: 10, h: 10, box: [0, 0, 400, 300] }).edits, 'a1', { behind: true }), { ids: true }).svg;
+  expect([...mix.matchAll(/<image\b/g)].every((q) => mix[q.index - 1] === '>') && m.scanSvg(mix).els.filter((e) => e.kind === 'e').length >= BL + 3, '이미지 + 새 도형 + 수정 + 편집용 id 가 함께 있어도 태그 무결');
+  const nt = m.newShape('ellipse', [100, 50, 800, 400]); const nr = m.newShape('rect', [100, 50, 800, 400]); const na = m.newShape('arrow', [100, 50, 800, 400]);
+  expect(Math.abs(nt.cx - 500) < 0.01 && Math.abs(nt.cy - 250) < 0.01 && nr.w > 0 && nr.h > 0 && Math.abs(nr.x + nr.w / 2 - 500) < 0.01 && Math.abs(na.x1 + (na.x2 - na.x1) / 2 - 500) < 0.01 && na.head === 'end', '기본 도형은 그림 상자의 한가운데');
+}
+// 복사·붙여넣기(raw 도형): 지금 보이는 모양 그대로 새 요소 조각을 만들어 붙인다
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('복사·붙여넣기: ' + msg); else ok++; };
+  const S = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#fff"/><circle cx="50" cy="50" r="20" fill="#4CAF50"/><text x="10" y="20" font-size="14">글</text></svg>';
+  const sc = m.scanSvg(S); const sig = sc.sig; const BL = sc.els.filter((e) => e.kind === 'e').length;
+  const raw = { kind: 'raw', defs: '<defs><marker id="cp1_a"><path d="M0 0L10 5L0 10Z"/></marker></defs>', el: '<path d="M0 0L50 50" stroke="#123456" fill="none" marker-end="url(#cp1_a)" transform="matrix(1 0 0 1 5 6)"></path>' };
+  expect(m.shapeSvg(raw) === raw.defs + raw.el && m.shapeSvg({ kind: 'raw' }) === '', 'raw: 정의 + 요소 그대로');
+  let E = m.editAddShape(m.emptyEdits(S), sig, raw).edits; E = m.editAddShape(E, sig, { kind: 'raw', defs: '', el: '<circle cx="9" cy="9" r="3" fill="#000"/>' }).edits;
+  const out = m.applyEdits(S, E); const leaf = m.scanSvg(out.svg).els.filter((e) => e.kind === 'e');
+  expect(out.ok && out.sig === sig && leaf.length === BL + 2 && leaf[BL].tag === 'path' && leaf[BL + 1].tag === 'circle' && out.svg.includes('<marker id="cp1_a">'), 'raw 도형도 요소 하나씩 새 번호를 받고, 정의 안의 것은 안 셈');
+  expect(m.applyEdits(S, m.editSet(E, `e${BL}`, { stroke: '#ABCDEF' })).svg.includes('stroke="#ABCDEF"') && !m.applyEdits(S, m.editSet(E, `e${BL}`, { stroke: '#ABCDEF' })).svg.includes('stroke="#123456"'), '붙여넣은 요소도 같은 편집기 수정이 입혀짐(시작 닫는 태그가 있는 요소)');
+  const sh1 = m.rawShift(raw, 10, 20);
+  expect(sh1.el.includes('transform="translate(10 20) matrix(1 0 0 1 5 6)"') && sh1.defs === raw.defs && raw.el.includes('transform="matrix(1 0 0 1 5 6)"'), '위치 옮기기: 기존 transform 앞에 translate(원본은 그대로)');
+  const noT = { kind: 'raw', defs: '', el: '<circle cx="9" cy="9" r="3"/>' };
+  expect(m.rawShift(noT, 4, 5).el === '<circle transform="translate(4 5)" cx="9" cy="9" r="3"/>' && m.rawShift(noT, 0, 0) === noT, 'transform 이 없으면 새로 달고, 0 이동은 그대로');
+  const tx = { kind: 'raw', defs: '', el: '<text x="30" y="40" font-size="20" fill="#111">가나</text>' };
+  expect(m.rawSetText(tx, '다라&<').el === '<text x="30" y="40" font-size="20" fill="#111">다라&amp;&lt;</text>', '복사한 글자 내용 바꾸기(이스케이프)');
+  const ml = m.rawSetText(tx, '일\n이\n삼').el;
+  expect((ml.match(/<tspan x="30"/g) || []).length === 3 && ml.includes('dy="25"') && ml.includes('dy="0"') && ml.endsWith('</text>'), '여러 줄은 tspan(줄 간격 1.25배)');
+  expect(m.rawSetText(noT, '무시').el === noT.el, '글자가 아닌 조각은 그대로');
+  // raw 를 지우면 뒤 번호가 당겨짐(1요소 1도형)
+  let E2 = m.editSet(E, `e${BL + 1}`, { fill: '#999999' });
+  const rm = m.editRemoveShape(E2, E2.shapes[0].id, BL);
+  expect(rm.shapes.length === 1 && rm.ops[`e${BL}`]?.set.fill === '#999999' && rm.ops[`e${BL + 1}`] === undefined, 'raw 를 지우면 뒤 도형의 수정이 한 칸 당겨짐');
+}
+// '이 영역만 다시 그리기': 새로 그린 조각을 지금 그림에 합치기(영역 밖은 그대로)
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('영역 다시 그리기: ' + msg); else ok++; };
+  expect(m.bandOf('#F42A21') === 'red' && m.bandOf('#EA8D59') === 'orange' && m.bandOf('#F9E200') === 'yellow' && m.bandOf('#1D9F30') === 'green' && m.bandOf('#0073FB') === 'blue' && m.bandOf('#8932B9') === 'purple' && m.bandOf('#FF0033') === 'red', '색 → 색 띠(서버와 같은 기준)');
+  expect(m.bandOf('#00C8D2') === '' && Math.abs(m.hueOf('#00FF00') - 120) < 0.5 && m.hueOf('#808080') === 0, '띠 밖(청록)은 빈 값, 색조 계산');
+  const url = 'data:image/jpeg;base64,/9j/AAAA';
+  const base = m.makeEditSpec({ imageUrl: url, w: 1000, h: 600, title: '', legend: [], layers: { arrows: [
+    { pts: [[100, 100], [300, 100]], width: 4, color: '#F20B09', head: 'end', dash: 'dashed', smooth: true },       // 영역 안(A)
+    { pts: [[600, 300], [800, 300]], width: 4, color: '#2870E9', head: 'end', dash: 'solid', smooth: true },        // 영역 밖(B, 파랑)
+    { pts: [[100, 500], [300, 500]], width: 4, color: '#D63030', head: 'none', dash: 'solid', smooth: true }], zones: [] } });
+  const n0 = m.normalizeSketch(base);
+  const fresh = [
+    { pts: [[150, 120], [350, 120]], width: 4, color: '#E02020', head: 'end', dash: 'dashed', smooth: true },       // 영역 안: 받아들임, 색은 지금 그림의 같은 계열(#D63030)로
+    { pts: [[700, 400], [900, 400]], width: 4, color: '#E02020', head: 'end', dash: 'solid', smooth: true },        // 영역 밖: 버림
+    { pts: [[50, 150], [300, 150]], width: 4, color: '#00AA00', head: 'end', dash: 'solid', smooth: true }];        // 영역 안, 지금 그림에 없는 색: 그대로
+  const r = m.mergeRegionWinds(n0, [0, 0, 400, 200], fresh, 1000);
+  const wn = m.normalizeSketch(r.spec).winds;
+  expect(r.removed === 1 && r.added === 2 && wn.length === 4, `영역 안 옛 화살표 1개를 지우고 새 2개를 넣음, 영역 밖 2개는 그대로 (지움 ${r.removed} 넣음 ${r.added} 총 ${wn.length})`);
+  expect(wn.some((w) => w.color === '#2870E9') && wn.filter((w) => w.color === '#D63030').length === 2 && wn.some((w) => w.color === '#00AA00'), '새 화살표 색: 같은 계열이면 지금 그림의 색에 맞추고(빨강→#D63030), 없는 색(초록)은 그대로');
+  expect(new Set(wn.map((w) => w.id)).size === wn.length && n0.winds.length === 3 && !wn.some((w) => w.pts[0][0] > 80 && w.pts[0][1] > 60 && w.color === '#E02020'), '화살표 번호가 겹치지 않고 원본은 그대로, 영역 밖 새 화살표는 안 들어감');
+  const none = m.mergeRegionWinds(n0, [0, 0, 400, 200], [], 1000);
+  expect(none.removed === 1 && none.added === 0 && m.normalizeSketch(none.spec).winds.length === 2, '새 화살표가 하나도 없으면 영역 안 옛 화살표만 지워짐(영역의 동선이 없다고 다시 그린 경우)');
+  const all = m.mergeRegionWinds(n0, [0, 0, 1000, 600], fresh, 1000);
+  expect(all.removed === 3 && all.added === 3, '그림 전체를 영역으로 하면 모두 교체');
+  const wd = m.arrowsToWinds(n0, [{ pts: [[10, 10], [60, 10]], width: 5, color: '#123456', head: 'none', dash: 'solid' }, { pts: [[1, 1]], color: '#000000' }, { pts: [[1, 1], [9, 9]], color: 'bad' }], 1000, n0.winds);
+  expect(wd.length === 1 && !n0.winds.some((q) => q.id === wd[0].id) && wd[0].shape === 'read', 'arrowsToWinds: 잘못된 항목은 거르고, 이미 있는 번호는 피함');
+  // 마스크 합치기 수학
+  const A = m.featherMap(100, 50, [20, 10, 80, 40], 6);
+  expect(A[25 * 100 + 50] === 1 && A[25 * 100 + 10] === 0 && A[5 * 100 + 50] === 0 && A[25 * 100 + 20] > 0 && A[25 * 100 + 20] < 0.2 && A[25 * 100 + 23] > A[25 * 100 + 20] && A[25 * 100 + 70] === 1 && A[25 * 100 + 79] < 0.2, '경계에서 안쪽으로 6화소에 걸쳐 0→1 로 번지는 비율 지도(영역 밖 0, 가운데 1)');
+  const old = new Float32Array([1, 1, 1, 1]); const pat = new Float32Array([0, 0, 0, 0]); const bm = m.blendMasks(old, pat, new Float32Array([0, 0.5, 1, 0.25]));
+  expect(bm[0] === 1 && Math.abs(bm[1] - 0.5) < 1e-6 && bm[2] === 0 && Math.abs(bm[3] - 0.75) < 1e-6, '마스크 섞기: 비율 0 이면 옛 것, 1 이면 새 것, 중간은 섞임');
+  expect(m.normalizeSketch({ ...n0, zones: [{ id: 'z1', color: '#BAD6B0', label: '녹', mask: 'data:image/png;base64,iVBORw0KGgo=', band: 'green' }] }).zones[0].band === 'green', '구역 층에 색 띠(band)가 유지됨');
 }
 // 출력 크기·글자 위계(page.js): 추천 pt, 크기 맞춤, 글꼴 바꿈, 경고
 {

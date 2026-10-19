@@ -473,20 +473,24 @@ export function legendInk(hex) {
 export function makeEditSpec({ imageUrl, w, h, title = '', legend = [], layers = null }) {
   const rect = [0, 0, 100, (100 * h) / w];
   const items = (Array.isArray(legend) ? legend : []).filter((l) => l && /^#[0-9a-fA-F]{6}$/.test(l.color || '')).slice(0, 6);
-  const zones = (layers?.zones || []).filter((z) => z && z.maskUrl && /^#[0-9a-fA-F]{6}$/.test(z.color || '')).slice(0, 8).map((z, i) => ({ id: `z${i + 1}`, color: z.color, label: String(z.label || '구역').slice(0, 22), mask: z.maskUrl, opacity: 1, hidden: false, blend: z.blend === 'color' ? 'color' : 'multiply' }));
+  const zones = (layers?.zones || []).filter((z) => z && z.maskUrl && /^#[0-9a-fA-F]{6}$/.test(z.color || '')).slice(0, 8).map((z, i) => ({ id: `z${i + 1}`, color: z.color, label: String(z.label || '구역').slice(0, 22), mask: z.maskUrl, opacity: 1, hidden: false, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: z.band } : {}) }));
   const cols = Math.min(3, Math.max(1, items.length)); const rowH = 3.8; const y0 = rect[3] + 4.2;
   const memos = items.map((l, i) => { const z = l.kind === 'zone' ? zones.find((q) => q.color.toLowerCase() === l.color.toLowerCase()) : null; return { id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: z ? legendInk(z.color) : l.color, icon: '', ...(z ? { zone: z.id } : {}) }; });
   const bottom = items.length ? y0 + Math.ceil(items.length / cols) * rowH : rect[3];
   const spec = { title: String(title || ''), subtitle: '', style: 'line', layout: 'image', frame: [-1, -1, 101, bottom + 1.5], base: { svg: `<g><image href="${imageUrl}" x="0" y="0" width="${w}" height="${h}"/></g>`, vb: [0, 0, w, h], rect, isImage: true },
     blocks: [], lines: [], winds: [], memos, zones, textBlock: null, legend: { wind: '', core: '', opening: '' }, notes: [] };
-  if (layers?.arrows?.length) {
-    const k = 100 / w; const px = k * sketchView(spec).K;   // 그림 화소 1 → 다이어그램 좌표 k → 화면(1200) 좌표 px
-    const r1 = (v) => Math.round(v * 10) / 10;
-    spec.winds = layers.arrows.slice(0, 30).filter((a) => Array.isArray(a.pts) && a.pts.length >= 2 && /^#[0-9a-fA-F]{6}$/.test(a.color || '')).map((a, i) => ({
-      id: `w${i + 1}`, pts: a.pts.map((p) => [r1(p[0] * k), r1(p[1] * k)]), smooth: a.smooth !== false, head: HEADS.includes(a.head) ? a.head : 'none', dash: DASHES[a.dash] !== undefined ? a.dash : 'solid',
-      width: Math.min(14, Math.max(1.6, r1((Number(a.width) || 3) * px))), color: a.color, form: 'line', shape: 'read', bend: 1, amp: 0.45, via: null, inLabel: '', outLabel: '' }));
-  }
+  if (layers?.arrows?.length) spec.winds = arrowsToWinds(spec, layers.arrows, w, []);
   return spec;
+}
+
+// AI 이미지 편집 결과의 화살표(그림 화소 좌표) → 편집 가능한 winds. exist: 이미 있는 winds(번호가 겹치지 않게 이어서 붙인다)
+export function arrowsToWinds(spec, arrows, w, exist = [], maxN = 30) {
+  const k = 100 / w; const px = k * sketchView(spec).K;   // 그림 화소 1 → 다이어그램 좌표 k → 화면(1200) 좌표 px
+  const r1 = (v) => Math.round(v * 10) / 10; const used = new Set(exist.map((e) => e.id)); let n = 0;
+  const nextId = () => { do { n += 1; } while (used.has(`w${n}`)); used.add(`w${n}`); return `w${n}`; };
+  return (arrows || []).slice(0, maxN).filter((a) => Array.isArray(a.pts) && a.pts.length >= 2 && /^#[0-9a-fA-F]{6}$/.test(a.color || '')).map((a) => ({
+    id: nextId(), pts: a.pts.map((p) => [r1(p[0] * k), r1(p[1] * k)]), smooth: a.smooth !== false, head: HEADS.includes(a.head) ? a.head : 'none', dash: DASHES[a.dash] !== undefined ? a.dash : 'solid',
+    width: Math.min(14, Math.max(1.6, r1((Number(a.width) || 3) * px))), color: a.color, form: 'line', shape: 'read', bend: 1, amp: 0.45, via: null, inLabel: '', outLabel: '' }));
 }
 
 // 읽은 분석 표시 → 편집 가능한 spec(입체 바탕 + 바람 번짐 띠 + 일조 점선 호와 해 아이콘 + 오른쪽 문구 블록)
@@ -517,7 +521,8 @@ export function normalizeSketch(raw) {
   const pt = (p) => [num(p?.[0], 0), num(p?.[1], 0)];
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
-    return { id: uid(b.id, `b${i + 1}`), kind: ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null, inset: num(b.inset, 6, 0, 20),
+    const img = b.kind === 'image' && typeof b.href === 'string' && b.href.length > 8 && b.href.length < 6000000; // 내가 넣은 이미지
+    return { id: uid(b.id, `b${i + 1}`), kind: img ? 'image' : ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', ...(img ? { href: b.href, opacity: num(b.opacity, 1, 0.05, 1), layer: b.layer === 'front' ? 'front' : 'back', ar: num(b.ar, 0, 0, 100) } : {}), rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null, inset: num(b.inset, 6, 0, 20),
       openSides: [...new Set((Array.isArray(b.openSides) ? b.openSides : []).filter((v) => SIDES.includes(v)))] };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
@@ -533,7 +538,7 @@ export function normalizeSketch(raw) {
   }));
   const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}) }));
   // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
-  const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply' }));
+  const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: String(z.band).slice(0, 12) } : {}) }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
   const bs = s.base && typeof s.base === 'object' ? s.base : null;
   const base = bs && typeof bs.svg === 'string' && bs.svg.length < 3000000 && Array.isArray(bs.vb) && bs.vb.length === 4 && bs.vb.every((v) => Number.isFinite(Number(v))) && bs.vb[2] > 0 && bs.vb[3] > 0 && Array.isArray(bs.rect) && bs.rect.length === 4 && bs.rect.every((v) => Number.isFinite(Number(v)))
@@ -750,6 +755,9 @@ export function renderSketch(raw, opts = {}) {
     });
   }
   const R = (b) => { const a = P([b.rect[0], b.rect[1]]); const z = P([b.rect[2], b.rect[3]]); return [a[0], a[1], z[0] - a[0], z[1] - a[1]]; };
+  const myImgs = spec.blocks.filter((b) => b.kind === 'image'); // 내가 넣은 이미지: 맨 뒤(바탕 위, 도형·화살표 아래) 또는 맨 앞
+  const imgSvg = (b) => { const [x, y, w, h] = R(b); return `<image href="${esc(b.href)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" preserveAspectRatio="none"${b.opacity < 1 ? ` opacity="${b.opacity}"` : ''}${eid(b.id)}/>`; };
+  myImgs.filter((b) => b.layer !== 'front').forEach((b) => o.push(imgSvg(b)));
   const slabs = spec.blocks.filter((b) => b.kind === 'slab').sort((p, q) => (q.rect[2] - q.rect[0]) * (q.rect[3] - q.rect[1]) - (p.rect[2] - p.rect[0]) * (p.rect[3] - p.rect[1]));
   const cores = spec.blocks.filter((b) => b.kind === 'core');
   const openings = spec.blocks.filter((b) => b.kind === 'opening');
@@ -772,7 +780,7 @@ export function renderSketch(raw, opts = {}) {
     o.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${b.fill || (concept ? C.coreFill : 'url(#hatch)')}" stroke="${C.core}" stroke-width="${concept ? 2.6 : 2.2}" stroke-linejoin="round"${eid(b.id)}/>`);
   });
   // 도형 안에 이름 표시(개념도): 코어는 기본으로, 판은 켰을 때만. 도형이 작으면 글자를 줄인다
-  if (concept) {
+  if (concept || spec.layout === 'image') {
     [...slabs, ...cores].forEach((b) => {
       if (!b.name || !(b.showName ?? b.kind === 'core')) return;
       const [x, y, w, h] = R(b); const len = [...b.name].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0) || 1;
@@ -841,6 +849,7 @@ export function renderSketch(raw, opts = {}) {
     pill(s0, w.inLabel, !(s0[1] < e0[1])); pill(e0, w.outLabel, s0[1] < e0[1]);
   });
   if (extraDefs.length) o[0] = o[0].replace('</defs>', `${extraDefs.join('')}</defs>`);
+  myImgs.filter((b) => b.layer === 'front').forEach((b) => o.push(imgSvg(b)));
   // 메모(자유 글자)
   spec.memos.forEach((m) => {
     const [x, y] = P([m.x, m.y]);
@@ -857,6 +866,7 @@ export function renderSketch(raw, opts = {}) {
   o.push(...handles);
   // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다(도면용). 개념도는 도형 안에 이름을 쓰므로 칼럼이 없다
   let ry = 170; let n = 0;
+  const side = !concept && spec.layout !== 'image'; // 오른쪽 설명 칸(번호·화살표·개구부·코어 범례): 그림 한 장이 영역을 채우는 'image' 배치에서는 그림 위에 겹쳐 그려지므로 쓰지 않는다
   if (concept) {
     if (spec.showLegend) {
       let lx = 60; const ly = H - 62; const put = (icon, text) => { o.push(icon); o.push(`<text x="${lx + 46}" y="${ly + 5}" font-family="${FONT}" font-size="16" fill="${C.text}">${esc(text)}</text>`); lx += 70 + [...text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0); };
@@ -866,7 +876,7 @@ export function renderSketch(raw, opts = {}) {
     }
     if (spec.showNotes) spec.notes.forEach((t, i) => o.push(`<text x="60" y="${H - 22 - (spec.notes.length - 1 - i) * 24}" font-family="${FONT}" font-size="16" fill="${C.text}">${esc(t)}</text>`));
   }
-  if (!concept) [...slabs, ...cores].forEach((b) => {
+  if (side) [...slabs, ...cores].forEach((b) => {
     if (!b.name) return;
     n += 1; const dark = b.kind === 'core'; const [x, y, w, h] = R(b);
     const [mx, my] = dark ? [x + w / 2, y + h / 2] : [x + 20, y + 20];
@@ -876,8 +886,8 @@ export function renderSketch(raw, opts = {}) {
     if (b.desc) o.push(`<text x="884" y="${ry + 21}" font-family="${FONT}" font-size="12.5" fill="${C.sub}">${esc(b.desc)}</text>`);
     ry += 58;
   });
-  if (!concept) { ry += 8; o.push(`<line x1="850" y1="${ry - 14}" x2="1160" y2="${ry - 14}" stroke="${pres ? '#E2D9CB' : '#cccccc'}"/>`); }
-  if (!concept && spec.winds.length) {
+  if (side) { ry += 8; o.push(`<line x1="850" y1="${ry - 14}" x2="1160" y2="${ry - 14}" stroke="${pres ? '#E2D9CB' : '#cccccc'}"/>`); }
+  if (side && spec.winds.length) {
     const tally = {}; spec.winds.forEach((w) => { const k = `${w.color}|${w.dash}|${w.form}`; tally[k] = (tally[k] || 0) + 1; });
     const [bestColor, bestDash, bestForm] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0].split('|');
     const w0 = { color: bestColor, dash: bestDash, form: bestForm };
@@ -889,8 +899,8 @@ export function renderSketch(raw, opts = {}) {
     o.push(`${icon}<text x="896" y="${ry + 12}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.wind)}</text>`);
     ry += 26;
   }
-  if (!concept && openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
-  if (!concept && cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
+  if (side && openings.length) { o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" rx="7" fill="#fff" stroke="#555" stroke-width="1.6" stroke-dasharray="5 4"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.opening)}</text>`); ry += 24; }
+  if (side && cores.length) o.push(`<rect x="852" y="${ry + 2}" width="36" height="14" fill="url(#hatch)" stroke="${C.core}"/><text x="896" y="${ry + 14}" font-family="${FONT}" font-size="13" fill="${C.text}">${esc(spec.legend.core)}</text>`);
   if (!concept) spec.notes.forEach((t, i) => o.push(`<text x="40" y="${H - 46 + i * 22}" font-family="${FONT}" font-size="14" fill="${C.text}"${i === 0 ? ' font-weight="700"' : ''}>${pres ? '▪ ' : '- '}${esc(t)}</text>`));
   if (spec.textBlock && (spec.textBlock.title || spec.textBlock.subs.length)) { // 오른쪽 문구 블록: 제목(굵게) → 강조색 밑줄과 ▼ → 부제 줄들
     const tb = spec.textBlock; const cxm = 985; const tl = tb.title.split('\n').slice(0, 3); let ty = 300 - Math.max(0, tl.length - 2) * 26;
@@ -947,6 +957,23 @@ export function sketchAdd(spec, kind) {
   const id = nextId('b', 'blocks');
   const rect = kind === 'opening' ? [cx - w * 0.09, cy - h * 0.016, cx + w * 0.09, cy + h * 0.016] : [cx - w * 0.08, cy - h * 0.08, cx + w * 0.08, cy + h * 0.08];
   return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: ['core', 'opening'].includes(kind) ? kind : 'slab', rect, name: '', desc: '', fill: '' }] }, id };
+}
+
+// 내 이미지를 그림 한가운데에 놓는다(원본 비율, 그림 틀 가로의 40% 안쪽). img: { href, w, h(원본 크기) }
+export function sketchAddImage(spec, { href, w, h }) {
+  const [x0, y0, x1, y1] = spec.frame; const fw = x1 - x0; const fh = y1 - y0; const ar = (w || 1) / (h || 1);
+  let rw = fw * 0.4; let rh = rw / ar; if (rh > fh * 0.6) { rh = fh * 0.6; rw = rh * ar; }
+  let n = 1; while (spec.blocks.some((e) => e.id === `b${n}`)) n += 1;
+  const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2; const r1 = (v) => Math.round(v * 10) / 10;
+  const id = `b${n}`;
+  return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: 'image', rect: [r1(cx - rw / 2), r1(cy - rh / 2), r1(cx + rw / 2), r1(cy + rh / 2)], name: '', desc: '', fill: '', href, opacity: 1, layer: 'back', ar: Math.round(ar * 1000) / 1000 }] }, id };
+}
+// 모서리를 끌 때 원본 비율을 지킨다(반대쪽 모서리를 고정). Shift 를 누르면 자유롭게(호출한 쪽에서 안 부름)
+export function sketchLockAspect(spec, id, handle) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks' || f.el.kind !== 'image' || !(f.el.ar > 0) || handle.length !== 2) return spec;
+  const r = [...f.el.rect]; const w = r[2] - r[0]; const h = w / f.el.ar;
+  if (handle.includes('n')) r[1] = r[3] - h; else r[3] = r[1] + h;
+  return sketchUpdate(spec, id, { rect: r.map((v) => Math.round(v * 100) / 100) });
 }
 
 // ── 끌어서 편집: 이동·크기 조절·끝점·휘는 정도·자석 맞춤 ──

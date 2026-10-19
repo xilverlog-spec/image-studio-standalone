@@ -40,16 +40,116 @@ export function scanSvg(svg) {
 }
 
 export const emptyEdits = (svg) => ({ sig: scanSvg(svg).sig, ops: {} });
-export const hasEdits = (edits) => !!edits && Object.keys(edits.ops || {}).length > 0;
+export const hasEdits = (edits) => !!edits && (Object.keys(edits.ops || {}).length > 0 || (edits.adds || []).length > 0 || (edits.shapes || []).length > 0);
+
+// ── 내가 새로 그린 도형·글자·화살표(edits.shapes) ──
+// 그림 맨 끝에 붙여서 다른 요소와 똑같이 고를 수 있게 한다(색·위치·곡선·선 종류를 같은 편집기로 고침). 그림 구조 지문(sig)은 이것을 빼고 계산한다.
+//   shapes = [{ id:'s1', kind:'text'|'rect'|'ellipse'|'arrow', ... }] — 번호는 그림의 요소 번호가 아니라 '몇 번째로 추가했는가'다.
+const FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif"; // page.js 의 ENGINE_FONT 와 같아야 글꼴 바꿈이 먹는다(회귀 시험으로 확인)
+export const SHAPE_FONT = FONT;
+const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+export function shapeSvg(sh) {
+  if (sh.kind === 'raw') return `${sh.defs || ''}${sh.el || ''}`; // 복사한 요소: 정의 + 요소 한 개(요소 하나짜리라야 새 도형 번호가 어긋나지 않는다)
+  const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (sh.kind === 'text') {
+    const lines = String(sh.text ?? '').split('\n'); const size = num(sh.size, 20);
+    const inner = lines.length > 1 ? lines.map((t, i) => `<tspan x="${r2(sh.x)}" dy="${i === 0 ? 0 : r2(size * 1.25)}">${esc(t)}</tspan>`).join('') : esc(lines[0]);
+    return `<text x="${r2(sh.x)}" y="${r2(sh.y)}" font-family="${FONT}" font-size="${r2(size)}" font-weight="${sh.bold === false ? 400 : 700}" text-anchor="${sh.anchor || 'middle'}" fill="${sh.fill || '#222222'}">${inner}</text>`;
+  }
+  if (sh.kind === 'rect') return `<rect x="${r2(sh.x)}" y="${r2(sh.y)}" width="${r2(sh.w)}" height="${r2(sh.h)}" rx="${r2(sh.rx ?? 6)}" fill="${sh.fill || '#FFFFFF'}" stroke="${sh.stroke || '#222222'}" stroke-width="${r2(sh.sw ?? 2)}"/>`;
+  if (sh.kind === 'ellipse') return `<ellipse cx="${r2(sh.cx)}" cy="${r2(sh.cy)}" rx="${r2(sh.rx)}" ry="${r2(sh.ry)}" fill="${sh.fill || '#FFFFFF'}" stroke="${sh.stroke || '#222222'}" stroke-width="${r2(sh.sw ?? 2)}"/>`;
+  if (sh.kind === 'arrow') {
+    const mid = `svm_${sh.id}`; const col = sh.color || '#E8832A'; const head = sh.head || 'end';
+    const fillMark = sh.ctx === false ? col : 'context-stroke'; // context-stroke: 화살촉이 선 색을 따라간다(지원하지 않는 브라우저면 색을 직접 지정)
+    const mk = `<defs><marker id="${mid}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="${fillMark}"/></marker></defs>`;
+    return `${mk}<path d="M${r2(sh.x1)} ${r2(sh.y1)}L${r2(sh.x2)} ${r2(sh.y2)}" fill="none" stroke="${col}" stroke-width="${r2(sh.sw ?? 4)}" stroke-linecap="round" stroke-linejoin="round"${head === 'end' || head === 'both' ? ` marker-end="url(#${mid})"` : ''}${head === 'start' || head === 'both' ? ` marker-start="url(#${mid})"` : ''}/>`;
+  }
+  return '';
+}
+// 복사한 요소(raw)를 (dx, dy) 옮긴다: 요소의 transform 앞에 translate 를 붙인다
+export function rawShift(sh, dx, dy) {
+  if (!dx && !dy) return sh;
+  const t = `translate(${r2(dx)} ${r2(dy)})`; const open = String(sh.el || '').split('>')[0];
+  const el = /\stransform="/.test(open) ? sh.el.replace(/(\s)transform="/, `$1transform="${t} `) : sh.el.replace(/^(<[A-Za-z]+)/, `$1 transform="${t}"`);
+  return { ...sh, el };
+}
+// 복사한 글자(raw)의 내용을 바꾼다(여러 줄은 줄마다 tspan)
+export function rawSetText(sh, text) {
+  const el = String(sh.el || '').replace(/(<text\b[^>]*>)([\s\S]*?)(<\/text>)/, (all, open, _inner, close) => {
+    const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = String(text ?? '').split('\n'); const x = /\sx="([^"]*)"/.exec(open)?.[1] ?? '0'; const fs = num(/font-size="([^"]*)"/.exec(open)?.[1], 16);
+    const inner = lines.length > 1 ? lines.map((t, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : r2(fs * 1.25)}">${esc(t)}</tspan>`).join('') : esc(lines[0]);
+    return open + inner + close;
+  });
+  return { ...sh, el };
+}
+export function appendShapes(svg, shapes) {
+  if (!shapes || !shapes.length) return svg;
+  const end = svg.lastIndexOf('</svg>'); if (end < 0) return svg;
+  return svg.slice(0, end) + shapes.map(shapeSvg).join('') + svg.slice(end);
+}
+// 화면 한가운데(box=[x,y,w,h])에 놓을 새 도형의 기본값
+export function newShape(kind, box, scale = 1) {
+  const [bx, by, bw, bh] = box; const cx = bx + bw / 2; const cy = by + bh / 2; const u = Math.max(bw, bh) / 100; // 그림 크기에 비례
+  if (kind === 'text') return { kind, text: '글자', x: r2(cx), y: r2(cy), size: r2(Math.max(14, Math.min(40, u * 2.2)) * scale), fill: '#222222', anchor: 'middle', bold: true };
+  if (kind === 'rect') return { kind, x: r2(cx - bw * 0.08), y: r2(cy - bh * 0.05), w: r2(bw * 0.16), h: r2(bh * 0.1), rx: 6, fill: '#FFFFFF', stroke: '#222222', sw: r2(Math.max(1.5, u * 0.2)) };
+  if (kind === 'ellipse') return { kind, cx: r2(cx), cy: r2(cy), rx: r2(bw * 0.055), ry: r2(bw * 0.055), fill: '#FFFFFF', stroke: '#222222', sw: r2(Math.max(1.5, u * 0.2)) };
+  return { kind: 'arrow', x1: r2(cx - bw * 0.15), y1: r2(cy), x2: r2(cx + bw * 0.15), y2: r2(cy), color: '#E8832A', sw: r2(Math.max(3, u * 0.35)), head: 'end' };
+}
+export function editAddShape(edits, sig, shape) {
+  const next = { sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, ...(edits?.adds?.length ? { adds: edits.adds } : {}), shapes: [...(edits?.shapes || [])] };
+  let n = 1; while (next.shapes.some((q) => q.id === `s${n}`)) n += 1;
+  next.shapes.push({ ...shape, id: `s${n}` });
+  return { edits: next, index: next.shapes.length - 1, id: `s${n}` };
+}
+export const editUpdateShape = (edits, id, patch) => ({ ...edits, shapes: (edits?.shapes || []).map((q) => (q.id === id ? { ...q, ...patch } : q)) });
+// 도형 하나를 지운다. 그 뒤에 추가한 도형의 요소 번호가 하나씩 당겨지므로 수정(ops)도 같이 옮긴다. baseLeaf = 그림 본래의 도형·글자 요소 수
+export function editRemoveShape(edits, id, baseLeaf) {
+  const shapes = edits?.shapes || []; const i = shapes.findIndex((q) => q.id === id); if (i < 0) return edits;
+  const ops = {};
+  Object.entries(edits.ops || {}).forEach(([k, v]) => {
+    const m = /^e(\d+)$/.exec(k);
+    if (!m || Number(m[1]) < baseLeaf) { ops[k] = v; return; }
+    const j = Number(m[1]) - baseLeaf;
+    if (j === i) return;                                  // 지운 도형의 수정은 버린다
+    ops[j > i ? `e${baseLeaf + j - 1}` : k] = v;
+  });
+  const next = { ...edits, ops, shapes: shapes.filter((q) => q.id !== id) };
+  if (!next.shapes.length) delete next.shapes;
+  return next;
+}
+
+// 내가 넣은 이미지(edits.adds): [{ id:'a1', kind:'image', href, x, y, w, h, opacity, behind }] — 그림 구조와 무관해서 구조 지문(sig)에 영향이 없다.
+const addTag = (a, interactive) => `<image href="${ATTR_ESC(a.href)}" x="${r2(a.x)}" y="${r2(a.y)}" width="${r2(a.w)}" height="${r2(a.h)}" preserveAspectRatio="none"${a.opacity < 1 ? ` opacity="${a.opacity}"` : ''}${interactive ? ` data-eid="${a.id}"` : ''}/>`;
+function insertAdds(svg, _els, adds, interactive) {
+  if (!adds || !adds.length) return svg;
+  const valid = adds.filter((a) => a && a.href && a.kind === 'image');
+  if (!valid.length) return svg;
+  const back = valid.filter((a) => a.behind).map((a) => addTag(a, interactive)).join('');
+  const front = valid.filter((a) => !a.behind).map((a) => addTag(a, interactive)).join('');
+  let out = svg;
+  const end = out.lastIndexOf('</svg>');
+  if (front && end >= 0) out = out.slice(0, end) + front + out.slice(end);
+  if (back) { // 맨 뒤: 그림 전체를 덮는 배경 사각형 바로 뒤(없으면 <svg> 바로 뒤)
+    const first = scanSvg(out).els.find((e) => e.kind === 'e'); // 수정이 입혀진 지금 문자열에서 위치를 다시 찾는다(원래 문자열의 위치는 맞지 않는다)
+    const at = first && first.tag === 'rect' && first.self ? first.e : (() => { const m = out.match(/<svg\b[^>]*>/); return m ? m.index + m[0].length : 0; })();
+    out = out.slice(0, at) + back + out.slice(at);
+  }
+  return out;
+}
 
 // 고친 내용을 그림에 입힌다. opts.ids 가 참이면 편집 화면용: 요소마다 data-eid 를 달고, 얇은 선에는 눌리기 쉽게 보이지 않는 굵은 선을 덧댄다.
 // 반환: { svg, ok(구조가 같아 적용했는가), sig, els }
-export function applyEdits(svg, edits, opts = {}) {
-  const scan = scanSvg(svg); const { els, sig } = scan;
+export function applyEdits(svg0, edits, opts = {}) {
+  const baseScan = scanSvg(svg0); const sig = baseScan.sig; const baseLeaf = baseScan.els.filter((e) => e.kind === 'e').length;
+  const shapes = edits && edits.shapes && edits.shapes.length ? edits.shapes : null;
+  const svg = shapes ? appendShapes(svg0, shapes) : svg0;                // 내가 그린 도형은 맨 끝에 붙여 다른 요소 번호가 바뀌지 않게 한다
+  const els = shapes ? scanSvg(svg).els : baseScan.els;
   const ok = !edits || edits.sig === undefined || edits.sig === sig;
   const ops = ok && edits ? edits.ops || {} : {};
   const interactive = !!opts.ids;
-  if (!interactive && !Object.keys(ops).length) return { svg, ok, sig, els };
+  const adds = edits && edits.adds && edits.adds.length ? edits.adds : null;
+  if (!interactive && !Object.keys(ops).length) return { svg: insertAdds(svg, els, adds, false), ok, sig, els, baseLeaf };
   let out = ''; let pos = 0;
   for (const el of els) {
     const op = ops[el.id];
@@ -72,11 +172,11 @@ export function applyEdits(svg, edits, opts = {}) {
     out += svg.slice(pos, el.s) + buildTag(tag, attrs, el.self) + extra; pos = el.e;
   }
   out += svg.slice(pos);
-  return { svg: out, ok, sig, els };
+  return { svg: insertAdds(out, els, adds, interactive), ok, sig, els, baseLeaf };
 }
 
 // ── 고친 내용 만들기(불변) ──
-const cloneEdits = (edits, sig) => ({ sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) } });
+const cloneEdits = (edits, sig) => ({ sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, ...(edits?.adds?.length ? { adds: edits.adds } : {}), ...(edits?.shapes?.length ? { shapes: edits.shapes } : {}) });
 function withOp(edits, id, fn, sig) {
   const next = cloneEdits(edits, sig); const cur = next.ops[id] ? { ...next.ops[id], set: { ...(next.ops[id].set || {}) } } : { set: {} };
   const res = fn(cur) || cur; const empty = !res.del && !res.tag && !(res.t && (res.t[0] || res.t[1])) && !Object.keys(res.set || {}).length;
@@ -90,6 +190,17 @@ export const editDelete = (edits, id, sig) => withOp(edits, id, (o) => { o.del =
 export const editRestore = (edits, id, sig) => withOp(edits, id, () => ({ set: {} }), sig);
 export const editAsPath = (edits, id, d, drop, sig) => withOp(edits, id, (o) => { o.tag = 'path'; o.set.d = d; (drop || []).forEach((k) => { o.set[k] = null; }); return o; }, sig);
 export const editTranslate = (edits, id) => edits?.ops?.[id]?.t || [0, 0];
+// 내 이미지 추가·고치기·빼기(불변). img: { href, w, h(원본 크기), box:[x,y,w,h](놓을 자리) }
+export function editAddImage(edits, sig, { href, w, h, box }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const bw = box[2]; const bh = box[3]; const ar = (w || 1) / (h || 1);
+  let rw = bw * 0.4; let rh = rw / ar; if (rh > bh * 0.6) { rh = bh * 0.6; rw = rh * ar; }
+  next.adds.push({ id: `a${n}`, kind: 'image', href, x: r2(box[0] + (bw - rw) / 2), y: r2(box[1] + (bh - rh) / 2), w: r2(rw), h: r2(rh), ar: r2(ar * 1000) / 1000, opacity: 1, behind: false });
+  return { edits: next, id: `a${n}` };
+}
+export const editUpdateAdd = (edits, id, patch) => ({ ...edits, adds: (edits?.adds || []).map((a) => (a.id === id ? { ...a, ...patch } : a)) });
+export const editRemoveAdd = (edits, id, sig) => { const n = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: (edits?.adds || []).filter((a) => a.id !== id) }; if (!n.adds.length) delete n.adds; return n; };
 
 // ── 선 종류 ──
 export const DASH_PRESETS = { solid: { label: '실선', dash: null, cap: null }, dashed: { label: '파선', dash: '9 6', cap: null }, dotted: { label: '점선', dash: '1.5 6', cap: 'round' }, dashdot: { label: '일점쇄선', dash: '14 5 2 5', cap: null }, dots: { label: '굵은 점(둥근 점선)', dash: '0.1 8.5', cap: 'round' } };

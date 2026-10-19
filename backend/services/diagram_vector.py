@@ -283,7 +283,38 @@ def _merge_collinear(arrows, S):
     return arrows
 
 
-def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
+def _head_blobs(mm, r_open):
+    """몸통(가는 선)을 지우고 화살촉(굵은 삼각형)만 남기는 열림 연산. 반환: (열린 마스크, [{c(중심), base(밑변 쪽), tip(뾰족한 끝), area, rmax}])
+    삼각형의 뾰족한 끝은 열림 연산에서 깎이므로 반경만큼 바깥으로 늘려 잡는다."""
+    op = ndi.binary_opening(mm, structure=disk(r_open))
+    lab, n = ndi.label(op, structure=np.ones((3, 3)))
+    out = []
+    for k in range(1, n + 1):
+        ys, xs = np.nonzero(lab == k)
+        if len(xs) < 10:
+            continue
+        pts = np.stack([xs, ys], 1).astype(float)
+        c = pts.mean(0)
+        _u, _sv, vt = np.linalg.svd(pts - c, full_matrices=False)
+        ax, pe = vt[0], vt[1]
+        proj = (pts - c) @ ax
+        perp = (pts - c) @ pe
+        t0, t1 = float(proj.min()), float(proj.max())
+        span = max(1e-6, t1 - t0)
+        lo = perp[proj <= t0 + 0.3 * span]
+        hi = perp[proj >= t1 - 0.3 * span]
+        wlo = float(lo.max() - lo.min()) if len(lo) else 0.0
+        whi = float(hi.max() - hi.min()) if len(hi) else 0.0
+        side = 1.0 if whi < wlo else -1.0                       # 좁은 쪽 = 뾰족한 끝
+        d = ax * side
+        tip = c + ax * (t1 if side > 0 else t0)
+        base = c + ax * (t0 if side > 0 else t1)
+        tip = tip + d * r_open * 0.8
+        out.append({"c": c, "base": base, "tip": tip, "area": int(len(xs)), "pix": (ys, xs)})
+    return op, out
+
+
+def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None, thin=False):
     """굵은 채색 선 마스크 → 화살표 목록. core = 부풀리지 않은 것(색·선 종류 판정), arrow = 3×3 부풀린 것(모양 뽑기: 얇은 선·점선도 끊기지 않게).
     좌표는 화소(x, y). 반환: (목록, 받아들인 덩어리의 core 화소 마스크).
     각 항목: pts, width(화소), color, head(end/none/both), dash, smooth, band, length."""
@@ -294,6 +325,7 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
     arrows = []
     close_r = max(5, int(round(S * 0.011)))
     pad = close_r + 1
+    min_cc = max(14, int(2e-5 * S * S))
     for name, lut in luts.items():
         band = lut[hsv_h]
         m = arrow & band                       # 모양
@@ -302,6 +334,9 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
             continue
         # 파선·점선의 끊긴 곳을 이어 한 덩어리로
         closed = ndi.binary_closing(np.pad(m, pad), structure=disk(close_r))[pad:-pad, pad:-pad] | m
+        # 점·짧은 파선(두께가 얇아 닫기 연산으로는 안 이어지는 것)은 가볍게 부풀려 한 덩어리로 묶는다(부풀린 모양은 묶는 데만 쓰고 뼈대는 그 가운데를 따른다)
+        if thin:
+            closed |= ndi.binary_dilation(m, structure=disk(max(3, int(round(S * 0.007)))))
         lab, n = ndi.label(closed, structure=np.ones((3, 3)))
         dt = ndi.distance_transform_edt(m)
         for objs, i in zip(ndi.find_objects(lab), range(1, n + 1)):
@@ -310,7 +345,7 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
             comp = (lab[objs] == i)
             mm = m[objs] & comp
             cc = c0[objs] & comp
-            if int(cc.sum()) < 40:
+            if int(cc.sum()) < min_cc:
                 continue
             ddt = dt[objs]
             # 화살표답지 않은 큰 면(두께가 그림의 4% 넘음)은 화살표가 아니다 → 바탕에 남긴다
@@ -318,15 +353,42 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
                 continue
             skel = skeletonize(comp)
             on_skel = skel & mm
-            if int(on_skel.sum()) < 6:
-                continue
-            half = float(np.median(ddt[on_skel]))                 # 몸통 반폭(화소, 부풀린 마스크 기준)
-            if half <= 0:
-                continue
+            have_skel = int(on_skel.sum()) >= 6
+            maxdt = float(ddt[mm].max())
+            half = float(np.median(ddt[on_skel])) if have_skel else 0.0   # 몸통 반폭(화소, 부풀린 마스크 기준)
+            if not have_skel or half <= 0:
+                half = max(1.0, maxdt / 1.9)                              # 화살촉 하나뿐인 덩어리: 가장 굵은 곳(안쪽 원 반지름)에서 몸통 폭을 짐작
             ww = max(2.5, 2 * half - 0.5)                         # 보이는 굵기: 부풀린 마스크(양쪽 1화소)에서 반화소만 뺀다(합성 때 가장자리가 번져 보이던 굵기에 맞춘다)
             min_len = max(8, int(3 * half))
-            paths, is_branch, co = _skeleton_paths(skel, min_len)
-            if not paths:
+            paths, is_branch, co = _skeleton_paths(skel, min_len) if have_skel else ([], [], np.zeros((0, 2), int))
+            # 화살촉 덩어리(몸통을 열림 연산으로 지우고 남은 굵은 삼각형): 뼈대 끝점이 어긋나거나 점선에 붙어 있어도 찾는다
+            r_open = max(2, int(round(0.9 * half)))                     # 작게 열어 후보를 넉넉히 잡고(파선 조각도 남는다), 아래에서 '몸통보다 확실히 굵은 것'만 화살촉으로 친다
+            _op, cand_blobs = _head_blobs(mm, r_open)
+            skel_xy = co[:, ::-1].astype(float) if have_skel and len(co) else np.zeros((0, 2))
+            skel_r = ddt[co[:, 0], co[:, 1]] if have_skel and len(co) else np.zeros(0)
+            skel_tree = None
+            if len(skel_xy):
+                from scipy.spatial import cKDTree
+                skel_tree = cKDTree(skel_xy)
+            blobs = []
+            for bl in cand_blobs:
+                rmax = float(ddt[bl["pix"]].max())
+                local = half
+                if skel_tree is not None:                                  # 그 둘레(7×폭 안) 몸통의 반폭 중앙값 — 같은 선 위의 파선 조각은 몸통과 같은 굵기라 걸러진다
+                    near_i = skel_tree.query_ball_point(bl["c"], 7 * ww)
+                    if near_i:
+                        local = float(np.median(skel_r[near_i]))
+                if rmax >= 1.45 * max(local, 1.0) and rmax >= 2.5:
+                    bl["rmax"] = rmax
+                    blobs.append(bl)
+            head_mask = np.zeros(mm.shape, bool)
+            for bl in blobs:
+                head_mask[bl["pix"]] = True
+            dist_open = ndi.distance_transform_edt(~head_mask) if head_mask.any() else None
+            longest = max((float(np.hypot(*np.diff(co[pp][:, ::-1].astype(float), axis=0).T).sum()) for pp in paths), default=0.0)
+            if blobs and longest <= 7 * ww and int(mm.sum()) <= 1.8 * sum(bl["area"] for bl in blobs) + 12:
+                paths, is_branch = [], []                                  # 덩어리 거의 전부가 화살촉: 삼각형의 뼈대를 선으로 읽지 않고 '화살촉 하나'로 남긴다
+            if not paths and not blobs:
                 continue
             # 뼈대 끝점(차수 1)만 화살촉 후보
             nb = ndi.convolve(skel.astype(np.uint8), np.ones((3, 3), np.uint8), mode="constant") - skel
@@ -348,8 +410,10 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
                 def head_at(end, xy=xy, yx=yx):
                     seg = xy[-1 - int(3 * ww):] if end else xy[: 1 + int(3 * ww)]
                     ys, xs = seg[:, 1].astype(int), seg[:, 0].astype(int)
-                    tip_ok = endpoint[yx[-1][0], yx[-1][1]] if end else endpoint[yx[0][0], yx[0][1]]
-                    return bool(tip_ok and ddt[ys, xs].max() >= 1.5 * half)
+                    ey, ex = (yx[-1][0], yx[-1][1]) if end else (yx[0][0], yx[0][1])
+                    tip_ok = endpoint[ey, ex]
+                    blob_ok = dist_open is not None and float(dist_open[ey, ex]) <= 3.5 * ww + r_open
+                    return bool((tip_ok and ddt[ys, xs].max() >= 1.5 * half) or blob_ok)
                 cands.append({"xy": xy, "yx": yx, "L": L, "branch": br, "he": head_at(True), "hs": head_at(False)})
             # 화살촉 날개 쪽으로 난 짧은 가지(굵은 화살촉의 뼈대 곁가지)는 화살표가 아니다
             tips = [c["xy"][-1] for c in cands if c["he"]] + [c["xy"][0] for c in cands if c["hs"]]
@@ -358,6 +422,28 @@ def vectorize_arrows(core, arrow, rgb, hsv_h, scale_ref=None):
                 if c["branch"] and c["L"] < 10 * ww and any(np.hypot(*(c["xy"][0] - t)) < 6 * ww for t in tips):
                     continue
                 keep.append(c)
+            # 어느 선 끝에도 붙지 않은 화살촉 덩어리는 '화살촉만 있는 짧은 화살표'로 남긴다(점선 조각과 이어 붙이는 것은 아래 합치기가 한다)
+            ends = [c["xy"][0] for c in keep] + [c["xy"][-1] for c in keep]
+            on_path = None
+            if keep:
+                from scipy.spatial import cKDTree
+                on_path = cKDTree(np.vstack([c["xy"][::2] for c in keep]))
+            for bl in blobs:
+                if bl["area"] > 6 * (3 * ww) ** 2:                       # 너무 큰 덩어리는 화살촉이 아니다
+                    continue
+                if any(np.hypot(*(bl["c"] - e)) <= 4.5 * ww + r_open for e in ends):
+                    continue
+                if on_path is not None and float(on_path.query(bl["c"])[0]) < 2.5 * ww + r_open:   # 이미 있는 선 한가운데의 굵은 곳(파선 조각·갈림길)은 화살촉이 아니다
+                    continue
+                off0 = np.array([objs[1].start, objs[0].start], float)
+                a_, b_ = bl["base"], bl["tip"]
+                Lh = float(np.hypot(*(b_ - a_)))
+                if Lh < 2 * ww:
+                    continue
+                wpiece = ww if have_skel else max(2.5, 0.95 * float(ddt[mm].max()))
+                arrows.append({"pts": [[round(float(a_[0] + off0[0]), 1), round(float(a_[1] + off0[1]), 1)], [round(float(b_[0] + off0[0]), 1), round(float(b_[1] + off0[1]), 1)]], "width": round(wpiece, 1), "color": _hex(color),
+                               "head": "end", "dash": "solid", "smooth": True, "band": name, "length": round(Lh, 1)})
+                got_any = True
             for c in keep:
                 xy, L, he, hs = c["xy"], c["L"], c["he"], c["hs"]
                 win = int(max(7, min(31, ww * 1.5))) | 1
@@ -504,6 +590,29 @@ def fill_holes(img_f, hole, sigmas=(3, 6, 12, 24)):
 
 # ── 한 번에: 결과 → 편집 가능한 층 ───────────────────────────────────────
 
+def sensitive_core(parts, S=None, exclude_bands=()):
+    """선 도면(overlay)용 더 민감한 화살표 마스크. 합성에 쓰는 엄격한 마스크(core)는 1~2화소 두께의 점선·가는 선을 열림 연산으로 지워서 놓치므로,
+    채도 기준을 낮추고 열림 연산을 빼되, 구역 채움 같은 '넓은 면'은 큰 원으로 열어 낸 부분(+여유)을 빼서 가는 구조(선·화살촉)만 남긴다. 원본에서 실제로 바뀐 화소만 본다."""
+    from services import diagram_edit as D
+    Qi, O = parts["Qi"], parts["O"]
+    S = S or max(parts["core"].shape)
+    o_strong = ndi.binary_dilation(D._strong(O, 0.40, 0.40), structure=np.ones((7, 7)))
+    changed = np.abs(np.asarray(Qi, np.int16) - np.asarray(O.resize(Qi.size), np.int16)).sum(axis=2) > 60
+    m = D._strong(Qi, 0.42, 0.45) & ~o_strong & changed
+    r = max(4, int(round(0.0055 * S)))
+    big = ndi.binary_opening(m, structure=disk(r))
+    thin = m & ~ndi.binary_dilation(big, iterations=2)
+    if exclude_bands:                                       # 구역을 칠한 색 띠는 연한 채움이 많아 민감하게 보면 면을 선으로 착각한다 → 엄격한 마스크만
+        hh = np.asarray(Qi.convert("HSV"))[..., 0]
+        luts = _band_luts()
+        zone = np.zeros(hh.shape, bool)
+        for b in exclude_bands:
+            if b in luts:
+                zone |= luts[b][hh]
+        thin &= ~zone
+    return thin | parts["core"]
+
+
 def build_layers(parts, how, legend):
     """tint_parts() 결과와 마무리 방식('overlay' 선 도면 합성 / 'model' 사진·3D), 범례로 층을 만든다.
     반환: {'base': PIL RGB, 'arrows': [...], 'zones': [{color,label,mask(PIL L),legend_color}], 'legend': 범례(색을 층·화살표 색에 맞춘 것)}.
@@ -511,7 +620,12 @@ def build_layers(parts, how, legend):
     O, Qi, Of, Qf, T, core, arrow = (parts[k] for k in ("O", "Qi", "Of", "Qf", "T", "core", "arrow"))
     rgb = np.asarray(Qi)
     hh = np.asarray(Qi.convert("HSV"))[..., 0]
-    arrows, acc = vectorize_arrows(core, arrow, rgb, hh)
+    if how == "overlay":
+        from services import diagram_edit as _D
+        zone_bands = {n for n, l in zip(_D._names_for([l for l in legend if l.get("kind") == "zone"]), [l for l in legend if l.get("kind") == "zone"]) if n}
+        core = sensitive_core(parts, exclude_bands=zone_bands)
+        arrow = ndi.binary_dilation(core, structure=np.ones((3, 3))) | parts["arrow"]
+    arrows, acc = vectorize_arrows(core, arrow, rgb, hh, thin=(how == "overlay"))
     S = max(core.shape)
     lab, n = ndi.label(arrow, structure=np.ones((3, 3)))
     blob = np.zeros_like(arrow, bool)                                   # 두께가 큰 덩어리(굵은 색 면)는 화살표가 아니니 바탕에 그대로 둔다
