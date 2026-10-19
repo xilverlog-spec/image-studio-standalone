@@ -44,11 +44,12 @@ function Colors({ value, onChange, allowClear, swatches = SWATCHES }) {
   );
 }
 
-import { textAtPoint, InlineInput } from './InlineText';
+import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
-export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo }) {
   const [selected, setSelected] = useState('');
+  const [textInfo, setTextInfo] = useState(null); // 마지막으로 누른 글자의 크기(그림 단위) — 몇 pt 인지 알려 주는 데 쓴다
   const past = useRef([]); const future = useRef([]);
   const lastKey = useRef(''); const lastAt = useRef(0);
   const [, tick] = useState(0);
@@ -78,6 +79,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     try { return renderSketch(norm, { interactive: true, selected }).svg.replace(/^<svg([^>]*?) width="\d+" height="\d+"/, '<svg$1 width="100%"'); } catch { return ''; }
   }, [norm, selected]);
 
+  const html = useMemo(() => ({ __html: svg }), [svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다
   const sel = selected ? sketchFind(norm, selected) : null;
   const view = useMemo(() => sketchView(norm), [norm]);
   // 중심축 항상 보기: 그림 틀 가운데의 세로·가로선
@@ -108,6 +110,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const onDown = (e) => {
     if (e.button !== 0 || disabled) return;
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
+    const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
     if (!el) { setSelected(''); return; }
     e.preventDefault();
     const id = el.getAttribute('data-eid'); setSelected(id);
@@ -211,7 +214,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             </g>);
           })}
         </svg>
-        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
         <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">✏️ 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
@@ -222,6 +225,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
           <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 4 }} title="그림 틀 가운데의 세로·가로 중심선을 항상 보여 줍니다"><input type="checkbox" checked={showAxis} onChange={(e) => setShowAxis(e.target.checked)} data-testid="show-axis" />중심축 보기</label>
         </div>
+        {textInfo && <PtReadout size={textInfo.size} ptInfo={ptInfo} text={textInfo.text} testid="sk-pt" />}
         <div style={sec}>
           <span style={title}>요소 추가</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -392,7 +396,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
 
             {kind === 'memo' && (<>
               <label style={lab}>글자<input style={input} value={sel.el.text} onChange={(e) => set({ text: e.target.value }, 'text')} /></label>
-              <label style={lab}>크기 {sel.el.size}
+              <label style={lab}>크기 {sel.el.size}{ptInfo ? ` · 약 ${Math.round(sel.el.size * ptInfo.ppu * 10) / 10}pt` : ''}
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} />
               </label>
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>

@@ -8,7 +8,6 @@ import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
-import { InlineSvgView } from './InlineText';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -22,6 +21,8 @@ const skCachePut = (k, v) => {
   } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
 };
 import SketchEditor from './SketchEditor';
+import SvgEditor from './SvgEditor';
+import { applyEdits, hasEdits } from './conceptDiagram/svgedit';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
 // AI는 구조(JSON)만 정하고 그리기는 코드가 한다(글자 깨짐 없음, SVG 출력). 유료 API와 무관하게 동작한다.
@@ -183,7 +184,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   useEffect(() => () => { aliveRef.current = false; }, []);
   // 출력 크기·칸 나누기·글자 위계(page.js): 켜면 결과를 정한 크기의 페이지 안에 칸으로 나눠 넣는다. 칸마다 결과가 따로 있고, 고른 칸의 결과가 지금 편집·만들기 대상(result)이다.
   const [pageOn, setPageOn] = useState(false); // 페이지 모드는 기억하지 않고 항상 꺼진 채로 시작한다(설정만 기억)
-  const [viewMode, setViewMode] = useState('page'); // 페이지 모드의 오른쪽 화면: 'page' 페이지 배치(칸 크기 조절) / 'edit' 고른 칸의 편집기(손스케치 결과)
+  const ptInfoOf = (pm) => { // 편집기에서 글자를 누르면 몇 pt 인지: 그림 단위 1 → pt
+    const rep = pageOn && pm?.out ? pm.out.cells.find((c) => c.id === selCell && !c.empty) : null;
+    if (rep && rep.scale) return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, basis: `📐 페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
+    return { ppu: 0.75, basis: '저장한 그림 크기(96dpi) 기준 · 📐 페이지 크기를 정하면 그 용지에서의 pt로 보입니다' };
+  };
+  const editorTopRef = useRef(null); // 고른 칸의 편집기 맨 위(칸을 더블클릭하면 여기로 스크롤)
   const [pg, setPg] = useState(() => {
     const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'malgun', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222' };
     try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '' }; } catch { return d; }
@@ -204,8 +210,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   const rendered = useMemo(() => {
     if (!result) return null;
-    try { return { ...renderSpec(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined), error: null }; }
-    catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
+    try {
+      const r = renderSpec(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined);
+      if (result.type !== 'sketch' && hasEdits(result.edits)) return { ...r, svg: applyEdits(r.svg, result.edits).svg, baseSvg: r.svg, error: null }; // 구조형 결과: 도형을 손으로 고친 내용(색·위치·곡선·선 종류)
+      return { ...r, error: null };
+    } catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
   }, [result]);
 
   // ── 출력 크기·칸 나누기: 칸마다 다른 렌더러 결과를 정해진 페이지 안에 맞춰 넣는다 ──
@@ -223,8 +232,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const restoreSnap = (s) => { setPg((p) => ({ ...p, layoutId: s.layoutId, custom: s.custom, basePreset: s.basePreset })); setCells(s.cells); setSelCell(s.selCell); setResult(s.cells[s.selCell] || null); };
   const pageUndo = () => { const h = histRef.current; const s = h.past.pop(); if (!s) { addToast?.('info', '되돌릴 페이지 변경이 없습니다'); return; } h.future.push(snapNow()); h.tag = ''; restoreSnap(s); };
   const pageRedo = () => { const h = histRef.current; const s = h.future.pop(); if (!s) return; h.past.push(snapNow()); h.tag = ''; restoreSnap(s); };
-  useEffect(() => { if (pageOn) { ctxRef.current = 'page'; setViewMode('page'); } }, [pageOn]);
-  useEffect(() => { if (pageOn) ctxRef.current = viewMode === 'edit' ? 'sketch' : 'page'; }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps — 화면을 바꾸면 단축키도 그 화면 쪽이 받는다
+  useEffect(() => { if (pageOn) ctxRef.current = 'page'; }, [pageOn]);
   useEffect(() => {
     if (!pageOn || !result) return;
     const prev = cells[selCell];
@@ -233,6 +241,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     setCells((c) => (c[selCell] === result ? c : { ...c, [selCell]: result }));
   }, [result, pageOn, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectCell = (id) => { if (id === selCell) return; setSelCell(id); setResult(cells[id] || null); setGenError(''); };
+  const lastSvgEdit = useRef({ key: '', at: 0 });
+  const onSvgEdits = (next, key) => { // 구조형 결과의 도형 수정(색·위치·곡선·선 종류). 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
+    const now = Date.now();
+    if (!(key && key === lastSvgEdit.current.key && now - lastSvgEdit.current.at < 1000)) { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result?.ver, spec: result?.spec, edits: result?.edits }]; h.future = []; }
+    lastSvgEdit.current = { key, at: now };
+    setResult((r) => ({ ...r, edits: next, isReadPreview: false }));
+  };
   const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const pageModel = useMemo(() => {
@@ -248,12 +263,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };
         const rect = geo.cells[i].rect; const aspect = rect[2] / Math.max(1, rect[3]);
-        const spec = { ...r.spec, title: '', subtitle: '' };
-        if (r.type === 'layout') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, LAYOUT_PANEL_W, LAYOUT_PANEL_H, 3);
+        const edited = r.type !== 'sketch' && hasEdits(r.edits); // 손으로 고친 도형은 고칠 때의 그림 구조여야 맞으므로 제목·칸 수를 바꾸지 않는다
+        const spec = edited ? r.spec : { ...r.spec, title: '', subtitle: '' };
+        if (edited) { /* 그대로 */ } else if (r.type === 'layout') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, LAYOUT_PANEL_W, LAYOUT_PANEL_H, 3);
         else if (r.type === 'site') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, SITE_PANEL_W, SITE_PANEL_H, 3);
         else if (r.type === 'massing') spec.cols = bestCols(Math.max(1, (spec.steps || []).length), aspect, MASSING_PANEL_W, MASSING_PANEL_H, 3);
         const eng = renderSpec(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined);
-        return { id, render: { svg: eng.svg }, caption: r.spec?.title || '', cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0 };
+        return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0 };
       });
       const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
       const out = composePage(page, items, base); // 저장용(칸 테두리·빈 칸 표시 없음)
@@ -588,7 +604,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         } catch (e) { console.warn('층 불러오기 실패, 합성 그림으로 대체', e); spec = null; }
       }
       if (!spec) { const img = await urlToJpegDataUrl(r.image, 2000); spec = makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }); }
-      setViewMode('edit'); setResult({ type: 'sketch', spec, ver: Date.now() });
+      setResult({ type: 'sketch', spec, ver: Date.now() });
       addToast?.('success', '다이어그램 생성 완료', layered ? `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 화살표(${spec.winds.length}개)는 선으로, 구역 색(${spec.zones.length}개)은 층으로 나눠 색·위치·곡선을 고칠 수 있습니다` : `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
       if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
       if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
@@ -617,7 +633,6 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const next = readMode ? await generateFromRead(readNow) : await generateFromText();
       renderSpec(next.type, next.spec, next.baseImage ? { baseImage: next.baseImage } : undefined); // 그릴 수 있는지 먼저 검증
       setResult(next.ver ? next : { ...next, ver: Date.now() });
-      setViewMode('edit');
       const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : (DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램');
       addToast?.('success', '다이어그램 생성 완료', `${what}${styleImage ? ' + 참고 이미지 스타일' : ''}`);
     } catch (e) {
@@ -715,9 +730,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod && e.key === 'Enter') { if (canGenerate) { e.preventDefault(); generate(); } return; }
     if (mod && k === 's') { if (outRes?.svg) { e.preventDefault(); if (e.shiftKey) savePng(); else saveSvg(); } return; }
-    if (!typing && mod && (k === 'z' || k === 'y') && result && result.type !== 'sketch' && (!pageOn || viewMode === 'edit')) { // 그림 위에서 고친 글자 되돌리기·다시 하기
+    if (!typing && mod && (k === 'z' || k === 'y') && result && result.type !== 'sketch' && (!pageOn || ctxRef.current !== 'page')) { // 그림 위에서 고친 글자 되돌리기·다시 하기
       const h = textHist.current; const redo = k === 'y' || e.shiftKey; const src = redo ? h.future : h.past; const top = src[src.length - 1];
-      if (top && top.ver === result.ver) { e.preventDefault(); src.pop(); (redo ? h.past : h.future).push({ ver: result.ver, spec: result.spec }); setResult((r) => ({ ...r, spec: top.spec })); }
+      if (top && top.ver === result.ver) { e.preventDefault(); src.pop(); (redo ? h.past : h.future).push({ ver: result.ver, spec: result.spec, edits: result.edits }); setResult((r) => ({ ...r, spec: top.spec, edits: top.edits })); }
       return;
     }
     if (!pageOn || ctxRef.current !== 'page' || typing) return;
@@ -995,23 +1010,31 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
-              {result && (
-                <>
-                  <button style={btn(viewMode === 'page', false)} onClick={() => setViewMode('page')} data-testid="view-page">📄 페이지 배치 · 칸 크기 조절</button>
-                  <button style={btn(viewMode === 'edit', false)} onClick={() => setViewMode('edit')} data-testid="view-edit">✏️ 선택한 칸 편집 (글자를 눌러 고치기{result?.type === 'sketch' ? '·도형·화살표' : ''})</button>
-                </>
-              )}
               <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>📐 페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
-          {pageOn && viewMode === 'edit' && result && (
-            <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint">
-              ✏️ 칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 고치는 중입니다. 위의 “📄 페이지 배치”로 돌아가면 칸 크기를 조절할 수 있습니다.
+          {pageOn && result && (
+            <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
+              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. 아래 “📄 페이지 배치”에서 다른 칸을 누르면 그 칸의 그림으로 바뀝니다.
             </p>
           )}
-          {pageOn && pageModel?.preview && (viewMode === 'page' || !result) && (
-            <div style={{ marginBottom: 14 }} data-testid="page-preview">
+          {result?.type === 'sketch' && rendered?.svg && (
+            <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
+              <SketchEditor key={`${selCell}:${result.ver}`} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
+            </div>
+          )}
+          {result?.type !== 'sketch' && rendered?.svg && (
+            <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
+              <SvgEditor ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
+                shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'}
+                onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
+                onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
+            </div>
+          )}
+          {pageOn && pageModel?.preview && (
+            <div style={{ marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
+              {result && <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>📄 페이지 배치 · 칸 크기 조절</div>}
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
@@ -1022,7 +1045,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     const [x, y, w, h] = c.rect; const sel = c.id === selCell;
                     return (
                       <React.Fragment key={c.id}>
-                        <div onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { if (cells[c.id]?.type === 'sketch') setViewMode('edit'); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 편집)'}
+                        <div onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
                           style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: live && sel ? '2px solid #F28C28' : 'none', background: live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }} />
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
@@ -1034,20 +1057,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   });
                 })()}
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result?.type === 'sketch' ? '. 칸 안의 도형·화살표를 고치려면 위의 “✏️ 선택한 칸 편집”을 누르거나 칸을 더블클릭하세요' : ''}.</p>
-            </div>
-          )}
-          {result?.type === 'sketch' && rendered?.svg && (!pageOn || viewMode === 'edit') && (
-            <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SketchEditor key={`${selCell}:${result.ver}`} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
-            </div>
-          )}
-          {result?.type !== 'sketch' && rendered?.svg && (!pageOn || viewMode === 'edit') && (
-            <div data-testid="inline-view">
-              <InlineSvgView svg={rendered.svg} fields={fields} maxWidth={rendered.width}
-                onEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
-                onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
-              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">✏️ 그림 속 글자를 <b>클릭</b>하면(마우스를 올리면 주황색) 그 자리에서 바로 고칠 수 있습니다. Enter 확정 · Esc 취소. 강조 글자는 {'{ }'} 로 감쌉니다.</p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result ? '. 그림 속 도형·글자는 이 위쪽 편집기에서 바로 고칩니다' : ''}.</p>
             </div>
           )}
         </div>

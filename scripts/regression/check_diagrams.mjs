@@ -11,6 +11,7 @@ const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
 const pageJs = path.resolve(here, '../../src/conceptDiagram/page.js');
 const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
+const svgeditJs = path.resolve(here, '../../src/conceptDiagram/svgedit.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
@@ -18,7 +19,8 @@ export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, s
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
-export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};`);
+export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
+export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from ${fwd(svgeditJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -407,6 +409,80 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(ids.length > 0 && new Set(ids).size === ids.length && pg.svg.includes('c0_zm_z1') && pg.svg.includes('c1_zm_z1'), '같은 그림을 두 칸에 넣어도 id 가 겹치지 않음(마스크·화살촉이 서로 덮어쓰지 않음)');
   const one = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: lay }], { layoutId: '1x1' });
   expect(one.svg.includes('id="zm_z1"') && !one.svg.includes('c0_zm_z1'), '한 칸 페이지는 id 를 바꾸지 않음');
+}
+// 구조형 결과(평면 다이어그램·배치 개념도·매스·버블도·층별 조닝도)를 도형 하나씩 고치기(svgedit.js): 색·위치·곡선·선 종류
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('도형 편집: ' + msg); else ok++; };
+  const S = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#fff"/>'
+    + '<defs><marker id="a"><path d="M0 0L10 5L0 10Z" fill="red"/></marker><pattern id="h"><line x1="0" y1="0" x2="0" y2="6" stroke="#000"/></pattern></defs>'
+    + '<g transform="translate(10 20)"><circle cx="50" cy="50" r="20" fill="#4CAF50" stroke="#222" stroke-width="2"/><text x="50" y="55" font-size="14" fill="#111">공원</text></g>'
+    + '<line x1="10" y1="10" x2="110" y2="60" stroke="#F28C28" stroke-width="3" stroke-dasharray="9 6" marker-end="url(#a)"/>'
+    + '<path d="M10 100 C 60 20, 120 180, 180 100" fill="none" stroke="#1E88C8" stroke-width="4"/>'
+    + '<polygon points="200,100 300,100 300,180 200,180" fill="url(#h)" stroke="#555"/></svg>';
+  const sc = m.scanSvg(S);
+  const tags = sc.els.map((e) => `${e.id}:${e.tag}`).join(' ');
+  expect(tags === 'e0:rect g0:g e1:circle e2:text e3:line e4:path e5:polygon', `고를 수 있는 요소만(정의 부분 defs·marker·pattern 안의 것은 제외), 묶음은 g# (실제 ${tags})`);
+  expect(sc.els.find((e) => e.id === 'e1').parent === 'g0' && sc.els.find((e) => e.id === 'e3').parent === null, '요소가 속한 묶음 기록');
+  expect(m.scanSvg(S).sig === sc.sig && m.scanSvg(S.replace('공원', '숲')).sig === sc.sig && m.scanSvg(S.replace('<line x1="10"', '<polyline x1="10"')).sig !== sc.sig, '구조 지문: 글자만 바뀌면 같고 요소 종류가 바뀌면 다름');
+  expect(m.applyEdits(S, null).svg === S && m.applyEdits(S, m.emptyEdits(S)).svg === S && m.hasEdits(m.emptyEdits(S)) === false, '수정이 없으면 그림이 그대로');
+  let E = m.emptyEdits(S);
+  E = m.editMove(E, 'e1', 12, -3); E = m.editSet(E, 'e1', { fill: '#D6453D' }); E = m.editSet(E, 'e3', { 'stroke-dasharray': null, stroke: '#123456' }); E = m.editMove(E, 'g0', 5, 5);
+  const R = m.applyEdits(S, E).svg;
+  expect(R.includes('<circle cx="50" cy="50" r="20" fill="#D6453D" stroke="#222" stroke-width="2" transform="translate(12 -3)"/>'), '요소: 색 바꾸기·이동(translate)이 입혀짐');
+  expect(R.includes('<g transform="translate(5 5) translate(10 20)">'), '묶음 이동은 원래 transform 앞에 붙음');
+  expect(!R.includes('stroke-dasharray') && R.includes('stroke="#123456"') && R.includes('marker-end'), '속성을 null 로 하면 제거(선 종류 → 실선), 다른 속성은 유지');
+  expect(R.includes('<marker id="a">') && R.includes('<pattern id="h">') && R.includes('<text x="50" y="55" font-size="14" fill="#111">공원</text>'), '정의 부분과 글자 내용은 건드리지 않음');
+  expect(m.applyEdits(S.replace('<circle', '<circle id="z"'), { sig: 'other', ops: E.ops }).ok === false && m.applyEdits(S.replace('<line x1="10"', '<polyline x1="10"'), E).svg === S.replace('<line x1="10"', '<polyline x1="10"'), '그림 구조가 달라지면(지문 불일치) 옛 수정은 적용하지 않음');
+  expect(m.applyEdits(S.replace('공원', '숲'), E).svg.includes('숲') && m.applyEdits(S.replace('공원', '숲'), E).svg.includes('#D6453D'), '글자를 고쳐 다시 그려도(구조 같음) 도형 수정이 유지됨');
+  const E2 = m.editMove(E, 'e1', -12, 3);
+  expect(!m.applyEdits(S, E2).svg.includes('translate(0 0)') && m.applyEdits(S, E2).svg.includes('fill="#D6453D"'), '이동량이 0 으로 돌아오면 translate 를 달지 않고 다른 수정은 유지');
+  expect(m.editRestore(E, 'e1').ops.e1 === undefined && m.editRestore(E, 'e1').ops.e3 !== undefined && E.ops.e1 !== undefined, '요소 하나만 처음으로(원본 edits 는 그대로)');
+  const D = m.applyEdits(S, m.editDelete(m.emptyEdits(S), 'e2')).svg;
+  expect(D.includes('fill="#111" display="none">공원</text>') && !D.includes('r="20" fill="#4CAF50" stroke="#222" stroke-width="2" display'), '삭제는 그 요소에만 display=none');
+  const C = m.applyEdits(S, m.editAsPath(m.emptyEdits(S), 'e3', m.lineToCurveD(10, 10, 110, 60), ['x1', 'y1', 'x2', 'y2'])).svg;
+  expect(C.includes('<path ') && /<path stroke="#F28C28"/.test(C) && !C.includes('x1="10"') && /d="M10 10Q/.test(C) && C.includes('marker-end'), '직선 → 곡선 경로로 바꾸기(좌표 속성 제거, 화살촉 유지)');
+  const I = m.applyEdits(S, null, { ids: true }).svg;
+  expect((I.match(/data-eid=/g) || []).length === 7 + 2 && (I.match(/data-hit="1"/g) || []).length === 2 && !/<marker[^>]*data-eid/.test(I) && !/<pattern[^>]*data-eid/.test(I), '편집용: 모든 요소에 data-eid, 선·경로에 눌림용 덧선(정의 안은 제외)');
+  const hit = I.match(/<path[^>]*data-hit="1"[^>]*>/)[0];
+  expect(hit.includes('stroke="transparent"') && hit.includes('pointer-events="stroke"') && !hit.includes('stroke-dasharray') && !hit.includes('marker-end') && hit.includes('fill="none"'), '덧선은 투명·굵게, 선 종류·화살촉은 복사하지 않음');
+  expect(!m.applyEdits(S, m.editDelete(m.emptyEdits(S), 'e3'), { ids: true }).svg.match(/<line[^>]*data-hit/), '삭제한 선에는 덧선을 만들지 않음');
+  const ET = m.editSet(m.emptyEdits(S), 'e1', { 'stroke-width': '5' });
+  expect(JSON.stringify(m.emptyEdits(S)) === JSON.stringify({ sig: sc.sig, ops: {} }) && ET.ops.e1.set['stroke-width'] === '5', 'edits 는 불변으로 만들어짐');
+  expect(m.dashKind('9 6') === 'dashed' && m.dashKind('') === 'solid' && m.dashKind(null) === 'solid' && m.dashKind('1.5,6') === 'dotted' && m.dashKind('3 3') === 'custom' && m.dashPatch('dotted')['stroke-linecap'] === 'round' && m.dashPatch('solid')['stroke-dasharray'] === null, '선 종류 ↔ stroke-dasharray 변환');
+
+  // 경로
+  const P1 = m.parsePath('M10 10 L20 10 H30 V40 C 30 50, 40 50, 50 40 S 70 30, 80 40 Q 90 50 100 40 T 120 40 A 5 5 0 0 1 130 40 Z');
+  expect(P1.map((x) => x.c).join('') === 'MLLLCCQQAZ' && P1[2].p[0] === 30 && P1[3].p[1] === 40 && P1[5].c1[0] === 60 && P1[7].c1[0] === 110, `경로 해석: H·V·S·T 를 절대 좌표 L·C·Q 로 (실제 ${P1.map((x) => x.c).join('')})`);
+  const P2 = m.parsePath('m10 10 l10 0 10 10 c0 10 10 10 10 0 z');
+  expect(P2.map((x) => x.c).join('') === 'MLLCZ' && P2[2].p[0] === 30 && P2[2].p[1] === 20 && P2[3].p[0] === 40 && P2[4].p[0] === 10, '소문자(상대) 명령과 암시적 반복, z');
+  expect(m.pathD(P1).startsWith('M10 10L20 10L30 10L30 40C') && m.parsePath(m.pathD(P1)).length === P1.length && m.parsePath('M1 2 3 4').length === 2 && m.parsePath('').length === 0 && m.parsePath('엉뚱').length === 0, '경로 되쓰기·왕복, 잘못된 값은 빈 경로');
+  const NS = m.pathNodes(P1); expect(NS.length === 9 && !NS.some((n) => n.c === 'Z'), '마디 목록에서 Z 는 제외');
+  const Q = m.parsePath('M0 0 C 10 0 20 0 30 0 L 60 0'); const MV = m.pathMoveNode(Q, 1, [5, 7]);
+  expect(MV[1].p[0] === 35 && MV[1].c2[0] === 25 && MV[1].c2[1] === 7 && MV[2].p[0] === 60 && Q[1].p[0] === 30, '마디를 옮기면 들어오는 곡선 제어점이 따라가고 원본은 그대로');
+  const Q2 = m.parsePath('M0 0 L 30 0 C 40 0 50 0 60 0'); const MV2 = m.pathMoveNode(Q2, 1, [0, 9]);
+  expect(MV2[2].c1[1] === 9 && MV2[2].p[1] === 0, '나가는 곡선의 첫 제어점도 따라감');
+  expect(m.pathMoveCtrl(Q, 1, 'c1', [0, 4])[1].c1[1] === 4, '제어점 옮기기');
+  const T1 = m.pathToggleCurve(m.parsePath('M0 0 L 100 0'), 1);
+  expect(T1[1].c === 'Q' && Math.abs(T1[1].c1[0] - 50) < 1e-9 && Math.abs(T1[1].c1[1] - 25) < 1e-9 && m.pathToggleCurve(T1, 1)[1].c === 'L' && m.pathToggleCurve(T1, 0)[0].c === 'M', '직선 → 휘는 곡선 → 직선, 시작점(M)은 그대로');
+  expect(m.pathAddNode(m.parsePath('M0 0 L 10 0 L 100 0')).length === 4 && m.pathAddNode(m.parsePath('M0 0 L 10 0 L 100 0'))[2].p[0] === 55, '점 추가: 가장 긴 구간의 한가운데');
+  const AQ = m.pathAddNode(m.parsePath('M0 0 Q 50 50 100 0')); const AC = m.pathAddNode(m.parsePath('M0 0 C 0 50 100 50 100 0'));
+  expect(AQ.length === 3 && AQ[1].c === 'Q' && Math.abs(AQ[1].p[0] - 50) < 1e-9 && Math.abs(AQ[1].p[1] - 25) < 1e-9 && AC.length === 3 && AC[1].c === 'C' && Math.abs(AC[1].p[0] - 50) < 1e-9 && Math.abs(AC[1].p[1] - 37.5) < 1e-9, '곡선은 모양을 그대로 둔 채 둘로 나눠 점 추가(Q·C 중간점)');
+  expect(m.pathDelNode(m.parsePath('M0 0 L 10 0 L 20 0'), 1).length === 2 && m.pathDelNode(m.parsePath('M0 0 L 10 0'), 1).length === 2 && m.pathDelNode(m.parsePath('M0 0 L 10 0 L 20 5'), 0)[0].c === 'M' && m.pathDelNode(m.parsePath('M0 0 L 10 0 L 20 5'), 0)[0].p[0] === 10, '점 빼기(둘 이하로는 안 줄어듦, 첫 점을 빼면 다음 점이 시작점)');
+  expect(JSON.stringify(m.parsePoints('1,2 3,4 5.5,6')) === '[[1,2],[3,4],[5.5,6]]' && m.pointsStr([[1, 2], [3.456, 4]]) === '1,2 3.46,4' && m.parsePoints('').length === 0, '꼭짓점 목록 해석·되쓰기');
+  expect(/^M10 10Q\d/.test(m.lineToCurveD(10, 10, 110, 10)) && m.lineToCurveD(0, 0, 100, 0).includes('Q50 25'), '직선 → 휘는 곡선 d');
+
+  // 모든 방식의 실제 그림에서: 지문이 안정적이고, 모든 요소에 수정을 입혀도 구조가 그대로
+  const lay = { title: 'T', shapes: [{ id: 'r1', name: '거실', kind: 'room', pts: [[0, 0], [40, 0], [40, 30], [0, 30]] }, { id: 'r2', name: '주방', kind: 'room', pts: [[40, 0], [80, 0], [80, 30], [40, 30]] }], panels: [{ heading: '동선', flows: [{ from: 'r1', to: 'r2' }] }] };
+  const kinds = { site: m.EXAMPLE_SPECS.site, massing: m.EXAMPLE_SPECS.massing, program: m.EXAMPLE_SPECS.program, stack: m.EXAMPLE_SPECS.stack, layout: lay };
+  for (const [k, spec] of Object.entries(kinds)) {
+    const svg = m.renderSpec(k, spec).svg; const a = m.scanSvg(svg);
+    let EE = m.emptyEdits(svg); a.els.forEach((e) => { EE = m.editSet(EE, e.id, { opacity: '0.5' }); EE = m.editMove(EE, e.id, 1, 2); });
+    const out = m.applyEdits(svg, EE); const b = m.scanSvg(out.svg);
+    const inter = m.applyEdits(svg, null, { ids: true }).svg;
+    expect(a.count > 5 && out.ok && b.sig === a.sig && b.count === a.count && m.applyEdits(svg, null).svg === svg && (inter.match(/data-eid=/g) || []).length >= a.count, `${k}: 요소 ${a.count}개를 모두 고쳐도 구조 그대로, 수정 없으면 그림 그대로, 편집용 id 부여`);
+    const paths = [...svg.matchAll(/<path\b[^>]*\sd="([^"]*)"/g)].map((q) => q[1]); const rt = paths.every((d) => m.parsePath(d).length > 0 && m.parsePath(m.pathD(m.parsePath(d))).length === m.parsePath(d).length);
+    expect(rt, `${k}: 모든 경로가 해석·되쓰기됨`);
+  }
 }
 // 출력 크기·글자 위계(page.js): 추천 pt, 크기 맞춤, 글꼴 바꿈, 경고
 {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 
 // 그림 위의 글자를 눌러 그 자리에서 바로 고치기(입력칸이 글자 위에 겹쳐 열린다). Enter 확정 · Esc 취소 · 다른 곳을 누르면 확정.
@@ -12,6 +12,29 @@ export function textAtPoint(root, x, y, pad = 3) {
     if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) { const a = r.width * r.height; if (a < bestA) { bestA = a; best = t; } }
   });
   return best;
+}
+
+// 그림 속 글자 하나의 크기(그림 단위): 글자 자신의 font-size 에 바깥 묶음(g)들의 transform 확대·축소를 곱한다
+export function textUnitSize(el) {
+  if (!el || typeof getComputedStyle !== 'function') return 0;
+  let fs = parseFloat(getComputedStyle(el).fontSize) || parseFloat(el.getAttribute('font-size')) || 0;
+  let k = 1;
+  for (let n = el; n && n.nodeName && n.nodeName.toLowerCase() !== 'svg'; n = n.parentNode) {
+    const t = n.transform && n.transform.baseVal && n.transform.baseVal.numberOfItems ? n.transform.baseVal.consolidate() : null;
+    if (t) k *= Math.hypot(t.matrix.a, t.matrix.b);
+  }
+  return fs * k;
+}
+// '이 글자는 몇 pt' 안내 상자. size: 그림 단위 크기, ptInfo: { ppu(그림 단위 1 → pt), basis(어느 크기 기준인지) }
+export function PtReadout({ size, ptInfo, text, testid = 'pt-readout' }) {
+  if (!ptInfo || !size) return null;
+  const pt = Math.round(size * ptInfo.ppu * 10) / 10;
+  return (
+    <div style={{ padding: '7px 9px', borderRadius: 8, background: '#FFF7ED', border: '1px solid #FDBA74', fontSize: 12.5, lineHeight: 1.5, color: '#7C2D12' }} data-testid={testid}>
+      🔤 {text ? <>“{String(text).slice(0, 18)}{String(text).length > 18 ? '…' : ''}” </> : null}<b style={{ fontSize: 15 }}>약 {pt}pt</b>
+      <div style={{ fontSize: 10.5, color: '#9A3412' }}>{ptInfo.basis}</div>
+    </div>
+  );
 }
 
 // 입력칸. host: position:relative 인 바깥 상자(입력칸이 이 안에 놓인다), target: 고칠 <text>
@@ -45,6 +68,7 @@ export function InlineInput({ host, target, value, multiline, onCommit, onCancel
 export function InlineSvgView({ svg, fields, onEdit, onMiss, maxWidth }) {
   const hostRef = useRef(null); const bodyRef = useRef(null);
   const [ed, setEd] = useState(null);
+  const html = useMemo(() => ({ __html: responsiveSvg(svg) }), [svg]);
   // 고칠 수 있는 글자에 표시를 단다(마우스를 올릴 때 색이 바뀌고 글자 커서가 된다)
   useEffect(() => {
     const b = bodyRef.current; if (!b) return;
@@ -65,7 +89,7 @@ export function InlineSvgView({ svg, fields, onEdit, onMiss, maxWidth }) {
   return (
     <div ref={hostRef} style={{ position: 'relative', width: '100%', maxWidth: maxWidth || undefined, margin: '0 auto' }} data-testid="inline-svg">
       <style>{'.dg-inline text[data-editable]{cursor:text}.dg-inline text[data-editable]:hover{fill:#E8832A !important;text-decoration:underline}'}</style>
-      <div ref={bodyRef} className="dg-inline" onClick={onClick} dangerouslySetInnerHTML={{ __html: responsiveSvg(svg) }} />
+      <div ref={bodyRef} className="dg-inline" onClick={onClick} dangerouslySetInnerHTML={html} />
       {ed && hostRef.current && (
         <InlineInput host={hostRef.current} target={ed.target} value={ed.field.value} multiline={/\n/.test(ed.field.value)}
           onCommit={(v) => { const f = ed.field; setEd(null); if (v !== f.value) onEdit(f, v); }} onCancel={() => setEd(null)} />
