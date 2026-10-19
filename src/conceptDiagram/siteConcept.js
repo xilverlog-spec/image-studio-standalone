@@ -226,7 +226,7 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
 export function renderSiteConcept(spec, opts = {}) {
   const baseShapes = spec.siteBase && Array.isArray(spec.siteBase.shapes) ? normalizeShapes(spec.siteBase.shapes) : null;
   const panels = (Array.isArray(spec.panels) ? spec.panels : []).slice(0, 6);
-  const cols = Math.min(3, Math.max(1, panels.length));
+  const cols = Math.min(Math.max(1, Math.floor(Number(spec.cols)) || 3), Math.max(1, panels.length)); // spec.cols: 출력 칸의 비율에 맞춰 정할 때(page.js)
   const rows = Math.ceil(panels.length / cols) || 1;
   const titleH = spec.title ? 64 : 0;
   const W = cols * PANEL_W; const H = titleH + rows * PANEL_H;

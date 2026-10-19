@@ -538,6 +538,11 @@ export function sketchView(raw) {
   const ox = AR[0] + (AR[2] - AR[0] - (fx1 - fx0) * K) / 2; const oy = AR[1] + (AR[3] - AR[1] - (fy1 - fy0) * K) / 2;
   return { K, toScreen: ([x, y]) => [ox + (x - fx0) * K, oy + (y - fy0) * K], toDiag: ([px, py]) => [fx0 + (px - ox) / K, fy0 + (py - oy) / K] };
 }
+// 제목을 비우고 그릴 때 위쪽에 남는 빈 띠(렌더러가 제목 자리로 비워 둔 곳)의 높이 — 출력 크기에 맞출 때 이만큼 잘라 낸다
+export function sketchContentTop(raw) {
+  const spec = normalizeSketch(raw); const AR = spec.layout === 'axon' ? AREA_AXON : spec.layout === 'image' ? AREA_IMAGE : spec.style === 'concept' ? AREA_CONCEPT : AREA;
+  return Math.max(0, AR[1] - 28);
+}
 const PALETTE = {
   pres: { bg: '#FAF7F2', slab: '#F6D9B8', slabLine: '#B8742F', core: '#27304F', text: '#222222', sub: '#666666', part: '#B8742F', card: true },
   line: { bg: '#FFFFFF', slab: '#FFFFFF', slabLine: '#222222', core: '#222222', text: '#111111', sub: '#555555', part: '#222222', card: false },

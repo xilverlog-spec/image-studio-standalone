@@ -9,11 +9,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const spec = path.resolve(here, '../../src/conceptDiagram/spec.js');
 const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
+const pageJs = path.resolve(here, '../../src/conceptDiagram/page.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject } from ${fwd(sketch)};
-export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};`);
+export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
+export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { sketchContentTop } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -344,6 +347,123 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(p0[0] >= 30 - 0.5 && p1[0] <= 1170 + 0.5 && p1[1] <= 735 + 0.5 && p1[0] - p0[0] > 600, '그림이 화면 영역 안에 크게 놓임');
   const sp0 = m.makeEditSpec({ imageUrl: url, w: 800, h: 600, legend: [] });
   expect(m.renderSketch(sp0).svg.includes('<image') && m.normalizeSketch(sp0).memos.length === 0, '범례가 없어도 그려짐');
+}
+// 출력 크기·글자 위계(page.js): 추천 pt, 크기 맞춤, 글꼴 바꿈, 경고
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('출력 크기: ' + msg); else ok++; };
+  const rt = (id) => m.recommendType(m.PAGE_PRESETS.find((x) => x.id === id));
+  const a3 = rt('a3l'); const a4 = rt('a4l'); const a1 = rt('a1l'); const ppt = rt('ppt');
+  expect(a3.title === 32 && a3.sub === 18 && a3.label === 11 && a3.small === 8, `A3 기준 32/18/11/8pt (실제 ${a3.title}/${a3.sub}/${a3.label}/${a3.small})`);
+  expect(a4.title < a3.title && a3.title < a1.title && a4.label < a3.label && a3.label < a1.label, '용지가 클수록 글자도 커짐');
+  expect(rt('a3p').title === a3.title, '가로·세로가 달라도 짧은 변이 같으면 같은 위계');
+  for (const t of [a4, a3, a1, ppt]) expect(t.title > t.sub && t.sub > t.label && t.label > t.small, `위계 제목>소제목>본문>작은 글자 (${t.title}/${t.sub}/${t.label}/${t.small})`);
+  expect(ppt.title === 36 && ppt.label === 14 && ppt.labelMin === 11 && a3.labelMin === 7, 'PPT 기준 36/…/14pt, 최소 읽기 크기');
+  const sp = m.makeEditSpec({ imageUrl: 'data:image/jpeg;base64,/9j/AAAA', w: 1743, h: 1167, title: '', legend: [{ color: '#F61918', kind: 'flow', label: '주 동선' }] });
+  const base = m.renderSketch({ ...sp, title: '', subtitle: '' });
+  expect(base.svg.includes(m.ENGINE_FONT), '렌더러가 내는 글꼴 값이 page.js 의 ENGINE_FONT 와 같음(바꿔 끼울 수 있음)');
+  const page = { w: 420, h: 297, medium: 'print' };
+  const fp = m.fitPage(base, page, { title: '동선 다이어그램', subtitle: '연구시설 1층', fontId: 'noto', cropTop: m.sketchContentTop(sp) });
+  expect(fp.svg.includes('width="420mm"') && fp.svg.includes('height="297mm"') && fp.svg.includes('viewBox="0 0 420 297"'), '실제 크기(mm)로 저장됨');
+  expect(!fp.svg.includes(m.ENGINE_FONT) && fp.svg.includes("'Noto Sans KR'"), '글꼴이 바뀜');
+  const tm = fp.svg.match(/font-size="([\d.]+)" font-weight="800"[^>]*>동선 다이어그램</);
+  expect(tm && Math.abs(Number(tm[1]) / m.PT_MM - 32) < 0.05, `제목이 추천 32pt 로 그려짐 (${tm && Number(tm[1]) / m.PT_MM})`);
+  const sm = fp.svg.match(/font-size="([\d.]+)" font-weight="500"[^>]*>연구시설 1층</);
+  expect(sm && Math.abs(Number(sm[1]) / m.PT_MM - 18) < 0.05, '소제목이 추천 18pt 로 그려짐');
+  expect(fp.width === 1587 && fp.height === 1123, `96dpi 픽셀 크기 ${fp.width}x${fp.height}`);
+  const sc = fp.report.scale; const tr = m.typeTiers(base.svg);
+  expect(tr && Math.abs(fp.report.engine.label - tr.label * sc / m.PT_MM) < 0.06, '다이어그램 속 글자의 실제 pt = 글자 단위 × 배율');
+  const fo = m.fitPage(base, page, { title: '제목', sizes: { title: 40 } });
+  expect(Math.abs(Number(fo.svg.match(/font-size="([\d.]+)" font-weight="800"/)[1]) / m.PT_MM - 40) < 0.05, '직접 정한 제목 pt 가 추천값보다 우선');
+  for (const pg of [{ w: 210, h: 297, medium: 'print' }, { w: 338.67, h: 190.5, medium: 'screen' }, { w: 800, h: 300, medium: 'print' }]) {
+    const f = m.fitPage(base, pg, { title: '제목' });
+    const g = f.svg.match(/clipPath id="[^"]+"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/);
+    expect(g && Number(g[1]) >= 0 && Number(g[2]) >= 0 && Number(g[1]) + Number(g[3]) <= pg.w + 0.01 && Number(g[2]) + Number(g[4]) <= pg.h + 0.01, `${pg.w}x${pg.h} 용지 안에 그림이 들어감`);
+  }
+  const lay = m.renderSpec('layout', { title: '', shapes: [{ id: 'r1', name: '거실', kind: 'room', pts: [[0, 0], [40, 0], [40, 30], [0, 30]] }, { id: 'r2', name: '주방', kind: 'room', pts: [[40, 0], [80, 0], [80, 30], [40, 30]] }], panels: [{ heading: '동선', flows: [{ from: 'r1', to: 'r2' }] }] });
+  const small = m.fitPage(lay, { w: 100, h: 70, medium: 'print' }, { title: '제목' });
+  expect(small.report.warnings.some((w) => w.level === 'warn' && w.text.includes('너무 작습니다')), '작은 용지에서 글자가 너무 작으면 경고');
+  const big = m.fitPage(lay, { w: 841, h: 594, medium: 'print' }, {});
+  const tgt = m.fitPage(lay, { w: 841, h: 594, medium: 'print' }, { fill: false, sizes: { label: 20 } });
+  expect(Math.abs(tgt.report.engine.label - 20) < 0.3 && tgt.report.scale <= big.report.scale, '본문 글자를 목표 pt 에 맞추면(내용을 꽉 채우지 않고) 20pt 가 됨');
+  expect(m.fitPage(lay, { w: 420, h: 297, medium: 'print' }, { title: '아주아주아주아주아주아주아주아주아주아주아주아주아주아주아주아주아주 긴 제목입니다 정말로 아주 아주 길어서 한 줄에 안 들어갑니다 정말로' }).report.warnings.some((w) => w.text.includes('줄였습니다')), '긴 제목은 줄여서 한 줄에 넣음');
+  let threwP = false; try { m.fitPage(base, { w: 10, h: 10, medium: 'print' }, {}); } catch { threwP = true; }
+  expect(threwP, '너무 작은 용지는 오류');
+  expect(m.recommendFont('print').includes('인쇄용') && m.recommendFont('screen').includes('화면') && m.fontById('zzz').id === 'malgun', '글꼴 추천 문구와 기본 글꼴');
+  // 칸 나누기
+  expect(m.layoutById('2x2').cells.length === 4 && m.layoutById('g3x2').cells.length === 6 && m.layoutById('엉뚱').id === '1x1' && m.cellIds('L3').join() === 'c1,c2,c3,c4', '칸 목록(프리셋·격자·알 수 없는 이름)');
+  for (const L of m.PAGE_LAYOUTS) {
+    const cs = m.resolveCells(L.id, { x: 10, y: 20, w: 400, h: 250 }, 6);
+    let inside = true; let overlap = false;
+    cs.forEach((c, i) => { if (c.x < 10 - 0.01 || c.y < 20 - 0.01 || c.x + c.w > 410 + 0.01 || c.y + c.h > 270 + 0.01 || c.w <= 0 || c.h <= 0) inside = false; cs.forEach((d, j) => { if (j > i && c.x < d.x + d.w - 0.01 && d.x < c.x + c.w - 0.01 && c.y < d.y + d.h - 0.01 && d.y < c.y + c.h - 0.01) overlap = true; }); });
+    expect(inside && !overlap, `칸 나누기 '${L.id}': 영역 안에 있고 서로 겹치지 않음`);
+  }
+  { const c = m.resolveCells('2x1', { x: 0, y: 0, w: 100, h: 50 }, 10); expect(Math.abs(c[1].x - (c[0].x + c[0].w) - 10) < 0.01, '칸 사이 간격이 정해진 값(10mm)'); }
+  expect(m.bestCols(2, 0.5, 480, 440) === 1 && m.bestCols(2, 2.0, 480, 440) === 2 && m.bestCols(4, 1.0, 480, 440) === 2 && m.bestCols(4, 2.4, 480, 440) === 3 && m.bestCols(1, 3, 480, 440) === 1, '칸 비율에 맞춘 패널 열 수(세로로 긴 칸은 한 줄에 1개, 가로로 긴 칸은 여러 개)');
+  // 여러 칸 조립: 칸 제목은 소제목 pt, 칸마다 그림이 자기 칸 안에 들어가고, 빈 칸은 미리보기에서만 표시
+  const items = [{ id: 'c1', render: lay, caption: '1층 동선' }, { id: 'c2', render: lay, caption: '2층 동선' }];
+  const mp = m.composePage({ w: 420, h: 297, medium: 'print' }, items, { title: '연구시설 계획', layoutId: '2x2', gap: 8 });
+  expect(mp.cells.length === 4 && mp.cells.filter((c) => !c.empty).length === 2 && mp.cells[2].empty, '4칸 중 2칸만 채우면 나머지는 빈 칸');
+  expect(mp.svg.includes('1층 동선') && mp.svg.includes('2층 동선') && !mp.svg.includes('비어 있음'), '칸 제목이 그려지고 저장본에는 빈 칸 표시가 없음');
+  const cap = mp.svg.match(/font-size="([\d.]+)" font-weight="600"[^>]*>1층 동선</);
+  expect(cap && Math.abs(Number(cap[1]) / m.PT_MM - 18) < 0.05 && mp.cells[0].caption === 18, '칸 제목이 소제목 18pt');
+  expect(mp.svg.includes('pgclip0') && mp.svg.includes('pgclip1') && mp.cells[0].engine && mp.cells[0].engine.label > 0, '칸마다 따로 맞춤(실제 pt 계산)');
+  const pv = m.composePage({ w: 420, h: 297, medium: 'print' }, items, { title: '계획', layoutId: '2x2', preview: true, selected: 'c2' });
+  expect(pv.svg.includes('칸 3 — 비어 있음') && pv.svg.includes('#F28C28'), '미리보기에는 빈 칸 표시와 고른 칸 강조');
+  const one = m.composePage({ w: 420, h: 297, medium: 'print' }, items, { layoutId: '2x1', gap: 8 });
+  expect(one.cells[0].engine.label > 0 && one.cells[1].engine.label > 0, '2칸 모두 실제 글자 크기가 계산됨');
+  // 칸 끌기(직접 조정): 경계선 끌기(이웃 함께), Alt(한 칸만), 최소 크기, 붙기, 이동, 숫자 입력, 나누기·삭제
+  const g22 = m.presetToCustom('2x2'); const R = (cs, id) => cs.find((c) => c.id === id).r;
+  const e1 = m.dragEdge(g22, 'c1', 'e', 0.6, { snap: false });
+  expect(Math.abs(R(e1, 'c1')[2] - 0.6) < 1e-9 && Math.abs(R(e1, 'c3')[2] - 0.6) < 1e-9 && Math.abs(R(e1, 'c2')[0] - 0.6) < 1e-9 && Math.abs(R(e1, 'c4')[0] - 0.6) < 1e-9, '경계선을 끌면 맞닿은 칸 네 개가 함께 바뀜(2×2)');
+  const e2 = m.dragEdge(g22, 'c1', 'e', 0.6, { snap: false, group: false });
+  expect(Math.abs(R(e2, 'c1')[2] - 0.6) < 1e-9 && R(e2, 'c3')[2] === 0.5 && R(e2, 'c2')[0] === 0.5, 'Alt(group=false)는 그 칸 하나만 바뀜');
+  const e3 = m.dragEdge(g22, 'c1', 'e', 0.99, { snap: false, min: { x: 0.1, y: 0.1 } });
+  expect(Math.abs(R(e3, 'c2')[0] - 0.9) < 1e-9, '이웃 칸의 최소 크기 아래로는 못 끌림(0.9 에서 멈춤)');
+  const e4 = m.dragEdge(g22, 'c1', 'e', 0.515, { tol: 0.02 });
+  expect(R(e4, 'c1')[2] === 0.5, '가운데(0.5) 근처에서는 가운데에 붙음');
+  const L = m.presetToCustom('L2'); const e5 = m.dragEdge(L, 'c1', 'e', 0.7, { snap: false });
+  expect(Math.abs(R(e5, 'c2')[0] - 0.7) < 1e-9 && Math.abs(R(e5, 'c3')[0] - 0.7) < 1e-9, 'L자 배치: 큰 칸 경계를 끌면 오른쪽 두 칸이 함께 바뀜');
+  const e6 = m.dragEdge(g22, 'c1', 's', 0.3, { snap: false });
+  expect(Math.abs(R(e6, 'c1')[3] - 0.3) < 1e-9 && Math.abs(R(e6, 'c2')[3] - 0.3) < 1e-9 && Math.abs(R(e6, 'c3')[1] - 0.3) < 1e-9, '세로 방향 경계선도 같은 방식');
+  expect(m.overlappingCells(e1).length === 0 && m.overlappingCells(e5).length === 0, '경계선을 끌어도 칸이 서로 겹치지 않음');
+  const mv = m.dragMove(g22, 'c1', 0.3, 0.3, { snap: false });
+  expect(Math.abs(R(mv, 'c1')[0] - 0.3) < 1e-9 && R(mv, 'c1')[2] <= 1 + 1e-9 && R(mv, 'c1')[3] <= 1 + 1e-9, '칸 옮기기(바깥으로 못 나감)');
+  expect(m.dragMove(g22, 'c1', 5, 5, { snap: false }).find((c) => c.id === 'c1').r[2] === 1, '너무 멀리 끌어도 페이지 안에 머묾');
+  expect(m.overlappingCells(mv).length > 0, '옮겨서 겹치면 겹침으로 알려 줌');
+  const bx = { x: 10, y: 20, w: 400, h: 250 };
+  const cmm = m.setCellMm(g22, 'c1', { x: 30, w: 100 }, bx);
+  expect(Math.abs(R(cmm, 'c1')[0] - 20 / 400) < 1e-9 && Math.abs(R(cmm, 'c1')[2] - 120 / 400) < 1e-9, 'mm 로 위치·가로를 입력하면 비율로 바뀜');
+  expect(m.setCellMm(g22, 'c1', { w: 99999 }, bx).find((c) => c.id === 'c1').r[2] <= 1, 'mm 입력이 너무 커도 페이지 안');
+  const sp1 = m.splitCell(g22, 'c1', 'v');
+  expect(sp1.cells.length === 5 && sp1.newId === 'c5' && Math.abs(R(sp1.cells, 'c1')[2] - 0.25) < 1e-9 && Math.abs(R(sp1.cells, 'c5')[0] - 0.25) < 1e-9, '칸을 좌우로 반으로 나눔(새 칸 c5)');
+  const sp2 = m.splitCell(g22, 'c2', 'h');
+  expect(Math.abs(R(sp2.cells, 'c2')[3] - 0.25) < 1e-9 && Math.abs(R(sp2.cells, sp2.newId)[1] - 0.25) < 1e-9, '칸을 위아래로 반으로 나눔');
+  expect(m.removeCell(g22, 'c2').length === 3 && m.removeCell(m.presetToCustom('1x1'), 'c1').length === 1, '칸 삭제(마지막 한 칸은 남김)');
+  let many = m.presetToCustom('3x2'); while (many.length < m.MAX_CELLS) many = m.splitCell(many, many[0].id, 'v').cells;
+  expect(many.length === m.MAX_CELLS && m.splitCell(many, 'c1', 'v').cells.length === m.MAX_CELLS, '칸은 최대 12개');
+  expect(m.normalizeCustom([{ id: 'c1', r: [0.6, 0.2, 0.1, 0.9] }, { id: 'c1', r: [0, 0, 5, 1] }, { id: 'x', r: [0, 0, 0.001, 1] }, null]).length === 2 && m.normalizeCustom('엉뚱') === null && m.normalizeCustom([]) === null, 'custom 정리(뒤바뀐 좌표 바로잡기·범위·중복 id·너무 작은 칸·잘못된 값)');
+  const cc = m.getCells('custom', [{ id: 'c1', r: [0, 0, 0.3, 1] }, { id: 'c7', r: [0.3, 0, 1, 1] }]);
+  expect(cc.length === 2 && cc[1].id === 'c7' && m.getCells('custom', null).length === 1 && m.cellIds('custom', [{ id: 'c3', r: [0, 0, 1, 1] }])[0] === 'c3', "'custom' 배치의 칸 번호 유지, 없으면 한 칸");
+  const rc = m.resolveCells('custom', { x: 0, y: 0, w: 100, h: 50 }, 10, [{ id: 'c1', r: [0, 0, 0.3, 1] }, { id: 'c2', r: [0.3, 0, 1, 1] }]);
+  expect(Math.abs(rc[0].raw[2] - 30) < 1e-9 && Math.abs(rc[1].raw[0] - 30) < 1e-9 && Math.abs(rc[1].x - 35) < 1e-9 && Math.abs(rc[1].raw[2] - 70) < 1e-9, '직접 조정한 칸의 mm 크기(raw)와 간격 적용');
+  const cp = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: lay, caption: '왼쪽' }, { id: 'c7', render: lay, caption: '오른쪽' }], { layoutId: 'custom', custom: [{ id: 'c1', r: [0, 0, 0.3, 1] }, { id: 'c7', r: [0.3, 0, 1, 1] }], gap: 6 });
+  expect(cp.cells.length === 2 && cp.cells[0].rect[2] < cp.cells[1].rect[2] && cp.svg.includes('왼쪽') && cp.svg.includes('오른쪽') && cp.box.w > 0, '직접 조정한 배치로 페이지가 조립됨(좁은 칸·넓은 칸, 칸 번호 c7 유지)');
+  // 바깥 여백·테두리선
+  const mA = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1' });
+  expect(Math.abs(mA.box.x - mA.report.margin.l) < 1e-9 && mA.report.margin.t === mA.report.marginAuto, '여백 자동값(인쇄 8mm 이상·짧은 변의 4%)');
+  const m1 = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: 20 });
+  expect(m1.box.x === 20 && m1.box.y === 20 && Math.abs(m1.box.w - 380) < 1e-9 && Math.abs(m1.box.h - 257) < 1e-9, '여백 한 값(20mm)이 네 변에 같게');
+  const m2 = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: { t: 10, b: 30, l: 40, r: 5 } });
+  expect(m2.box.x === 40 && m2.box.y === 10 && Math.abs(m2.box.w - 375) < 1e-9 && Math.abs(m2.box.h - 257) < 1e-9, '여백을 변마다 따로(위10·아래30·왼쪽40·오른쪽5)');
+  const m3 = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: { t: 0, b: '', l: 9999, r: 0 } });
+  expect(m3.report.margin.t === 0 && m3.report.margin.b === m3.report.marginAuto && m3.report.margin.l <= 420 * 0.3 + 1e-9, '여백 0 허용, 빈 칸은 자동, 너무 큰 값은 용지의 30%로 제한');
+  const mt = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: { t: 10, b: 10, l: 25, r: 10 }, title: '제목' });
+  expect(Math.abs(Number(mt.svg.match(/<text x="([\d.]+)"/)[1]) - 25) < 0.01, '제목이 왼쪽 여백(25mm)에서 시작함');
+  const fr = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: 20, frame: { w: 0.5 } });
+  expect(fr.svg.includes('stroke-width="0.500"') && fr.svg.includes('x="10.00" y="10.00" width="400.00" height="277.00"'), '테두리선: 기본 간격은 여백의 절반(10mm)');
+  const fr2 = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: 20, frame: { w: 0.35, inset: 5, color: '#C00000' } });
+  expect(fr2.svg.includes('x="5.00" y="5.00"') && fr2.svg.includes('stroke="#C00000"') && !m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1' }).svg.includes('fill="none" stroke'), '테두리선 간격·색 지정, 끄면 안 그려짐');
+  expect(m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: { t: 90, b: 90, l: 0, r: 0 } }).report.warnings.some((w) => w.level === 'warn'), '여백이 너무 커서 그림 자리가 좁으면 경고');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

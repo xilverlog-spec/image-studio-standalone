@@ -2,7 +2,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
-import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch } from './conceptDiagram/sketch';
+import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop } from './conceptDiagram/sketch';
+import { composePage, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell } from './conceptDiagram/page';
+import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
+import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
+import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
+import PageBox from './PageBox';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -175,6 +180,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [editProg, setEditProg] = useState(null);    // 진행 중인 AI 이미지 편집 { stage, percent, sec }
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
+  // 출력 크기·칸 나누기·글자 위계(page.js): 켜면 결과를 정한 크기의 페이지 안에 칸으로 나눠 넣는다. 칸마다 결과가 따로 있고, 고른 칸의 결과가 지금 편집·만들기 대상(result)이다.
+  const [pageOn, setPageOn] = useState(() => { try { return !!JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.on; } catch { return false; } });
+  const [pg, setPg] = useState(() => {
+    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'malgun', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222' };
+    try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '' }; } catch { return d; }
+  });
+  const [cells, setCells] = useState({});     // 칸 번호 → 그 칸의 결과 { type, spec, ... }
+  const [selCell, setSelCell] = useState('c1');
+  useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '' } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
   const refreshPaid = () => {
     apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
@@ -192,6 +206,83 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
   }, [result]);
 
+  // ── 출력 크기·칸 나누기: 칸마다 다른 렌더러 결과를 정해진 페이지 안에 맞춰 넣는다 ──
+  // 고른 칸의 결과(result)가 바뀌면 그 칸에 저장한다. 칸을 바꾸면 그 칸의 결과를 불러온다.
+  useEffect(() => { if (pageOn && result) setCells((c) => (c[selCell] === result ? c : { ...c, [selCell]: result })); }, [result, pageOn, selCell]);
+  const selectCell = (id) => { if (id === selCell) return; setSelCell(id); setResult(cells[id] || null); setGenError(''); };
+  const clearCell = () => { setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
+  useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pageModel = useMemo(() => {
+    if (!pageOn) return null;
+    try {
+      const page = { w: Number(pg.w) || 0, h: Number(pg.h) || 0, medium: pg.medium };
+      const sizes = Object.fromEntries(Object.entries(pg.sizes).map(([k, v]) => [k, Number(v) > 0 ? Number(v) : null]));
+      const ids = cellIds(pg.layoutId, pg.custom);
+      const first = ids.map((id) => cells[id]).find(Boolean);
+      const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fill: pg.fill, layoutId: pg.layoutId, custom: pg.custom, gap: Number(pg.gap) || 0, measure: domMeasure,
+        margin: pg.marginMode === 'custom' ? pg.margin : null, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+      const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
+      const items = ids.map((id, i) => {
+        const r = cells[id]; if (!r) return { id, render: null };
+        const rect = geo.cells[i].rect; const aspect = rect[2] / Math.max(1, rect[3]);
+        const spec = { ...r.spec, title: '', subtitle: '' };
+        if (r.type === 'layout') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, LAYOUT_PANEL_W, LAYOUT_PANEL_H, 3);
+        else if (r.type === 'site') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, SITE_PANEL_W, SITE_PANEL_H, 3);
+        else if (r.type === 'massing') spec.cols = bestCols(Math.max(1, (spec.steps || []).length), aspect, MASSING_PANEL_W, MASSING_PANEL_H, 3);
+        const eng = renderSpec(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined);
+        return { id, render: { svg: eng.svg }, caption: r.spec?.title || '', cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0 };
+      });
+      const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
+      const out = composePage(page, items, base); // 저장용(칸 테두리·빈 칸 표시 없음)
+      return { preview, out, error: null };
+    } catch (e) { return { preview: null, out: null, error: e.message }; }
+  }, [pageOn, pg, cells, selCell]);
+  // ── 칸을 직접 끌어서 크기 조절(프리셋은 끌면 'custom' 배치로 바뀐다) ──
+  const previewRef = useRef(null);
+  const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
+  const commitCustom = (cs) => setPg((p) => ({ ...p, layoutId: 'custom', custom: cs, basePreset: p.layoutId === 'custom' ? p.basePreset : p.layoutId }));
+  const minOf = (box) => ({ x: Math.min(0.45, 25 / box.w), y: Math.min(0.45, 25 / box.h) }); // 칸 최소 크기 25mm
+  const startDrag = (e, id, mode) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const pm = pageModel?.preview; const el = previewRef.current; if (!pm || !el) return;
+    e.preventDefault(); e.stopPropagation();
+    const box = pm.box; const rect = el.getBoundingClientRect(); const mmPerPx = pm.page.w / rect.width;
+    const base = getCells(pg.layoutId, pg.custom).map((c) => ({ ...c, r: [...c.r] }));
+    const min = minOf(box); const tol = 3 / Math.min(box.w, box.h); // 다른 칸·가운데에 3mm 안쪽으로 가까워지면 붙는다
+    const x0 = e.clientX; const y0 = e.clientY; let moved = false; let last = base;
+    selectCell(id);
+    const compute = (ev) => {
+      const dx = ((ev.clientX - x0) * mmPerPx) / box.w; const dy = ((ev.clientY - y0) * mmPerPx) / box.h; const t = base.find((c) => c.id === id); const group = !ev.altKey;
+      if (mode === 'move') return dragMove(base, id, dx, dy, { tol });
+      let cs = base;
+      if (mode.includes('e')) cs = dragEdge(cs, id, 'e', t.r[2] + dx, { group, min, tol });
+      if (mode.includes('w')) cs = dragEdge(cs, id, 'w', t.r[0] + dx, { group, min, tol });
+      if (mode.includes('s')) cs = dragEdge(cs, id, 's', t.r[3] + dy, { group, min, tol });
+      if (mode.includes('n')) cs = dragEdge(cs, id, 'n', t.r[1] + dy, { group, min, tol });
+      return cs;
+    };
+    const onMove = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
+      moved = true; last = compute(ev);
+      const t = last.find((c) => c.id === id);
+      setLive({ cells: last, id, label: `${Math.round((t.r[2] - t.r[0]) * box.w)}×${Math.round((t.r[3] - t.r[1]) * box.h)}mm` });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp);
+      setLive(null);
+      if (moved) commitCustom(last);
+    };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+  };
+  const onCellMm = (patch) => { const pm = pageModel?.preview; if (pm) commitCustom(setCellMm(getCells(pg.layoutId, pg.custom), selCell, patch, pm.box, minOf(pm.box))); };
+  const onSplit = (dir) => { const r = splitCell(getCells(pg.layoutId, pg.custom), selCell, dir); if (r.newId) commitCustom(r.cells); else addToast?.('info', '칸은 최대 12개입니다'); };
+  const onRemove = () => {
+    const cs = getCells(pg.layoutId, pg.custom); if (cs.length < 2) return;
+    const next = removeCell(cs, selCell); commitCustom(next);
+    setCells((c) => { const n = { ...c }; delete n[selCell]; return n; });
+    setSelCell(next[0].id); setResult(cells[next[0].id] || null);
+  };
+  const onResetLayout = () => setPg((p) => ({ ...p, layoutId: p.basePreset && p.basePreset !== 'custom' ? p.basePreset : '1x1', custom: null }));
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
@@ -557,13 +648,17 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const resetBoxes = () => { if (readOrig) { setRead(readOrig); setSelBox(0); const pv = readToPreview(readOrig, 0); setResult({ ...pv, isReadPreview: true }); } };
 
-  const saveSvg = () => rendered?.svg && saveBlob(new Blob([rendered.svg], { type: 'image/svg+xml' }), `diagram_${stamp()}.svg`);
+  // 저장할 결과: 페이지 모드면 정한 크기(mm)의 페이지, 아니면 그림 그대로
+  const outRes = pageOn ? pageModel?.out : rendered;
+  const saveSvg = () => outRes?.svg && saveBlob(new Blob([outRes.svg], { type: 'image/svg+xml' }), `diagram_${stamp()}.svg`);
   const savePng = () => {
-    if (!rendered?.svg) return;
-    const url = URL.createObjectURL(new Blob([rendered.svg], { type: 'image/svg+xml' }));
+    if (!outRes?.svg) return;
+    const url = URL.createObjectURL(new Blob([outRes.svg], { type: 'image/svg+xml' }));
     const img = new Image();
     img.onload = () => {
-      const c = document.createElement('canvas'); const sc = result?.spec?.layout === 'image' ? 3 : 2; c.width = rendered.width * sc; c.height = rendered.height * sc; // 도면 이미지는 해상도를 더 높여 저장
+      // 페이지 모드: 정한 해상도(dpi). 브라우저 캔버스 한계(한 변 약 1.2만 px)를 넘으면 줄인다. 그 밖: 2배(도면 이미지는 3배)
+      const sc = pageOn ? Math.min((Number(pg.dpi) || 150) / 96, 12000 / Math.max(outRes.width, outRes.height)) : (result?.spec?.layout === 'image' ? 3 : 2);
+      const c = document.createElement('canvas'); c.width = Math.round(outRes.width * sc); c.height = Math.round(outRes.height * sc);
       const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
       c.toBlob((b) => b && saveBlob(b, `diagram_${stamp()}.png`), 'image/png');
       URL.revokeObjectURL(url);
@@ -730,6 +825,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </select>
         </div>}
 
+        <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
+          selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
+          onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} />
+        {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <select value={model} onChange={(e) => setModel(e.target.value)} style={inputBase} title="AI 모델">
             {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -806,12 +906,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button style={btn(true, !rendered?.svg)} disabled={!rendered?.svg} onClick={saveSvg}>SVG 저장</button>
-          <button style={btn(false, !rendered?.svg)} disabled={!rendered?.svg} onClick={savePng}>PNG 저장</button>
-          <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.</span>
+          <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
+          <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
+          <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff' }}>
-          {!result && (
+          {!result && !pageOn && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
               <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
               <button style={{ ...btn(false), fontSize: 12 }} onClick={() => setResult({ type: 'site', spec: EXAMPLE_SPECS.site })}>예시 먼저 보기</button>
@@ -823,10 +923,37 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             </div>
           )}
           {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
-          {result?.type === 'sketch' && rendered?.svg && (
-            <SketchEditor key={result.ver} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} />
+          {pageOn && pageModel?.preview && (
+            <div style={{ marginBottom: 14 }} data-testid="page-preview">
+              <div ref={previewRef} style={{ position: 'relative', width: '100%', maxWidth: pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
+                <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
+                {(() => {
+                  const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h;
+                  const ov = live ? resolveCells('custom', pm.box, Number(pg.gap) || 0, live.cells).map((c) => ({ id: c.id, rect: [c.x, c.y, c.w, c.h] })) : pm.cells.map((c) => ({ id: c.id, rect: c.rect }));
+                  const HANDLES = [['nw', 0, 0, 'nwse-resize'], ['n', 0.5, 0, 'ns-resize'], ['ne', 1, 0, 'nesw-resize'], ['e', 1, 0.5, 'ew-resize'], ['se', 1, 1, 'nwse-resize'], ['s', 0.5, 1, 'ns-resize'], ['sw', 0, 1, 'nesw-resize'], ['w', 0, 0.5, 'ew-resize']];
+                  return ov.map((c) => {
+                    const [x, y, w, h] = c.rect; const sel = c.id === selCell;
+                    return (
+                      <React.Fragment key={c.id}>
+                        <div onPointerDown={(e) => startDrag(e, c.id, 'move')} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절)' : '이 칸 고르기'}
+                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: live && sel ? '2px solid #F28C28' : 'none', background: live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }} />
+                        {sel && HANDLES.map(([mode, fx, fy, cur]) => (
+                          <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
+                            style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid #F28C28', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
+                        ))}
+                        {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
+                      </React.Fragment>
+                    );
+                  });
+                })()}
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result?.type === 'sketch' ? '(아래는 고른 칸의 편집기)' : ''}.</p>
+            </div>
           )}
-          {result?.type !== 'sketch' && rendered?.svg && <img src={previewSrc} alt="다이어그램 미리보기" style={{ width: '100%', maxWidth: rendered.width, display: 'block', margin: '0 auto' }} />}
+          {result?.type === 'sketch' && rendered?.svg && (
+            <SketchEditor key={`${selCell}:${result.ver}`} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} />
+          )}
+          {!pageOn && result?.type !== 'sketch' && rendered?.svg && <img src={previewSrc} alt="다이어그램 미리보기" style={{ width: '100%', maxWidth: rendered.width, display: 'block', margin: '0 auto' }} />}
         </div>
       </div>
     </div>

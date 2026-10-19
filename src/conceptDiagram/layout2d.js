@@ -294,7 +294,7 @@ export function renderLayout2d(spec) {
   const shapes = normalizeShapes(spec.shapes);
   if (!shapes.length) throw new Error('읽어 낸 도형이 없습니다.');
   const panels = (Array.isArray(spec.panels) && spec.panels.length ? spec.panels : [{}]).slice(0, 6);
-  const cols = Math.min(2, panels.length); const rows = Math.ceil(panels.length / cols);
+  const cols = Math.min(Math.max(1, Math.floor(Number(spec.cols)) || 2), panels.length); const rows = Math.ceil(panels.length / cols); // spec.cols: 출력 칸의 가로세로 비율에 맞춰 칸 수를 정할 때(page.js)
   const titleH = spec.title ? 56 : 0;
   const W = cols * LAYOUT_PANEL_W; const H = titleH + rows * LAYOUT_PANEL_H;
   const body = panels.map((p, i) => (p.style === 'blocks' ? renderBlocksPanel : renderPanel)(shapes, p, (i % cols) * LAYOUT_PANEL_W, titleH + Math.floor(i / cols) * LAYOUT_PANEL_H, `l${i}`)).join('');

@@ -107,7 +107,7 @@ export function renderMassing(spec) {
     ground: s.ground && typeof s.ground === 'object' ? { x: num(s.ground.x, 0), y: num(s.ground.y, 0), w: num(s.ground.w, 6, 1, 40), d: num(s.ground.d, 5, 1, 40) } : null,
     boxes: applySubtractions((Array.isArray(s.boxes) ? s.boxes : []).slice(0, 24).map(normBox)),
   }));
-  const cols = Math.min(MASSING_COLS, Math.max(1, steps.length));
+  const cols = Math.min(Math.max(1, Math.floor(Number(spec.cols)) || MASSING_COLS), Math.max(1, steps.length)); // spec.cols: 출력 칸의 비율에 맞춰 정할 때(page.js)
   const rows = Math.ceil(steps.length / cols) || 1;
   const titleH = spec.title ? 60 : 0;
   const W = cols * MASSING_PANEL_W; const H = titleH + rows * MASSING_PANEL_H;
