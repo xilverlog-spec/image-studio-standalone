@@ -15,7 +15,7 @@ const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
-export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
@@ -389,6 +389,32 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   let threwP = false; try { m.fitPage(base, { w: 10, h: 10, medium: 'print' }, {}); } catch { threwP = true; }
   expect(threwP, '너무 작은 용지는 오류');
   expect(m.recommendFont('print').includes('인쇄용') && m.recommendFont('screen').includes('화면') && m.fontById('zzz').id === 'malgun', '글꼴 추천 문구와 기본 글꼴');
+  // 그림 속 글자만 본문 목표 pt 에 맞춤('both'): 그림은 칸을 꽉 채운 배율 그대로, 글자 크기만 같은 비율로 바꾼다
+  const stx = '<svg><text x="50" y="40" font-size="20" text-anchor="middle" fill="#000">A</text><text x="10" y="90" font-size="10" stroke-width="3" paint-order="stroke">B</text><text x="5" y="5" font-size="12" transform="rotate(90)">C</text><text x="5" y="9" font-size="12" dy="2">D</text></svg>';
+  const sc2 = m.scaleTexts(stx, 0.5);
+  expect(sc2.includes('font-size="10.000"') && sc2.includes('y="36.500"'), '글자 크기를 0.5배: 가운데(40-0.35×20=33)를 지키도록 기준선이 이동(40→36.5)');
+  expect(sc2.includes('font-size="5.000"') && sc2.includes('stroke-width="1.500"') && sc2.includes('y="88.250"'), '글자 둘레 테두리도 같은 비율');
+  expect(sc2.includes('font-size="12" transform="rotate(90)"') && sc2.includes('font-size="12" dy="2"'), '회전·dy 가 있는 글자는 건드리지 않음');
+  expect(m.scaleTexts(stx, 1) === stx && m.scaleTexts(stx, 1.001) === stx, '배율 1 이면 그대로');
+  { const c0 = 17 * 0.35 * 0.5; const t2 = m.scaleTexts('<text x="0" y="100" font-size="17">T</text>', 1.3); expect(Math.abs(Number(t2.match(/y="([\d.]+)"/)[1]) - (100 - 0.35 * 17 * (1 - 1.3))) < 0.001 && c0 > 0, '키울 때도 가운데 유지(기준선이 아래로)'); }
+  { // 큰 칸에 작게 그려진 그림: 글자가 소제목보다 커지던 문제(23pt)가 목표 pt 로 맞춰짐
+    const big = { w: 841, h: 594, medium: 'print' };
+    const fillMode = m.composePage(big, [{ id: 'c1', render: lay, caption: '' }], { title: '제목', layoutId: '1x1', fit: 'fill' });
+    const both = m.composePage(big, [{ id: 'c1', render: lay, caption: '' }], { title: '제목', layoutId: '1x1', fit: 'both' });
+    const ps = (r) => Math.abs(r.cells[0].engine.label);
+    expect(ps(fillMode) > both.report.pt.label * 1.3, `꽉 채우기만 하면 본문이 목표(${both.report.pt.label}pt)보다 큼 (${ps(fillMode)}pt)`);
+    expect(Math.abs(ps(both) - both.report.pt.label) < 0.3 && both.cells[0].scale === fillMode.cells[0].scale, `'both': 그림 배율은 같고 본문이 목표 ${both.report.pt.label}pt 가 됨 (${ps(both)}pt)`);
+    expect(!both.report.warnings.some((w) => w.text.includes('거꾸로') || w.text.includes('목표(')), "'both' 에서는 목표보다 크다/위계가 맞지 않는다는 경고가 없음");
+    expect(both.cells[0].engine.heading <= both.report.pt.sub + 0.01 || both.cells[0].engine.heading < both.cells[0].engine.label * 1.6, '그림 속 소제목급 글자도 비율을 지킴');
+    expect(Math.abs(both.cells[0].textScale - both.report.pt.label * m.PT_MM / (both.cells[0].scale * m.typeTiers(lay.svg).label)) < 0.02, '글자 배율 = 목표 / (그림 배율 × 원래 본문 크기)');
+    const tiny = m.composePage({ w: 100, h: 70, medium: 'print' }, [{ id: 'c1', render: lay, caption: '' }], { layoutId: '1x1', fit: 'both' });
+    expect(tiny.cells[0].textScale >= 0.3 && tiny.cells[0].textScale <= 1.3, '글자 배율은 0.3~1.3 안');
+  }
+  // 위계가 거꾸로 되지 않게: 아주 작은 용지의 추천값, 직접 넣은 거꾸로 값은 경고
+  for (const [w, h, md] of [[42, 29.7, 'print'], [50, 30, 'print'], [100, 70, 'print'], [60, 40, 'screen']]) { const t = m.recommendType({ w, h, medium: md }); expect(t.title > t.sub && t.sub > t.label && t.label > t.small, `작은 용지(${w}x${h}) 추천값도 제목>소제목>본문>작은 글자 (${t.title}/${t.sub}/${t.label}/${t.small})`); }
+  const inv = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { title: '페이지 제목', subtitle: '페이지 소제목', sizes: { title: 6, sub: 40 } });
+  expect(inv.report.warnings.some((w) => w.level === 'warn' && w.text.includes('거꾸로') && w.text.includes('제목(6pt)')), '직접 넣은 pt 가 거꾸로면(제목 6·소제목 40) 경고');
+  expect(!m.composePage({ w: 420, h: 297, medium: 'print' }, [], { title: '제목', subtitle: '소제목' }).report.warnings.some((w) => w.text.includes('거꾸로')), '추천값에는 위계 경고가 없음');
   // 칸 나누기
   expect(m.layoutById('2x2').cells.length === 4 && m.layoutById('g3x2').cells.length === 6 && m.layoutById('엉뚱').id === '1x1' && m.cellIds('L3').join() === 'c1,c2,c3,c4', '칸 목록(프리셋·격자·알 수 없는 이름)');
   for (const L of m.PAGE_LAYOUTS) {

@@ -188,6 +188,9 @@ export function recommendType({ w, h, medium }) {
   out.labelMin = print ? 7 : 11;                         // 이보다 작으면 읽기 어렵다
   out.label = Math.max(out.label, print ? 7 : 12);
   out.small = Math.max(out.small, print ? 6 : 10);
+  // 바닥값 때문에 위계가 뒤집히지 않게(아주 작은 용지): 본문이 바닥값으로 올라가면 소제목·제목도 비율을 지켜 올린다(소제목 ≥ 본문×1.3, 제목 ≥ 소제목×1.4)
+  out.sub = Math.max(out.sub, ROUND(out.label * 1.3));
+  out.title = Math.max(out.title, ROUND(out.sub * 1.4));
   return out;
 }
 
@@ -217,6 +220,21 @@ export function domMeasure(innerSvg, vb) {
   } catch { return null; }
 }
 
+// 그림 속 글자 크기만 k 배로 바꾼다(그림·도형은 그대로). 글자의 가운데를 지키도록 기준선(y)도 함께 옮긴다(렌더러는 기준선을 가운데+0.35×글자크기에 둔다).
+// 회전·dy·baseline·textLength 가 있는 글자는 건드리지 않고, 글자 둘레 흰 테두리(stroke-width)는 같은 비율로 바꾼다.
+export function scaleTexts(svg, k) {
+  if (!(k > 0) || Math.abs(k - 1) < 0.005) return String(svg);
+  return String(svg).replace(/<text\b([^>]*)>/g, (all, attrs) => {
+    if (/\btransform=|\bdy=|dominant-baseline|\btextLength=/.test(attrs)) return all;
+    const fs = /\bfont-size="([\d.]+)"/.exec(attrs); const y = /\by="(-?[\d.]+)"/.exec(attrs);
+    if (!fs || !y) return all;
+    const f = Number(fs[1]); const yy = Number(y[1]);
+    let a = attrs.replace(fs[0], `font-size="${(f * k).toFixed(3)}"`).replace(y[0], `y="${(yy - 0.35 * f * (1 - k)).toFixed(3)}"`);
+    a = a.replace(/\bstroke-width="([\d.]+)"/, (m0, v) => `stroke-width="${(Number(v) * k).toFixed(3)}"`);
+    return `<text${a}>`;
+  });
+}
+
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const r1 = (v) => Math.round(v * 10) / 10;
 
@@ -224,7 +242,7 @@ const r1 = (v) => Math.round(v * 10) / 10;
 // opts: title/subtitle(페이지 제목), fontId, sizes({title,sub,label,small} 사용자가 정한 pt, 비우면 추천값), fill(true: 칸을 꽉 채움 / false: 본문 글자를 목표 pt 에 맞춤), layoutId, gap(mm),
 //       measure(함수: 내용 영역 재기), preview(true: 칸 테두리·빈 칸 표시, 저장본에는 쓰지 않음), selected(고른 칸 id)
 export function composePage(page, items, opts = {}) {
-  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, fill = true, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null } = opts;
+  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null } = opts;
   const W = Number(page.w); const H = Number(page.h);
   if (!(W > 20 && H > 20)) throw new Error('용지 크기가 너무 작습니다(가로·세로 20mm 이상).');
   const rec = recommendType({ w: W, h: H, medium: page.medium });
@@ -238,6 +256,10 @@ export function composePage(page, items, opts = {}) {
   const gap = Number.isFinite(Number(opts.gap)) ? Math.max(0, Number(opts.gap)) : Math.max(4, Math.min(W, H) * 0.02);
   const warnings = []; const head = []; const body = []; const over = [];
   const used = {};
+  // 위계 점검: 제목 > 소제목 > 본문 > 작은 글자. 직접 넣은 pt 가 거꾸로면(예: 제목 6pt·소제목 40pt) 그대로 따르되 분명히 알린다
+  [['title', '제목', 'sub', '소제목'], ['sub', '소제목', 'label', '본문'], ['label', '본문', 'small', '작은 글자']].forEach(([a, an, b, bn]) => {
+    if (pt[a] <= pt[b]) warnings.push({ level: 'warn', text: `글자 위계가 거꾸로입니다: ${an}(${pt[a]}pt)이 ${bn}(${pt[b]}pt)보다 작거나 같습니다. 제목 > 소제목 > 본문 > 작은 글자 순으로 정하세요(“추천값으로 되돌리기”).` });
+  });
   const lineW = (s, fs) => [...String(s)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
   // 글자 한 줄: 위치(x, 윗선 y), 목표 pt, 가용 폭 → 필요하면 줄여서 그린다. 반환: { pt(실제), bottom(다음 y), svg }
   const textLine = (x, y, txt, ptv, weight, color, maxW, key) => {
@@ -284,9 +306,16 @@ export function composePage(page, items, opts = {}) {
     else { const crop = Math.max(0, Math.min(Number(item.cropTop) || 0, vh0 * 0.5)); vy = vy0 + crop; vh = vh0 - crop; }
     const tiers = typeTiers(inner);
     let s = Math.min(cw / vw, ch / vh); // 그림 좌표 1 단위가 몇 mm 가 되는지
-    if (!fill && tiers) { const target = (pt.label * PT_MM) / tiers.label; if (target < s) s = target; } // 본문 글자를 목표 pt 에 맞추면 그림이 칸보다 작아질 수 있다
+    // 맞춤 방식: 'fill' 칸을 꽉 채움(글자 크기는 그림 배율을 따름) / 'text' 본문 글자를 목표 pt 에 맞춤(그림이 칸보다 작아질 수 있음) / 'both' 칸을 꽉 채우고 그림 속 글자만 본문 목표 pt 에 맞춤(권장)
+    const mode = opts.fit || (opts.fill === false ? 'text' : 'fill');
+    if (mode === 'text' && tiers) { const target = (pt.label * PT_MM) / tiers.label; if (target < s) s = target; }
+    let textK = 1;
+    if (mode === 'both' && tiers) { // 글자만 따로: 그림 배율 s 에서 본문이 목표 pt 가 되게 하는 비율. 키울 때는 글자가 칸 밖으로 넘칠 수 있어 1.3배까지, 줄일 때는 0.3배까지
+      textK = Math.min(1.3, Math.max(0.3, (pt.label * PT_MM) / (s * tiers.label)));
+      if (Math.abs(textK - 1) >= 0.005) inner = scaleTexts(inner, textK);
+    }
     const ow = vw * s; const oh = vh * s; const ox = cell.x + (cw - ow) / 2; const oy = cy + (ch - oh) / 2;
-    const eng = tiers ? { heading: tiers.heading * s / PT_MM, label: tiers.label * s / PT_MM, small: tiers.small * s / PT_MM } : null;
+    const eng = tiers ? { heading: tiers.heading * textK * s / PT_MM, label: tiers.label * textK * s / PT_MM, small: tiers.small * textK * s / PT_MM } : null;
     const tag = multi ? `칸 ${idx + 1}: ` : '';
     if (eng) {
       if (eng.label < rec.labelMin) warnings.push({ level: 'warn', text: `${tag}다이어그램 속 글자가 ${r1(eng.label)}pt 로 너무 작습니다(이 용도에서 최소 ${rec.labelMin}pt 권장). 칸을 키우거나 내용(블록·글자)을 줄이세요.` });
@@ -297,7 +326,7 @@ export function composePage(page, items, opts = {}) {
     }
     const cid = `pgclip${idx}`;
     body.push(`<clipPath id="${cid}"><rect x="${ox.toFixed(3)}" y="${oy.toFixed(3)}" width="${ow.toFixed(3)}" height="${oh.toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
-    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, caption: capPt ? r1(capPt) : null, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
+    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
   });
   const first = reports.find((r) => !r.empty);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${bg.v}"/>${frameSvg}${head.join('')}${body.join('')}${over.join('')}</svg>`;

@@ -43,7 +43,7 @@ function Colors({ value, onChange, allowClear }) {
   );
 }
 
-export default function SketchEditor({ spec, onChange, disabled }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled }) {
   const [selected, setSelected] = useState('');
   const past = useRef([]); const future = useRef([]);
   const lastKey = useRef(''); const lastAt = useRef(0);
@@ -145,6 +145,7 @@ export default function SketchEditor({ spec, onChange, disabled }) {
   const copySel = () => { const sn = selected ? sketchSnapshot(norm, selected) : null; if (sn) { CLIP = sn; PASTE_N = 0; tick((n) => n + 1); } return !!sn; };
   const pasteClip = (offset) => { if (!CLIP) return; PASTE_N += 1; const k = offset ?? 3 * PASTE_N; const r = sketchPaste(norm, CLIP, k, k); if (r.id) { commit(r.spec); setSelected(r.id); } };
   const onKey = (e) => {
+    if (shortcutsEnabled && !shortcutsEnabled()) return; // 페이지 미리보기를 만지는 중이면 페이지 단축키가 받는다
     const tag = e.target?.tagName || '';
     const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
