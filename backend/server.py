@@ -1,5 +1,22 @@
 import os
 import sys
+
+
+def _ensure_std_streams():
+    # pythonw.exe(콘솔 없는 실행)를 로그 연결 없이 켜면 sys.stdout/stderr 가 None 이라 uvicorn 이 시작 직후 종료 코드 1로 죽는다
+    # (2026-10-19 재현: 작업 스케줄러에 등록한 방식이 한 번도 서버를 못 띄운 원인). 어떻게 켜도 죽지 않게 없으면 logs 폴더 파일로 대신 연결한다.
+    log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs"))
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+                setattr(sys, name, open(os.path.join(log_dir, f"backend_{name}.log"), "a", encoding="utf-8", buffering=1))
+            except OSError:
+                setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
+
+_ensure_std_streams()
+
 from dotenv import load_dotenv
 
 # .env는 comfyui_client.py/config.py가 os.getenv()로 값을 읽기 전에 먼저 로드되어야 한다.

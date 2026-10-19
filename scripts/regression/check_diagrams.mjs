@@ -14,15 +14,17 @@ const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
 const svgeditJs = path.resolve(here, '../../src/conceptDiagram/svgedit.js');
 const regionJs = path.resolve(here, '../../src/conceptDiagram/regionMerge.js');
 const imgutilJs = path.resolve(here, '../../src/conceptDiagram/imgutil.js');
+const viewlayoutJs = path.resolve(here, '../../src/conceptDiagram/viewlayout.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
-export { judgeTextPt } from ${fwd(pageJs)};
+export { judgeTextPt, moveCellContent } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
 export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
 export { cropRect, fitInside, normCrop, stagger, IMG_QUALITY, imgQualityOf } from ${fwd(imgutilJs)};
+export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
@@ -654,6 +656,19 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(bm[0] === 1 && Math.abs(bm[1] - 0.5) < 1e-6 && bm[2] === 0 && Math.abs(bm[3] - 0.75) < 1e-6, '마스크 섞기: 비율 0 이면 옛 것, 1 이면 새 것, 중간은 섞임');
   expect(m.normalizeSketch({ ...n0, zones: [{ id: 'z1', color: '#BAD6B0', label: '녹', mask: 'data:image/png;base64,iVBORw0KGgo=', band: 'green' }] }).zones[0].band === 'green', '구역 층에 색 띠(band)가 유지됨');
 }
+// 칸의 그림을 다른 칸으로 옮기기(빈 칸이면 이동, 그림이 있으면 맞바꿈)
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('칸 그림 옮기기: ' + msg); else ok++; };
+  const A = { type: 'site', ver: 1 }; const B = { type: 'layout', ver: 2 };
+  const ids = ['c1', 'c2', 'c3', 'c4']; const items = { c1: A, c2: B };
+  const mv = m.moveCellContent(items, ids, 'c1', 'c3');
+  expect(mv && mv.swapped === false && mv.items.c3 === A && !('c1' in mv.items) && mv.items.c2 === B, '빈 칸으로 옮기면 이동(원래 칸은 비고 다른 칸은 그대로)');
+  const sw = m.moveCellContent(items, ids, 'c1', 'c2');
+  expect(sw && sw.swapped === true && sw.items.c2 === A && sw.items.c1 === B, '그림이 있는 칸으로 옮기면 서로 맞바꿈');
+  expect(items.c1 === A && items.c2 === B && !('c3' in items), '받은 items 는 바꾸지 않음(되돌리기 기록이 안전)');
+  expect(m.moveCellContent(items, ids, 'c1', 'c1') === null && m.moveCellContent(items, ids, 'c3', 'c1') === null && m.moveCellContent(items, ids, 'c1', 'c9') === null && m.moveCellContent(items, ids, 'c9', 'c1') === null, '같은 칸·빈 칸에서 옮기기·없는 칸은 null');
+  const again = m.moveCellContent(sw.items, ids, 'c2', 'c1'); expect(again.items.c1 === A && again.items.c2 === B, '맞바꾼 것을 다시 맞바꾸면 처음으로');
+}
 // 내 이미지: 자르기(제자리 유지)·바꾸기(비율 유지)·여러 장 비껴 놓기·화질 단계
 {
   const expect = (cond, msg) => { if (!cond) fails.push('내 이미지: ' + msg); else ok++; };
@@ -893,6 +908,25 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const fr2 = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: 20, frame: { w: 0.35, inset: 5, color: '#C00000' } });
   expect(fr2.svg.includes('x="5.00" y="5.00"') && fr2.svg.includes('stroke="#C00000"') && !m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1' }).svg.includes('fill="none" stroke'), '테두리선 간격·색 지정, 끄면 안 그려짐');
   expect(m.composePage({ w: 420, h: 297, medium: 'print' }, [], { layoutId: '1x1', margin: { t: 90, b: 90, l: 0, r: 0 } }).report.warnings.some((w) => w.level === 'warn'), '여백이 너무 커서 그림 자리가 좁으면 경고');
+}
+// 편집 화면 키우기: 분할선 비율·확대 계산
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`화면 배치: ${label}`); };
+  const near = (a, b, e = 0.005) => Math.abs(a - b) <= e;
+  expect(m.clampSplit(NaN, 1300, 664, 240) === m.clampSplit(m.SPLIT_DEFAULT, 1300, 664, 240), '값이 없으면 기본 비율');
+  expect(m.clampSplit(0.1, 0, 0, 0) === m.SPLIT_MIN && m.clampSplit(0.99, 0, 0, 0) === m.SPLIT_MAX, '최소·최대 몫 안으로');
+  expect(near(m.clampSplit(0.4, 1300, 664, 240), 664 / 1300) && near(m.clampSplit(0.9, 1300, 664, 240), 1 - 240 / 1300), '양쪽 최소 폭(편집기 664·페이지 240px)을 지킨다');
+  expect(near(m.clampSplit(0.6, 1300, 664, 240), 0.6), '허용 범위 안의 값은 그대로');
+  expect(near(m.clampSplit(0.6, 800, 664, 240), 664 / 800), '두 최소 폭이 다 안 들어가면 편집기를 먼저 지킨다');
+  expect(near(m.splitFromPointer(100 + 7 + 0.5 * 986, 100, 1000, 14), 0.5, 0.0001) && near(m.splitFromPointer(107, 100, 1000, 14), 0, 0.0001), '마우스 위치 → 편집기 몫');
+  expect(m.splitFromPointer(5, 0, 10, 14) === m.SPLIT_DEFAULT, '폭이 없으면 기본 비율');
+  { let bad = ''; for (const r of [0.3, 0.37, 0.5, 0.567, 0.6, 0.62, 0.85]) { const mm = m.splitColumns(r, 14).match(/(\d+)fr\) 14px minmax\(0, (\d+)fr/); if (!mm || Number(mm[1]) + Number(mm[2]) !== 1000) bad += ` ${r}`; } expect(!bad, `fr 합이 1000 이어야 남는 폭을 다 쓴다(어긋난 값:${bad})`); }
+  expect(m.clampZoom(0.5) === 1 && m.clampZoom(1.02) === 1 && m.clampZoom(1.5) === 1.5 && m.clampZoom(9) === 4 && m.clampZoom(NaN) === 1, '배율은 100%~400%, 100% 근처는 100%로 붙는다');
+  expect(m.stepZoom(1, 1) === 1.25 && m.stepZoom(1.25, 1) === 1.5 && m.stepZoom(4, 1) === 4 && m.stepZoom(1.25, -1) === 1 && m.stepZoom(1, -1) === 1 && m.stepZoom(1.37, 1) === 1.5 && m.stepZoom(1.37, -1) === 1.25, '버튼 확대·축소는 단계(100·125·150·200·300·400%)로');
+  expect(near(m.wheelZoom(1, -100), 1.22, 0.01) && m.wheelZoom(1.22, 100) === 1 && near(m.wheelZoom(1, -3, 1), 1.22, 0.01) && m.wheelZoom(3.9, -500) === 4, 'Ctrl+휠: 한 칸 약 1.22배, 줄 단위 휠도 같은 느낌, 한계에서 멈춤');
+  { const a = m.anchorScroll({ left: 0, top: 0, px: 300, py: 200, z0: 1, z1: 2 }); expect(a.left === 300 && a.top === 200, '확대해도 마우스 아래 그림 점이 제자리에 남는다'); }
+  { const a = m.anchorScroll({ left: 500, top: 80, px: 300, py: 100, z0: 2, z1: 1 }); expect(near(a.left, 100, 0.001) && a.top === 0, '축소할 때도 같은 점 유지(계산값이 음수면 0)'); }
+  expect(m.anchorScroll({ left: 0, top: 0, px: 300, py: 300, z0: 2, z1: 1 }).left === 0, '스크롤 위치는 음수가 되지 않는다');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

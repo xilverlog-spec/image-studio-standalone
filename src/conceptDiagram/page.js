@@ -130,6 +130,15 @@ export function setCellMm(cells, id, patch, box, min = { x: 0.05, y: 0.05 }) {
   return cells.map((c) => (c.id === id ? { ...c, r: [x0, y0, x0 + w, y0 + h] } : c));
 }
 
+// 칸 안의 그림을 다른 칸으로 옮긴다. items: { 칸 id → 그림 }, ids: 지금 있는 칸 번호들. 도착 칸이 비어 있으면 이동, 그림이 있으면 서로 맞바꿈.
+// 반환: { items(새 객체), swapped } — 옮길 수 없으면(같은 칸·없는 칸·옮길 그림 없음) null. 받은 items 는 바꾸지 않는다.
+export function moveCellContent(items, ids, from, to) {
+  if (!from || !to || from === to || !ids.includes(from) || !ids.includes(to) || !items[from]) return null;
+  const n = { ...items }; const a = items[from]; const b = items[to] || null;
+  n[to] = a; if (b) n[from] = b; else delete n[from];
+  return { items: n, swapped: !!b };
+}
+
 export function nextCellId(cells) { return `c${cells.reduce((m, c) => Math.max(m, Number(String(c.id).replace(/\D/g, '')) || 0), 0) + 1}`; }
 // 칸을 반으로 나눈다. dir 'v': 좌우로(왼쪽은 그대로 id, 오른쪽이 새 칸), 'h': 위아래로(위쪽 그대로, 아래쪽이 새 칸). 반환: { cells, newId } (12칸을 넘으면 그대로)
 export function splitCell(cells, id, dir) {

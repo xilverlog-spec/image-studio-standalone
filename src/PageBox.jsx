@@ -7,7 +7,7 @@ const lab = { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, co
 const small = (on) => ({ padding: '4px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #F28C28' : '1px solid var(--border-color)', background: on ? 'rgba(242,140,40,0.14)' : 'rgba(255,255,255,0.85)', color: on ? '#B45309' : 'var(--text-secondary)' });
 const mmText = (r) => `${Math.round(r[2])}×${Math.round(r[3])}mm`;
 
-export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect, onClear, onExample, selRaw, onCellMm, onSplit, onRemove, onResetLayout, setLayout }) {
+export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect, onClear, onExample, selRaw, onCellMm, onSplit, onRemove, onResetLayout, setLayout, onMoveContent }) {
   const set = (patch) => setPg((p) => ({ ...p, ...patch }));
   const setLay = setLayout || set; // 칸 배치를 바꿀 때는 되돌리기 기록을 남기는 쪽으로
   const rec = recommendType({ w: Number(pg.w) || 420, h: Number(pg.h) || 297, medium: pg.medium });
@@ -63,7 +63,16 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="page-cells">
                 <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>칸을 고른 뒤 아래 “다이어그램 만들기”를 누르면 <b>그 칸 크기에 맞춰</b> 들어갑니다. (페이지 미리보기에서 칸을 직접 눌러도 됩니다)</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {info.cells.map((c, i) => <button key={c.id} style={small(c.id === selCell)} onClick={() => onSelect(c.id)} data-testid={`cell-btn-${c.id}`} title={`${mmText(c.rect)}${c.empty ? ' · 비어 있음' : ' · 채워짐'}`}>칸 {i + 1} · {mmText(c.rect)} {c.empty ? '○' : '●'}</button>)}
+                  {info.cells.map((c, i) => (
+                    <button key={c.id} style={small(c.id === selCell)} onClick={() => onSelect(c.id)} data-testid={`cell-btn-${c.id}`}
+                      title={`${mmText(c.rect)}${c.empty ? ' · 비어 있음' : ' · 채워짐 (끌어서 다른 칸 버튼 위에 놓으면 그림이 옮겨집니다)'}`}
+                      draggable={!c.empty && !!onMoveContent}
+                      onDragStart={(e) => { e.dataTransfer.setData('text/x-cellid', c.id); e.dataTransfer.effectAllowed = 'move'; }}
+                      onDragOver={(e) => { if (onMoveContent && [...(e.dataTransfer?.types || [])].includes('text/x-cellid')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+                      onDrop={(e) => { const from = e.dataTransfer.getData('text/x-cellid'); if (onMoveContent && from && from !== c.id) { e.preventDefault(); onMoveContent(from, c.id); } }}>
+                      칸 {i + 1} · {mmText(c.rect)} {c.empty ? '○' : '●'}
+                    </button>
+                  ))}
                 </div>
                 {selRaw && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }} data-testid="cell-mm">
@@ -81,6 +90,12 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button style={small(false)} onClick={onClear} disabled={!info.cells.find((c) => c.id === selCell && !c.empty)} data-testid="cell-clear">선택한 칸 비우기</button>
+                  {onMoveContent && info.cells.length > 1 && cur && !cur.empty && (
+                    <select style={{ ...inp, width: 'auto', fontWeight: 700 }} value="" onChange={(e) => { if (e.target.value) onMoveContent(selCell, e.target.value); }} data-testid="cell-move-to" title="고른 칸의 그림을 다른 칸으로 옮깁니다. 도착 칸에 그림이 있으면 서로 맞바꿉니다">
+                      <option value="">↔ 이 그림을 다른 칸으로…</option>
+                      {info.cells.map((c, i) => (c.id === selCell ? null : <option key={c.id} value={c.id}>칸 {i + 1} ({mmText(c.rect)}) — {c.empty ? '비어 있음 · 옮기기' : '그림 있음 · 서로 맞바꾸기'}</option>))}
+                    </select>
+                  )}
                   {onExample && <button style={small(false)} onClick={onExample} data-testid="cell-example" title="AI 없이 예시 그림을 선택한 칸에 넣어 크기·글자 위계를 미리 봅니다">예시 그림 넣어 보기</button>}
                 </div>
               </div>

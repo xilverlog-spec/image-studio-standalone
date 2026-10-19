@@ -3,7 +3,7 @@ import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, rende
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
-import { composePage, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell } from './conceptDiagram/page';
+import { composePage, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -11,6 +11,7 @@ import PageBox from './PageBox';
 import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
 import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
 import { cancelPendingPaste, imagesFromClipboard } from './conceptDiagram/clip';
+import { SPLIT_DEFAULT, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns } from './conceptDiagram/viewlayout';
 import { InlineInput } from './InlineText';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
@@ -241,6 +242,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const paneRef = useRef(null); const [paneW, setPaneW] = useState(0);
   const [viewMode, setViewMode] = useState(() => { try { const v = localStorage.getItem('cd_view_mode'); return ['auto', 'side', 'stack'].includes(v) ? v : 'auto'; } catch { return 'auto'; } });
   useEffect(() => { try { localStorage.setItem('cd_view_mode', viewMode); } catch { /* 저장 없이 진행 */ } }, [viewMode]);
+  // 편집을 크게: ① 편집 집중(편집기가 전체 폭, 페이지는 위쪽 띠) ② 설정 패널 접기 ③ 나란히 보기의 분할선(편집기 몫). 모두 이 브라우저에 기억한다
+  const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } };
+  const [focusEdit, setFocusEdit] = useState(() => lsGet('cd_focus_edit', '0') === '1');
+  const [leftHidden, setLeftHidden] = useState(() => lsGet('cd_left_hidden', '0') === '1');
+  const [splitR, setSplitR] = useState(() => { const v = Number(lsGet('cd_split_r', '')); return v >= 0.3 && v <= 0.85 ? v : SPLIT_DEFAULT; });
+  useEffect(() => { try { localStorage.setItem('cd_focus_edit', focusEdit ? '1' : '0'); localStorage.setItem('cd_left_hidden', leftHidden ? '1' : '0'); localStorage.setItem('cd_split_r', String(Math.round(splitR * 1000) / 1000)); } catch { /* 저장 없이 진행 */ } }, [focusEdit, leftHidden, splitR]);
+  const workRef = useRef(null);
   useEffect(() => {
     const el = paneRef.current; if (!el || typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver((es) => setPaneW(Math.round(es[0].contentRect.width))); ro.observe(el); return () => ro.disconnect();
@@ -383,6 +391,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!files.length) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
     insertMyImages(files, pageOn ? e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid') : '');
   };
+  // 칸의 그림을 다른 칸으로 옮긴다(도착 칸이 비어 있으면 이동, 그림이 있으면 서로 맞바꿈). 페이지 되돌리기(Ctrl+Z)로 되돌린다
+  const moveCellContent = (fromId, toId) => {
+    const ids = cellIds(pg.layoutId, pg.custom);
+    const m = moveItems({ ...cells, ...(result ? { [selCell]: result } : {}) }, ids, fromId, toId); // 고른 칸의 그림은 result 가 원본이다
+    if (!m) return;
+    const no = (id) => ids.indexOf(id) + 1;
+    pushHistory();
+    setCells(m.items); setSelCell(toId); setResult(m.items[toId]); setGenError('');
+    addToast?.('success', m.swapped ? `칸 ${no(fromId)}과 칸 ${no(toId)}의 그림을 맞바꿨습니다` : `칸 ${no(fromId)}의 그림을 칸 ${no(toId)}(으)로 옮겼습니다`, '칸 크기가 다르면 그림이 새 칸에 맞춰 다시 배치됩니다. 되돌리려면 Ctrl+Z.');
+  };
   const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const pageModel = useMemo(() => {
@@ -411,7 +429,21 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       return { preview, out, error: null };
     } catch (e) { return { preview: null, out: null, error: e.message }; }
   }, [pageOn, pg, cells, selCell]);
-  const sideOn = pageOn && !!result && !!pageModel?.preview && (viewMode === 'side' || (viewMode === 'auto' && paneW >= SIDE_MIN_W));
+  const pageSrc = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]); // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다)
+  const focusOn = pageOn && !!pageModel?.preview && focusEdit; // 편집 집중: 편집기가 전체 폭이고 페이지는 위쪽 띠로 줄어든다
+  const sideOn = !focusOn && pageOn && !!result && !!pageModel?.preview && (viewMode === 'side' || (viewMode === 'auto' && paneW >= SIDE_MIN_W));
+  const splitAvail = Math.max(0, paneW - 32 - SPLIT_DIV_W); // 오른쪽 화면 안쪽 폭(여백 16×2)에서 분할선을 뺀 폭
+  const splitEff = clampSplit(splitR, splitAvail, EDITOR_MIN_W, PAGE_MIN_W); // 두 화면이 서로 찌그러지지 않는 범위 안의 편집기 몫
+  useEffect(() => { if (focusOn) { setPgEdit(null); ctxRef.current = 'sketch'; } }, [focusOn]); // 편집 집중에서는 방향키·Delete 가 칸이 아니라 그림에 듣는다
+  const onSplitDown = (e) => { // 분할선을 끌어 편집기와 페이지의 폭 비율을 바꾼다
+    if (e.button !== 0) return; const host = workRef.current; if (!host) return;
+    e.preventDefault(); const rect = host.getBoundingClientRect(); let last = splitEff;
+    const prevSel = document.body.style.userSelect; document.body.style.userSelect = 'none';
+    const mv = (ev) => { last = clampSplit(splitFromPointer(ev.clientX, rect.left, rect.width, SPLIT_DIV_W), rect.width - SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W); host.style.gridTemplateColumns = splitColumns(last, SPLIT_DIV_W); };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); document.body.style.userSelect = prevSel; setSplitR(last); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  };
+  const onSplitKey = (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setSplitR(clampSplit(splitEff + (e.key === 'ArrowLeft' ? -0.02 : 0.02), splitAvail, EDITOR_MIN_W, PAGE_MIN_W)); } else if (e.key === 'Home') { e.preventDefault(); setSplitR(SPLIT_DEFAULT); } };
   // 페이지 제목·소제목·칸 제목을 미리보기 위에서 바로 고친다. 한 칸짜리 페이지에서 제목이 그림 자체의 제목(spec.title)에서 온 것이면 지울 때 그쪽도 비운다
   const commitPgEdit = (ed, raw) => {
     setPgEdit(null); const val = String(raw).replace(/\s*\n\s*/g, ' ').trim().slice(0, 120);
@@ -880,6 +912,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod && e.key === 'Enter') { if (canGenerate) { e.preventDefault(); generate(); } return; }
     if (mod && k === 's') { if (outRes?.svg) { e.preventDefault(); if (e.shiftKey) savePng(); else saveSvg(); } return; }
+    if (!typing && !mod && !e.altKey && !e.shiftKey && e.code === 'KeyF' && pageOn && pageModel?.preview) { e.preventDefault(); setFocusEdit((v) => !v); return; } // F: 편집 집중 ↔ 나란히/위아래 보기
     if (!typing && mod && (k === 'z' || k === 'y') && result && result.type !== 'sketch' && (!pageOn || ctxRef.current !== 'page')) { // 그림 위에서 고친 글자 되돌리기·다시 하기
       const h = textHist.current; const redo = k === 'y' || e.shiftKey; const src = redo ? h.future : h.past; const top = src[src.length - 1];
       if (top && top.ver === result.ver) { e.preventDefault(); src.pop(); (redo ? h.past : h.future).push({ ver: result.ver, spec: result.spec, edits: result.edits }); setResult((r) => ({ ...r, spec: top.spec, edits: top.edits })); }
@@ -907,9 +940,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   return (
     <div ref={rootRef} style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
-      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }}>
+      {leftHidden && (
+        <div style={{ width: 34, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'rgba(220, 228, 242, 0.35)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 10 }} data-testid="left-rail">
+          <button style={{ ...btn(false), padding: '4px 7px', fontSize: 12 }} onClick={() => setLeftHidden(false)} title="설정 패널을 다시 펼칩니다" data-testid="left-open">▶</button>
+          <span style={{ writingMode: 'vertical-rl', fontSize: 11.5, fontWeight: 700, color: 'var(--text-tertiary, #64748b)', letterSpacing: 1 }}>설정 열기</span>
+        </div>
+      )}
+      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: leftHidden ? 'none' : 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }} data-testid="left-panel">
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>다이어그램 만들기</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)' }}>다이어그램 만들기</div>
+            <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setLeftHidden(true)} title="이 설정 패널을 접어 오른쪽 편집 화면을 넓힙니다(접어도 내용은 그대로이고, 왼쪽 ▶ 로 다시 펼칩니다)" data-testid="left-close">◀ 접기</button>
+          </div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
             설명만 써도 되고, <b>소재 이미지</b>(내 건물·도면)와 <b>스타일 참고 이미지</b>(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.
           </p>
@@ -1061,7 +1103,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div onPointerDownCapture={() => { ctxRef.current = 'page'; }}>
         <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
           selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
-          onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
+          onMoveContent={moveCellContent} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
         </div>
         {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
 
@@ -1174,8 +1216,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
               <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>📐 페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
-              {result && pageModel?.preview && (
-                <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11.5, color: 'var(--text-secondary)' }} title={`편집기와 페이지 배치를 위아래로 보거나 나란히 봅니다. 자동: 이 화면이 가로 ${SIDE_MIN_W}px 이상이면 나란히`}>
+              {pageModel?.preview && (
+                <button style={{ ...btn(focusOn, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setFocusEdit((v) => !v)} data-testid="focus-toggle"
+                  title={focusOn ? '편집기를 줄이고 페이지 배치를 다시 크게 봅니다 (단축키 F)' : '편집기를 전체 폭으로 크게 키웁니다. 페이지는 위쪽 띠로 줄고, 칸은 띠에서 고릅니다 (단축키 F)'}>
+                  {focusOn ? '⤡ 나란히 보기로 (F)' : '⤢ 편집 집중 (F)'}
+                </button>
+              )}
+              <button style={{ ...btn(leftHidden, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setLeftHidden((v) => !v)} data-testid="left-toggle"
+                title={leftHidden ? '왼쪽 설정 패널을 다시 펼칩니다' : '왼쪽 설정 패널을 접어 편집 화면을 넓힙니다(내용은 그대로 남습니다)'}>
+                {leftHidden ? '▶ 설정 열기' : '◀ 설정 접기'}
+              </button>
+              {result && pageModel?.preview && !focusOn && (
+                <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11.5, color: 'var(--text-secondary)' }} title={`편집기와 페이지 배치를 위아래로 보거나 나란히 봅니다. 자동: 이 화면이 가로 ${SIDE_MIN_W}px 이상이면 나란히. 나란히 볼 때는 가운데 선을 끌어 폭을 바꿀 수 있습니다`}>
                   화면 배치
                   <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ ...inputBase, width: 'auto', fontSize: 12, padding: '4px 6px' }} data-testid="view-mode">
                     <option value="auto">자동 (넓으면 나란히)</option><option value="side">편집기 | 페이지 나란히</option><option value="stack">위아래로</option>
@@ -1185,11 +1237,40 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
-          <div style={sideOn ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(300px, 1fr)', gap: 18, alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'}>
+          <div ref={workRef} style={sideOn ? { display: 'grid', gridTemplateColumns: splitColumns(splitEff, SPLIT_DIV_W), alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'} data-focus={focusOn ? '1' : '0'}>
           <div style={{ minWidth: 0 }}>
+          {focusOn && (() => { // 편집 집중: 페이지 배치를 위쪽 작은 띠로(칸 고르기 + 지금 모습 확인)
+            const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h; const ids = cellIds(pg.layoutId, pg.custom);
+            const idx = Math.max(0, ids.indexOf(selCell)); const go = (d) => selectCell(ids[(idx + d + ids.length) % ids.length]);
+            const thH = 64; const has = (id) => (id === selCell ? !!result : !!cells[id]);
+            return (
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', marginBottom: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(245,247,250,0.9)' }} data-testid="focus-strip" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
+                <div style={{ position: 'relative', height: thH, width: Math.round(thH * (pw / Math.max(1, ph))), flexShrink: 0, border: '1px solid #d5d9de', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', background: '#fff' }}>
+                  <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', height: '100%', display: 'block' }} />
+                  {pm.cells.map((c) => { const [x, y, w, h] = c.rect; const on = c.id === selCell; const n = ids.indexOf(c.id) + 1; return (
+                    <div key={c.id} onClick={() => selectCell(c.id)} data-testid={`focus-cell-${c.id}`} title={`칸 ${n} 고르기`}
+                      style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: 'pointer', outline: on ? '2px solid #F28C28' : 'none', background: on ? 'rgba(242,140,40,0.14)' : 'transparent' }} />); })}
+                </div>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)' }}>📄 칸</span>
+                  {ids.length > 1 && <button style={{ ...btn(false, false), padding: '4px 8px', fontSize: 12 }} onClick={() => go(-1)} title="이전 칸" data-testid="focus-prev">◀</button>}
+                  {ids.map((id, i) => (
+                    <button key={id} style={{ ...btn(id === selCell, false), padding: '4px 10px', fontSize: 12 }} onClick={() => selectCell(id)} data-testid={`focus-chip-${id}`} title={has(id) ? `칸 ${i + 1}의 그림 고치기` : `칸 ${i + 1}은 비어 있습니다`}>{i + 1}{has(id) ? ' ●' : ''}</button>
+                  ))}
+                  {ids.length > 1 && <button style={{ ...btn(false, false), padding: '4px 8px', fontSize: 12 }} onClick={() => go(1)} title="다음 칸" data-testid="focus-next">▶</button>}
+                </div>
+                <span style={{ flex: '1 1 200px', fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>편집 집중 중입니다. 칸 크기·페이지 제목은 “⤡ 나란히 보기로”(F)에서 고칩니다. 띠의 그림은 지금 고치는 모습이 바로 반영됩니다.</span>
+              </div>
+            );
+          })()}
+          {focusOn && !result && (
+            <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 10, color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7 }} data-testid="focus-empty">
+              칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 위 <b>🖼️ 내 이미지 넣기</b>로 채우세요(이미지를 이 화면에 끌어다 놓아도 됩니다).
+            </div>
+          )}
           {pageOn && result && (
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
-              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {sideOn ? '오른쪽' : '아래'} “📄 페이지 배치”에서 다른 칸을 누르면 그 칸의 그림으로 바뀝니다.
+              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {focusOn ? '위쪽 띠에서 다른 칸을 누르면(◀ ▶ 도 됩니다)' : `${sideOn ? '오른쪽' : '아래'} “📄 페이지 배치”에서 다른 칸을 누르면`} 그 칸의 그림으로 바뀝니다.
             </p>
           )}
           {result?.aiEdit && result.type === 'sketch' && (
@@ -1226,12 +1307,19 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             </div>
           )}
           </div>
-          {pageOn && pageModel?.preview && (
+          {sideOn && (
+            <div role="separator" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={85} aria-valuenow={Math.round(splitEff * 100)} tabIndex={0} data-testid="splitter"
+              title="끌어서 편집기와 페이지의 폭을 바꿉니다(더블클릭: 처음 비율, 방향키: 조금씩)" onPointerDown={onSplitDown} onDoubleClick={() => setSplitR(SPLIT_DEFAULT)} onKeyDown={onSplitKey}
+              style={{ alignSelf: 'stretch', cursor: 'col-resize', touchAction: 'none', display: 'flex', justifyContent: 'center', outline: 'none' }}>
+              <div style={{ position: 'sticky', top: '38vh', alignSelf: 'flex-start', width: 6, height: 54, borderRadius: 3, background: '#cbd5e1', boxShadow: '0 0 0 1px #94a3b8 inset' }} />
+            </div>
+          )}
+          {pageOn && pageModel?.preview && !focusOn && (
             <div style={sideOn ? { position: 'sticky', top: 0, minWidth: 0, marginBottom: 14 } : { marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
               <style>{'.pg-slot{outline:1.5px dashed transparent;border-radius:2px}.pg-slot:hover{outline-color:#F28C28;background:rgba(242,140,40,.10)}.pg-slot[data-has="0"]:hover::after{content:attr(data-hint);position:absolute;left:5px;top:50%;transform:translateY(-50%);font:700 12px sans-serif;color:#C2410C;white-space:nowrap;pointer-events:none}'}</style>
               {result && <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>📄 페이지 배치 · 칸 크기 조절</div>}
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
-                <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
+                <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
                   const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h;
                   const ov = live ? resolveCells('custom', pm.box, Number(pg.gap) || 0, live.cells).map((c) => ({ id: c.id, rect: [c.x, c.y, c.w, c.h] })) : pm.cells.map((c) => ({ id: c.id, rect: c.rect }));

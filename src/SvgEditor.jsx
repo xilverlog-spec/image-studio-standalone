@@ -5,6 +5,7 @@ import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText'
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
 import ImageCropDialog from './ImageCropDialog';
+import ZoomView from './ZoomView';
 
 // 평면 다이어그램·배치 개념도·매스 과정도·버블도·층별 조닝도 같은 '구조형 결과'의 편집기.
 // 그림 속 도형을 하나씩 눌러 고른 뒤 색·위치(끌기)·곡선(마디 끌기)·선 종류·굵기·투명도를 고친다. 글자는 더블클릭으로 그 자리에서 고친다.
@@ -474,7 +475,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="svg-editor">
       <div style={{ flex: '1 1 480px', minWidth: 360 }}>
-        <div ref={hostRef} onPointerDown={onDown} onDoubleClick={onDbl} style={{ position: 'relative', width: '100%', maxWidth: maxWidth || undefined, margin: '0 auto', border: '1px solid var(--border-color)', borderRadius: 8, background: '#fff' }} data-testid="inline-svg">
+        <ZoomView testid="sv-zoom" baseWidth={maxWidth || undefined}>
+        <div ref={hostRef} onPointerDown={onDown} onDoubleClick={onDbl} style={{ position: 'relative', width: '100%', border: '1px solid var(--border-color)', borderRadius: 8, background: '#fff' }} data-testid="inline-svg">
           <style>{'.sv-ed [data-eid]{cursor:move}.sv-ed text[data-editable]{cursor:text}.sv-ed [data-eid]:not([data-hit]):hover{filter:drop-shadow(0 0 2px #F28C28)}.sv-ed [data-hit]{cursor:move}'}</style>
           <div ref={bodyRef} className="sv-ed" dangerouslySetInnerHTML={html} data-testid="sv-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
           {marq && hostRef.current && (() => { const hr = hostRef.current.getBoundingClientRect(); return (
@@ -503,6 +505,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               onCommit={(v) => { const fl = ed.field; const sid = ed.shapeId; setEd(null); if (v === fl.value) return; if (sid) { const sh = shapes.find((q) => q.id === sid); commit(editUpdateShape(Eref.current, sid, sh && sh.kind === 'raw' ? { el: rawSetText(sh, v).el } : { text: v })); } else onTextEdit?.(fl, v); }} onCancel={() => setEd(null)} />
           )}
         </div>
+        </ZoomView>
         <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">✏️ 도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두). 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
       </div>
 
