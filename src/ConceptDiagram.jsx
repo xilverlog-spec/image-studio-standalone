@@ -8,6 +8,7 @@ import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
+import { InlineSvgView } from './InlineText';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -211,6 +212,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 고른 칸의 결과(result)가 바뀌면 그 칸에 저장한다. 칸을 바꾸면 그 칸의 결과를 불러온다.
   // ── 페이지 되돌리기·다시 하기(Ctrl+Z / Ctrl+Y): 칸 배치와 칸 안의 그림 변화를 기록한다(그림 안 요소 편집은 손스케치 편집기가 따로 기록) ──
   const histRef = useRef({ past: [], future: [], tag: '', t: 0 });
+  const textHist = useRef({ past: [], future: [] }); // 그림 위 글자 고치기(손스케치가 아닌 결과)의 되돌리기 기록 — 같은 결과(ver)일 때만 쓴다
   const rootRef = useRef(null); const ctxRef = useRef('sketch'); const cellClip = useRef(null); const dragCancelRef = useRef(null); const keyRef = useRef(null); // ctxRef: 마지막에 만진 곳('page' 페이지 미리보기·설정 / 'sketch' 손스케치 편집기) — 같은 키를 두 곳이 같이 받지 않게 한다
   const snapNow = () => ({ layoutId: pg.layoutId, custom: pg.custom, basePreset: pg.basePreset, cells, selCell });
   const pushHistory = (tag = '') => { // 같은 종류의 연속 동작(방향키·숫자 입력)은 0.8초 안에 이어지면 한 번으로 묶는다
@@ -576,9 +578,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         if (job.status === 'done') break;
         if (job.status === 'error') throw new Error(job.error || 'AI 이미지 편집에 실패했습니다.');
       }
-      const r = job.result; const img = await urlToJpegDataUrl(r.image, 2000);
-      setViewMode('edit'); setResult({ type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }), ver: Date.now() });
-      addToast?.('success', '다이어그램 생성 완료', `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
+      const r = job.result; let spec = null; let layered = false;
+      if (r.layers) { // 화살표는 편집 가능한 선으로, 구역 색은 색 바꿀 수 있는 층으로 받는다. 어느 하나라도 못 받으면 합성된 그림 한 장으로 돌아간다
+        try {
+          const L = r.layers; const base = await urlToJpegDataUrl(L.base, 2000); const k = base.w / (r.width || base.w);
+          const zones = await Promise.all((L.zones || []).map(async (z) => ({ color: z.color, label: z.label, blend: z.blend, maskUrl: await urlToDataUrl(z.mask) })));
+          const arrows = (L.arrows || []).map((a) => ({ ...a, pts: a.pts.map((p) => [p[0] * k, p[1] * k]), width: a.width * k }));
+          spec = makeEditSpec({ imageUrl: base.url, w: base.w, h: base.h, title: r.title || '', legend: r.legend, layers: { arrows, zones } }); layered = true;
+        } catch (e) { console.warn('층 불러오기 실패, 합성 그림으로 대체', e); spec = null; }
+      }
+      if (!spec) { const img = await urlToJpegDataUrl(r.image, 2000); spec = makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }); }
+      setViewMode('edit'); setResult({ type: 'sketch', spec, ver: Date.now() });
+      addToast?.('success', '다이어그램 생성 완료', layered ? `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 화살표(${spec.winds.length}개)는 선으로, 구역 색(${spec.zones.length}개)은 층으로 나눠 색·위치·곡선을 고칠 수 있습니다` : `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
       if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
       if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
     } catch (e) { addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`); }
@@ -606,7 +617,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const next = readMode ? await generateFromRead(readNow) : await generateFromText();
       renderSpec(next.type, next.spec, next.baseImage ? { baseImage: next.baseImage } : undefined); // 그릴 수 있는지 먼저 검증
       setResult(next.ver ? next : { ...next, ver: Date.now() });
-      if (next.type === 'sketch') setViewMode('edit');
+      setViewMode('edit');
       const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : (DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램');
       addToast?.('success', '다이어그램 생성 완료', `${what}${styleImage ? ' + 참고 이미지 스타일' : ''}`);
     } catch (e) {
@@ -624,6 +635,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     im.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(im, 0, 0, w, h); URL.revokeObjectURL(url); resolve(c.toDataURL('image/png').split(',').pop()); };
     im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('초안을 이미지로 바꾸지 못했습니다.')); }; im.src = url;
   });
+  const urlToDataUrl = async (url) => {
+    const blob = await (await fetch(url)).blob();
+    return new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = () => reject(new Error('이미지를 읽지 못했습니다.')); fr.readAsDataURL(blob); });
+  };
   const urlToJpegDataUrl = async (url, maxLong = 1600) => {
     const blob = await (await fetch(url)).blob(); const u = URL.createObjectURL(blob);
     try {
@@ -700,6 +715,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod && e.key === 'Enter') { if (canGenerate) { e.preventDefault(); generate(); } return; }
     if (mod && k === 's') { if (outRes?.svg) { e.preventDefault(); if (e.shiftKey) savePng(); else saveSvg(); } return; }
+    if (!typing && mod && (k === 'z' || k === 'y') && result && result.type !== 'sketch' && (!pageOn || viewMode === 'edit')) { // 그림 위에서 고친 글자 되돌리기·다시 하기
+      const h = textHist.current; const redo = k === 'y' || e.shiftKey; const src = redo ? h.future : h.past; const top = src[src.length - 1];
+      if (top && top.ver === result.ver) { e.preventDefault(); src.pop(); (redo ? h.past : h.future).push({ ver: result.ver, spec: result.spec }); setResult((r) => ({ ...r, spec: top.spec })); }
+      return;
+    }
     if (!pageOn || ctxRef.current !== 'page' || typing) return;
     if (e.key === 'Escape') { if (dragCancelRef.current) { e.preventDefault(); dragCancelRef.current(); } return; }
     if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) pageRedo(); else pageUndo(); return; }
@@ -975,22 +995,22 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
-              {result?.type === 'sketch' && (
+              {result && (
                 <>
                   <button style={btn(viewMode === 'page', false)} onClick={() => setViewMode('page')} data-testid="view-page">📄 페이지 배치 · 칸 크기 조절</button>
-                  <button style={btn(viewMode === 'edit', false)} onClick={() => setViewMode('edit')} data-testid="view-edit">✏️ 선택한 칸 편집 (도형·화살표·글자)</button>
+                  <button style={btn(viewMode === 'edit', false)} onClick={() => setViewMode('edit')} data-testid="view-edit">✏️ 선택한 칸 편집 (글자를 눌러 고치기{result?.type === 'sketch' ? '·도형·화살표' : ''})</button>
                 </>
               )}
               <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>📐 페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
-          {pageOn && viewMode === 'edit' && result?.type === 'sketch' && (
+          {pageOn && viewMode === 'edit' && result && (
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint">
               ✏️ 칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 고치는 중입니다. 위의 “📄 페이지 배치”로 돌아가면 칸 크기를 조절할 수 있습니다.
             </p>
           )}
-          {pageOn && pageModel?.preview && (viewMode === 'page' || result?.type !== 'sketch') && (
+          {pageOn && pageModel?.preview && (viewMode === 'page' || !result) && (
             <div style={{ marginBottom: 14 }} data-testid="page-preview">
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
@@ -1022,7 +1042,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               <SketchEditor key={`${selCell}:${result.ver}`} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
             </div>
           )}
-          {!pageOn && result?.type !== 'sketch' && rendered?.svg && <img src={previewSrc} alt="다이어그램 미리보기" style={{ width: '100%', maxWidth: rendered.width, display: 'block', margin: '0 auto' }} />}
+          {result?.type !== 'sketch' && rendered?.svg && (!pageOn || viewMode === 'edit') && (
+            <div data-testid="inline-view">
+              <InlineSvgView svg={rendered.svg} fields={fields} maxWidth={rendered.width}
+                onEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
+                onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">✏️ 그림 속 글자를 <b>클릭</b>하면(마우스를 올리면 주황색) 그 자리에서 바로 고칠 수 있습니다. Enter 확정 · Esc 취소. 강조 글자는 {'{ }'} 로 감쌉니다.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

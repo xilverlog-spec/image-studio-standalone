@@ -10,13 +10,15 @@ const spec = path.resolve(here, '../../src/conceptDiagram/spec.js');
 const sketch = path.resolve(here, '../../src/conceptDiagram/sketch.js');
 const subjectJs = path.resolve(here, '../../src/conceptDiagram/subject.js');
 const pageJs = path.resolve(here, '../../src/conceptDiagram/page.js');
+const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
-export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
-export { sketchContentTop } from ${fwd(sketch)};`);
+export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { sketchContentTop } from ${fwd(sketch)};
+export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -348,6 +350,61 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const sp0 = m.makeEditSpec({ imageUrl: url, w: 800, h: 600, legend: [] });
   expect(m.renderSketch(sp0).svg.includes('<image') && m.normalizeSketch(sp0).memos.length === 0, '범례가 없어도 그려짐');
 }
+// 도면 위에 표시(AI 이미지 편집) 결과를 편집 가능한 층으로: 화살표 → 선(winds), 구역 색 → 곱하기 층(zones)
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('이미지 편집 층: ' + msg); else ok++; };
+  const url = 'data:image/jpeg;base64,/9j/AAAA'; const mk = 'data:image/png;base64,iVBORw0KGgo=';
+  const layers = { arrows: [{ pts: [[100, 300], [400, 280], [800, 300]], width: 4, color: '#F20B09', head: 'end', dash: 'dashed', smooth: true }, { pts: [[100, 500], [700, 500]], width: 6, color: '#2870E9', head: 'both', dash: 'solid', smooth: true }, { pts: [[1, 1]], width: 3, color: '#000000' }],
+    zones: [{ color: '#BAD6B0', label: '녹지', maskUrl: mk }, { color: '#A6CDF3', label: '업무', maskUrl: mk, blend: 'color' }, { color: 'bad', label: '무시', maskUrl: mk }, { color: '#F9DF84', label: '마스크없음' }] };
+  const legend = [{ color: '#F20B09', kind: 'flow', label: '주 동선' }, { color: '#BAD6B0', kind: 'zone', label: '녹지' }, { color: '#A6CDF3', kind: 'zone', label: '업무' }];
+  const sp = m.makeEditSpec({ imageUrl: url, w: 961, h: 600, title: 'T', legend, layers });
+  const n = m.normalizeSketch(sp);
+  expect(n.winds.length === 2 && n.zones.length === 2, `화살표 2개(점이 모자란 것 제외)·구역 층 2개(색이 잘못되거나 마스크 없는 것 제외) (실제 ${n.winds.length}/${n.zones.length})`);
+  const w0 = n.winds[0]; const k = 100 / 961;
+  expect(w0.shape === 'read' && w0.bend === 1 && w0.head === 'end' && w0.dash === 'dashed' && w0.form === 'line' && Math.abs(w0.pts[0][0] - 100 * k) < 0.06 && Math.abs(w0.pts[2][0] - 800 * k) < 0.06, '화살표 좌표가 그림 화소 → 다이어그램 좌표(0~100)로 바뀌고 모양은 읽은 그대로(read)');
+  expect(w0.width >= 1.6 && w0.width <= 14 && n.winds[1].width > w0.width && n.winds[1].head === 'both', '굵기가 화면 좌표로 바뀌고 굵을수록 굵게, 양쪽 화살촉 유지');
+  expect(n.zones[0].blend === 'multiply' && n.zones[1].blend === 'color' && n.zones[0].opacity === 1, '구역 층: 선 도면은 곱하기, 사진·3D 는 color 혼합');
+  expect(n.memos.find((q) => q.text.includes('녹지')).zone === n.zones[0].id && !n.memos.find((q) => q.text.includes('주 동선')).zone, '구역 범례 글자는 구역 층에 연결, 동선 범례는 연결 없음');
+  const r = m.renderSketch(sp).svg;
+  expect(r.includes('data-zone="z1"') && r.includes('mix-blend-mode:multiply') && r.includes('mix-blend-mode:color') && r.includes('<mask id="zm_z1"') && r.includes('mask="url(#zm_z1)"') && r.includes('marker-end'), '렌더: 구역 층(마스크+곱하기/color)과 화살촉 표시');
+  expect(!m.renderSketch({ ...sp, zones: sp.zones.map((z) => ({ ...z, hidden: true })) }).svg.includes('data-zone='), '숨긴 구역 층은 그려지지 않음');
+  const filled = m.renderSketch(sp).svg.match(/<marker id="aw_w1"[^>]*>[\s\S]*?<\/marker>/)[0];
+  expect(filled.includes('M0 0L10 5L0 10Z') && filled.includes('markerWidth="4"'), '이미지 편집 화살촉은 채운 삼각형');
+  // 구역 층 고치기: 색·이름이 연결된 범례 글자에 따라감
+  const s2 = m.sketchSetZone(n, 'z1', { color: '#F6B8B3', label: '공용' });
+  const mm = s2.memos.find((q) => q.zone === 'z1');
+  expect(s2.zones[0].color === '#F6B8B3' && mm.color === '#F6B8B3' && mm.text === '■ 공용' && s2.memos.find((q) => q.text.includes('주 동선')).color === '#F20B09', '구역 색·이름을 바꾸면 연결된 범례 글자만 따라 바뀜');
+  expect(m.sketchSetZone(n, 'nope', { color: '#000000' }) === n && m.sketchSetZone(n, 'z2', { hidden: true }).zones[1].hidden === true && m.sketchSetZone(n, 'z2', { opacity: 0.4 }).zones[1].opacity === 0.4, '없는 층은 그대로, 숨김·농도 변경');
+  // 읽은 그대로(read) 선의 점 편집
+  const w = n.winds[0]; const mid = w.pts[1];
+  const a = m.sketchSetPt(n, w.id, 1, [mid[0] + 5, mid[1] - 3]); const p1 = a.winds[0].pts[1];
+  expect(Math.abs(p1[0] - (mid[0] + 5)) < 0.06 && Math.abs(p1[1] - (mid[1] - 3)) < 0.06 && a.winds[0].pts[0][0] === w.pts[0][0], '중간 점만 옮겨짐(끝점은 그대로)');
+  expect(m.sketchSetPt(n, w.id, 0, [1, 1]) === n && m.sketchSetPt(n, w.id, 2, [1, 1]) === n, '끝점 번호는 이 함수로 옮기지 않음');
+  const bent = { ...n, winds: n.winds.map((q, i) => (i === 0 ? { ...q, bend: 0.5 } : q)) };
+  const b2 = m.sketchSetPt(bent, w.id, 1, [mid[0], mid[1] + 4]); const c0 = [(w.pts[0][0] + w.pts[2][0]) / 2, (w.pts[0][1] + w.pts[2][1]) / 2];
+  expect(Math.abs((c0[1] + (b2.winds[0].pts[1][1] - c0[1]) * 0.5) - (mid[1] + 4)) < 0.1, '곡선 세기(bend)가 1 이 아니어도 화면에 보이는 위치로 옮겨짐(거꾸로 계산)');
+  const ad = m.sketchAddPt(n, w.id); const dl = m.sketchDelPt(ad, w.id);
+  expect(ad.winds[0].pts.length === w.pts.length + 1 && dl.winds[0].pts.length === w.pts.length && m.sketchDelPt(m.sketchDelPt(m.sketchDelPt(n, w.id), w.id), w.id).winds[0].pts.length === 2, '점 추가(+1)·점 빼기(-1), 두 점 아래로는 안 줄어듦');
+  expect(m.sketchAddPt(m.sketchUpdate(n, w.id, { shape: 'arc' }), w.id).winds[0].pts.length === w.pts.length, "'read' 모양이 아니면 점 추가는 무시");
+  // 편집기에서 선택한 read 화살표에는 중간 점 조절 손잡이(pt:i)가 나옴
+  const ri = m.renderSketch(n, { interactive: true, selected: w.id }).svg;
+  expect(ri.includes('data-handle="pt:1"') && !ri.includes('data-handle="pt:0"') && !ri.includes('data-handle="pt:2"'), '선택한 읽은-모양 화살표의 중간 점마다 손잡이(끝점 제외)');
+  // 정규화·저장 왕복에서도 층이 유지됨
+  const rt = m.normalizeSketch(JSON.parse(JSON.stringify(n)));
+  expect(rt.zones.length === 2 && rt.zones[1].blend === 'color' && rt.memos.some((q) => q.zone === 'z1'), '정규화·직렬화 왕복에서 층·연결이 유지됨');
+  // 층이 없는 예전 결과(합성 그림 한 장)도 그대로 동작
+  const old = m.makeEditSpec({ imageUrl: url, w: 800, h: 600, legend });
+  expect(m.normalizeSketch(old).zones.length === 0 && m.normalizeSketch(old).winds.length === 0 && m.renderSketch(old).svg.includes('<image') && !m.renderSketch(old).svg.includes('data-zone='), '층이 없으면 예전처럼 그림 한 장 + 글자 범례');
+  // 여러 칸 페이지: 칸마다 id 접두어가 붙어 같은 id 가 충돌하지 않음
+  const sc = m.scopeIds('<defs><marker id="aw_w1"/><mask id="zm_z1"/></defs><path marker-end="url(#aw_w1)" mask="url(#zm_z1)" data-eid="w1"/><use href="#aw_w1"/>', 'c1_');
+  expect(sc.includes('id="c1_aw_w1"') && sc.includes('url(#c1_aw_w1)') && sc.includes('url(#c1_zm_z1)') && sc.includes('href="#c1_aw_w1"') && sc.includes('data-eid="w1"'), 'scopeIds: id·url(#)·href 에 접두어, data-eid 는 그대로');
+  const lay = { svg: r, width: 1200, height: 760 };
+  const pg = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: lay }, { id: 'c2', render: lay }], { layoutId: '2x1' });
+  const ids = [...pg.svg.matchAll(/\sid="([^"]+)"/g)].map((q) => q[1]);
+  expect(ids.length > 0 && new Set(ids).size === ids.length && pg.svg.includes('c0_zm_z1') && pg.svg.includes('c1_zm_z1'), '같은 그림을 두 칸에 넣어도 id 가 겹치지 않음(마스크·화살촉이 서로 덮어쓰지 않음)');
+  const one = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: lay }], { layoutId: '1x1' });
+  expect(one.svg.includes('id="zm_z1"') && !one.svg.includes('c0_zm_z1'), '한 칸 페이지는 id 를 바꾸지 않음');
+}
 // 출력 크기·글자 위계(page.js): 추천 pt, 크기 맞춤, 글꼴 바꿈, 경고
 {
   const expect = (cond, msg) => { if (!cond) fails.push('출력 크기: ' + msg); else ok++; };
@@ -410,6 +467,18 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     const tiny = m.composePage({ w: 100, h: 70, medium: 'print' }, [{ id: 'c1', render: lay, caption: '' }], { layoutId: '1x1', fit: 'both' });
     expect(tiny.cells[0].textScale >= 0.3 && tiny.cells[0].textScale <= 1.3, '글자 배율은 0.3~1.3 안');
   }
+  // 그림 위 글자를 눌러 고치기: 글자 매칭·손스케치 글자 자리 목록·적용
+  expect(m.normText('  누구나 함께 즐기는 {플로우 허브}  ') === '누구나 함께 즐기는 플로우 허브' && m.normText('EXTRUSION') === m.normText('extrusion'), '글자 비교: {} 제거·공백 정리·대소문자 무시');
+  const lst = [{ value: '거실', n: 1 }, { value: '주방', n: 2 }, { value: '거실', n: 3 }];
+  expect(m.pickByText(lst, '거실', 0).n === 1 && m.pickByText(lst, '거실', 1).n === 3 && m.pickByText(lst, '거실', 9).n === 3 && m.pickByText(lst, '없음') === null && m.pickByText(lst, '  ') === null, '같은 글자가 여럿이면 화면에서 몇 번째인지로 고름, 없으면 null');
+  expect(m.responsiveSvg('<svg xmlns="x" width="1200" height="760" viewBox="0 0 1200 760">').includes('width="100%"') && !m.responsiveSvg('<svg width="420mm" height="297mm" viewBox="0 0 420 297">').includes('420mm') && m.responsiveSvg('<svg width="420mm" height="297mm" viewBox="0 0 420 297">').includes('viewBox="0 0 420 297"'), 'SVG 를 화면 폭에 맞게(px·mm 둘 다, viewBox 유지)');
+  const ns = m.normalizeSketch({ title: '제목', subtitle: '부제', frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [0, 0, 40, 40], name: '거실', desc: '설명 글' }], winds: [{ id: 'w1', pts: [[0, 0], [10, 10]], inLabel: '들어옴', outLabel: '' }], memos: [{ id: 'm1', x: 10, y: 10, text: '메모 글자' }], textBlock: { title: '큰 제목' + String.fromCharCode(10) + '두 줄', subs: ['부제 하나', '부제 둘'] }, notes: ['핵심 메시지'], showLegend: true, legend: { wind: '기류', core: '코어', opening: '창' } });
+  const tg = m.sketchTextTargets(ns); const vals = tg.map((x) => x.value);
+  expect(['제목', '부제', '거실', '설명 글', '들어옴', '메모 글자', '큰 제목' + String.fromCharCode(10) + '두 줄', '부제 하나', '부제 둘', '핵심 메시지', '기류', '코어', '창'].every((v) => vals.includes(v)) && tg.find((x) => x.value.startsWith('큰 제목')).multiline === true && !vals.includes(''), '손스케치의 고칠 수 있는 글자 자리가 모두 목록에 있음(제목·도형 이름·화살표 라벨·메모·문구 블록·핵심 메시지·범례)');
+  expect(!m.sketchTextTargets({ ...ns, showLegend: false }).some((x) => x.value === '기류'), '범례가 안 보이면 범례 글자는 목록에 없음');
+  const ap = (v, nv) => m.sketchApplyText(ns, tg.find((x) => x.value === v).apply, nv);
+  expect(ap('제목', '새 제목').global.title === '새 제목' && ap('거실', '침실').update.id === 'b1' && ap('거실', '침실').update.patch.name === '침실' && ap('메모 글자', 'x').update.patch.text === 'x' && ap('들어옴', 'y').update.patch.inLabel === 'y', '적용 조각: 전체 값 / 요소 갱신(도형 이름·메모·화살표 라벨)');
+  expect(ap('부제 둘', '바뀐 부제').global.textBlock.subs.join('|') === '부제 하나|바뀐 부제' && ap('큰 제목' + String.fromCharCode(10) + '두 줄', '한 줄').global.textBlock.title === '한 줄' && ap('핵심 메시지', '새 메시지').global.notes[0] === '새 메시지' && ap('기류', '바람').global.legend.wind === '바람' && ap('기류', '바람').global.legend.core === '코어', '적용 조각: 문구 블록·핵심 메시지·범례(다른 값은 유지)');
   // 위계가 거꾸로 되지 않게: 아주 작은 용지의 추천값, 직접 넣은 거꾸로 값은 경고
   for (const [w, h, md] of [[42, 29.7, 'print'], [50, 30, 'print'], [100, 70, 'print'], [60, 40, 'screen']]) { const t = m.recommendType({ w, h, medium: md }); expect(t.title > t.sub && t.sub > t.label && t.label > t.small, `작은 용지(${w}x${h}) 추천값도 제목>소제목>본문>작은 글자 (${t.title}/${t.sub}/${t.label}/${t.small})`); }
   const inv = m.composePage({ w: 420, h: 297, medium: 'print' }, [], { title: '페이지 제목', subtitle: '페이지 소제목', sizes: { title: 6, sub: 40 } });

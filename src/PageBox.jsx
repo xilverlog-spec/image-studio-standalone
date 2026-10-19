@@ -18,14 +18,20 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
   const cur = info?.cells?.find((c) => c.id === selCell);
   const rows = [['title', '제목', '페이지 제목'], ['sub', '소제목', '부제 · 칸 제목'], ['label', '본문', '다이어그램 속 글자(목표)'], ['small', '작은 글자', '범례·각주']];
   return (
-    <details open={on} style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.5)' }} data-testid="page-box">
+    <details open style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.5)' }} data-testid="page-box">
       <summary style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-secondary)', cursor: 'pointer' }}>📐 출력 크기 · 칸 나누기 · 글자 위계 (선택)</summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
         <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary)' }}>
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} data-testid="page-on" />정해진 크기의 페이지에 맞춰 만들기 (켜면 저장도 이 크기)
         </label>
-        {on && (
-          <>
+        {!on && (
+          <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '6px 8px' }} data-testid="page-off-note">
+            지금은 <b>꺼져 있어서</b> 아래 설정은 아직 적용되지 않습니다. 켜면 오른쪽에 <b>페이지 미리보기</b>가 생기고 저장도 이 크기가 됩니다. 켜기 전에 크기·글자·여백을 미리 정해 두면 기억됩니다.
+            <button style={{ ...small(true), marginLeft: 8 }} onClick={() => setOn(true)} data-testid="page-on-btn">지금 켜기</button>
+          </p>
+        )}
+        {(
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: on ? 1 : 0.6 }} data-testid="page-settings">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               <label style={{ ...lab, gridColumn: '1 / 3' }}>용지·화면 크기
                 <select style={inp} value={pg.preset} onChange={(e) => pickPreset(e.target.value)} data-testid="page-preset">{PAGE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
@@ -148,22 +154,12 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
               <label style={{ ...lab, gridColumn: '1 / 3' }}>페이지 소제목 (선택)<input style={inp} value={pg.subtitle} onChange={(e) => set({ subtitle: e.target.value })} data-testid="page-subtitle" /></label>
             </div>
 
-            <details data-testid="page-keys">
-              <summary style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)', cursor: 'pointer' }}>⌨ 단축키</summary>
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 10px', fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
-                {[['Ctrl+Z / Ctrl+Y', '페이지 되돌리기 / 다시 하기 (칸 끌기·숫자·나누기·삭제·비우기·붙여넣기)'], ['Delete', '고른 칸 비우기 (Shift+Delete: 칸 삭제)'], ['← ↑ → ↓', '고른 칸 이동 1mm (Shift: 10mm), Alt+방향키: 크기 1mm (Shift: 10mm)'], ['Tab / Shift+Tab', '다음 / 이전 칸 고르기'], ['Esc', '끌던 동작 취소'], ['Ctrl+C / Ctrl+V', '칸 내용 복사 / 붙여넣기'], ['Ctrl+D', '칸 내용을 빈 칸에 복제'], ['Ctrl+S / Ctrl+Shift+S', 'SVG 저장 / PNG 저장'], ['Ctrl+Enter', '다이어그램 만들기 (설명 입력 중에도)']].map(([k, d]) => (
-                  <React.Fragment key={k}><b style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{k}</b><span style={{ color: 'var(--text-tertiary, #64748b)' }}>{d}</span></React.Fragment>
-                ))}
-              </div>
-              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>페이지 단축키는 페이지 미리보기나 이 설정 상자를 마지막으로 눌렀을 때 적용되고, 손스케치 편집기를 눌렀을 때는 편집기의 단축키(요소 Ctrl+Z·Delete·방향키)가 적용됩니다. 입력칸에 글자를 입력하는 중에는 Ctrl+Enter·Ctrl+S 외에는 무시됩니다.</span>
-            </details>
-
             {info?.warnings?.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="page-warnings">
                 {info.warnings.map((w, i) => <span key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: w.level === 'warn' ? '#B91C1C' : '#475569' }}>{w.level === 'warn' ? '⚠️' : 'ℹ️'} {w.text}</span>)}
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </details>

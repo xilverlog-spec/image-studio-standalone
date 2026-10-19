@@ -167,6 +167,65 @@ check(de._parse_json(chr(96) * 3 + 'json' + chr(10) + '{"instruction": "a", "tit
 check(de.build_workflow("x.png", "p", 1024, 25, 1)["6"]["inputs"]["images.image_1"] == ["5", 0], "Qwen 작업 흐름의 입력 연결")
 check("조닝 다이어그램" in de.fallback_instruction("조닝 다이어그램") and "Do NOT add any new text" in de.fallback_instruction(""), "대체 지시문에 사용자 요청과 글자 보존 문구가 없음")
 
+# 결과를 편집 가능한 층으로 나누기: 화살표 → 벡터 선, 구역 색 → 농도 마스크 + 기준 색, 바탕에는 선·글자만 남는다
+import numpy as _np  # noqa: E402
+from services import diagram_vector as dv  # noqa: E402
+
+_q2 = _q.copy()
+_q2d = ImageDraw.Draw(_q2)
+for _x in range(236, 380, 24):                                      # 오른쪽 방에 초록 파선 + 삼각 화살촉
+    _q2d.line([_x, 120, _x + 14, 120], fill=(20, 170, 40), width=7)
+_q2d.polygon([(372, 106), (372, 134), (402, 120)], fill=(20, 170, 40))
+_pl = de.tint_parts(_o, _q)
+check(set(_pl) >= {"O", "Qi", "Of", "Qf", "T", "core", "arrow"} and _pl["core"].shape == (260, 400) and (_pl["arrow"].sum() > _pl["core"].sum()), "tint_parts 가 화살표 마스크(core·부풀린 arrow)와 곱하기 판을 내놓지 않음")
+_c0, _a0 = de.composite(_o, _q)
+check(_np.array_equal(_a0, _pl["arrow"]), "composite 가 tint_parts 의 화살표 마스크와 달라짐(리팩터링 회귀)")
+_lg = [{"color": "#C8E1FA", "kind": "zone", "label": "왼쪽 방"}, {"color": "#F01414", "kind": "flow", "label": "주 동선"}, {"color": "#1450F0", "kind": "flow", "label": "보조 동선"}]
+_L = dv.build_layers(_pl, "overlay", _lg)
+check(_L is not None and len(_L["arrows"]) == 2 and len(_L["zones"]) == 1, f"화살표 2개·구역 1개로 나눠야 함 {None if _L is None else (len(_L['arrows']), len(_L['zones']))}")
+_ra = next(a for a in _L["arrows"] if a["band"] == "red")
+_rx = sorted(_ra["pts"], key=lambda p: p[0])
+check(abs(_rx[0][1] - 74) < 6 and abs(_rx[-1][1] - 74) < 6 and _rx[0][0] < 60 and _rx[-1][0] > 150 and len(_ra["pts"]) == 2, f"빨간 화살표가 가로 직선(두 점)으로 읽히지 않음 {_ra['pts']}")
+check(_ra["color"].startswith("#F") and _ra["width"] >= 5 and _ra["dash"] == "solid" and _ra["head"] == "none", f"빨간 화살표의 색·굵기·실선·화살촉 없음 판정 {_ra}")
+_ba = next(a for a in _L["arrows"] if a["band"] == "blue")
+_bx = sorted(_ba["pts"], key=lambda p: p[0])
+check(_bx[0][0] > 200 and _bx[-1][0] > 330 and abs(_bx[0][1] - 185) < 8, f"파란 화살표 위치 {_ba['pts']}")
+_zone = _L["zones"][0]
+_mk = _np.asarray(_zone["mask"].resize((400, 260)))
+check(_mk[130, 100] > 200 and _mk[130, 300] < 10 and _mk[10, 10] < 10, f"구역 마스크가 칠한 방(왼쪽)만 덮어야 함 {_mk[130, 100]}/{_mk[130, 300]}")
+_bs = _L["base"].load()
+check(all(v > 235 for v in _bs[60, 60]) and max(_bs[20, 100]) < 60 and all(v > 235 for v in _bs[100, 50]), f"바탕에는 채움 색이 없고 벽 선은 남아야 함 {_bs[60, 60]} {_bs[20, 100]}")
+_ar_x, _ar_y = int(_rx[0][0] + 20), 74
+check(not (_bs[_ar_x, _ar_y][0] > 200 and _bs[_ar_x, _ar_y][1] < 80), f"바탕에 화살표 색이 남음 {_bs[_ar_x, _ar_y]}")
+# 층을 다시 합치면(바탕 × 곱하기) 합성 그림과 거의 같다(화살표 자리 제외)
+_rec = _np.asarray(_L["base"]).astype(_np.float32) / 255
+_cz = _np.array([int(_zone["color"][i:i + 2], 16) for i in (1, 3, 5)], _np.float32) / 255
+_rec = _rec * (1 - (_mk.astype(_np.float32) / 255)[..., None] * (1 - _cz))
+_diff = _np.abs(_rec * 255 - _np.asarray(_c0).astype(_np.float32)).mean(axis=2)
+_far = ~__import__("scipy.ndimage", fromlist=["x"]).binary_dilation(_pl["arrow"], iterations=6)
+check(float(_diff[_far].mean()) < 6, f"바탕×구역 층이 합성 그림과 다름(평균 {float(_diff[_far].mean()):.1f})")
+# 파선 + 삼각 화살촉은 화살촉 있는 파선으로
+_pl2 = de.tint_parts(_o, _q2)
+_L2 = dv.build_layers(_pl2, "overlay", _lg + [{"color": "#14AA28", "kind": "flow", "label": "초록"}])
+_ga = [a for a in _L2["arrows"] if a["band"] == "green"]
+check(len(_ga) == 1 and _ga[0]["head"] == "end" and _ga[0]["dash"] in ("dashed", "dotted", "dashdot") and _ga[0]["pts"][-1][0] > _ga[0]["pts"][0][0], f"초록 파선 화살표(끝 화살촉)를 못 읽음 {_ga}")
+# 같은 색 띠의 화살표는 한 색으로 맞춰지고 범례 색도 그에 맞춰짐
+check(len({a["color"] for a in _L["arrows"] if a["band"] == "red"}) == 1 and next(l for l in _L["legend"] if l["label"] == "주 동선")["color"] == _ra["color"], "화살표·범례 색이 같은 색으로 맞춰지지 않음")
+check(next(l for l in _L["legend"] if l["kind"] == "zone")["color"] == _zone["color"], "구역 범례 색이 구역 층 색과 다름")
+# 사진·3D(model): 화살표 자리가 메워진 바탕, 새로 칠해진 색은 color 혼합 층
+_O3 = Image.new("RGB", (300, 200), (150, 190, 230))
+ImageDraw.Draw(_O3).rectangle([0, 120, 300, 200], fill=(60, 140, 50))
+_Q3 = _O3.copy()
+_q3d = ImageDraw.Draw(_Q3)
+_q3d.rectangle([40, 30, 140, 110], fill=(190, 90, 60))              # 새로 칠한 주황 면
+_q3d.line([160, 60, 270, 60], fill=(250, 220, 10), width=9)         # 노란 화살표
+_p3 = de.tint_parts(_O3, _Q3)
+_L3 = dv.build_layers(_p3, "model", [{"color": "#BE5A3C", "kind": "zone", "label": "코어"}, {"color": "#FADC0A", "kind": "flow", "label": "동선"}])
+check(_L3 is not None and len(_L3["arrows"]) == 1 and len(_L3["zones"]) == 1 and _L3["zones"][0]["blend"] == "color", f"사진 결과: 화살표 1·색 혼합 구역 1로 나눠야 함 {None if _L3 is None else (len(_L3['arrows']), [z.get('blend') for z in _L3['zones']])}")
+_b3 = _L3["base"].load()
+check(abs(_b3[215, 60][0] - 150) < 25 and abs(_b3[215, 60][2] - 230) < 25, f"사진 바탕에서 화살표 자리가 둘레 색으로 메워지지 않음 {_b3[215, 60]}")
+check(dv.build_layers(de.tint_parts(_O3, _O3), "model", []) is None and dv.build_layers(de.tint_parts(_o, _o), "overlay", []) is None, "바뀐 게 없으면 층 나누기는 None(합성 그림 그대로 사용)")
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

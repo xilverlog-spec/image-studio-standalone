@@ -243,8 +243,8 @@ def _strong(img, s, v):
     return (hsv[..., 1] > s) & (hsv[..., 2] > v)
 
 
-def composite(original, model_out):
-    """모델 결과의 '연한 채움 색'(곱하기)과 '굵은 화살표'만 원본 위에 얹는다. 반환: (합성 이미지, 화살표 마스크)."""
+def tint_parts(original, model_out):
+    """모델 결과를 원본 크기로 맞추고 둘로 나눈다: ① '연한 채움 색 판' T(곱하기용, 0~1) ② '굵은 화살표' 마스크(core = 부풀리기 전, arrow = 3×3 부풀린 것)."""
     O = original.convert("RGB")
     W, H = O.size
     Qi = model_out.convert("RGB").resize((W, H), Image.LANCZOS)
@@ -253,13 +253,18 @@ def composite(original, model_out):
     T = ndi.grey_dilation(Qf, size=(13, 13, 1))              # 가는 선·글자를 지우고 주변 채움색만 남긴다
     T = np.clip(ndi.gaussian_filter(T, sigma=(1.5, 1.5, 0)), 0, 1)
     o_strong = ndi.binary_dilation(_strong(O, 0.45, 0.45), structure=np.ones((9, 9)))   # 원본에 있던 강한 색(범위선·식재)은 원본 것을 쓴다
-    arrow = _strong(Qi, 0.55, 0.5) & ~o_strong
-    arrow = ndi.binary_opening(arrow, structure=np.ones((2, 2)))
-    arrow = ndi.binary_dilation(arrow, structure=np.ones((3, 3)))
-    a = ndi.gaussian_filter(arrow.astype(np.float32), 0.8)[..., None]
-    R = Of * T
-    R = R * (1 - a) + Qf * a
-    return Image.fromarray((np.clip(R, 0, 1) * 255).astype(np.uint8)), arrow
+    core = ndi.binary_opening(_strong(Qi, 0.55, 0.5) & ~o_strong, structure=np.ones((2, 2)))
+    arrow = ndi.binary_dilation(core, structure=np.ones((3, 3)))
+    return {"O": O, "Qi": Qi, "Of": Of, "Qf": Qf, "T": T, "core": core, "arrow": arrow}
+
+
+def composite(original, model_out):
+    """모델 결과의 '연한 채움 색'(곱하기)과 '굵은 화살표'만 원본 위에 얹는다. 반환: (합성 이미지, 화살표 마스크)."""
+    P = tint_parts(original, model_out)
+    a = ndi.gaussian_filter(P["arrow"].astype(np.float32), 0.8)[..., None]
+    R = P["Of"] * P["T"]
+    R = R * (1 - a) + P["Qf"] * a
+    return Image.fromarray((np.clip(R, 0, 1) * 255).astype(np.uint8)), P["arrow"]
 
 
 def is_line_drawing(img, white_frac=0.45):
@@ -421,7 +426,22 @@ def _run(job_id, png_bytes, ask, steps, seed):
         fid = f"diagram_edit_{job_id}"
         comp.save(os.path.join(_out_dir(), fid + ".png"))
         out.save(os.path.join(_out_dir(), fid + "_raw.png"))
-        _update(job, status="done", stage="완료", percent=100, result={"image": f"/generated/{fid}.png", "raw": f"/generated/{fid}_raw.png", "width": comp.width, "height": comp.height,
+        layers = None
+        try:   # 화살표는 벡터로, 구역 색은 색 바꿀 수 있는 층으로 나눈다(실패해도 합성 그림은 그대로 쓸 수 있다)
+            _update(job, stage="4/4 화살표·구역 색을 편집 가능한 층으로 나누는 중", percent=98)
+            from services import diagram_vector as DV
+            L = DV.build_layers(tint_parts(original, out), how, legend)
+            if L:
+                L["base"].save(os.path.join(_out_dir(), fid + "_base.png"))
+                zs = []
+                for i, z in enumerate(L["zones"]):
+                    z["mask"].save(os.path.join(_out_dir(), f"{fid}_z{i + 1}.png"))
+                    zs.append({"color": z["color"], "label": z["label"], "mask": f"/generated/{fid}_z{i + 1}.png", "blend": z.get("blend", "multiply")})
+                layers = {"base": f"/generated/{fid}_base.png", "arrows": L["arrows"], "zones": zs, "mode": how}
+                legend = L["legend"]
+        except Exception as e:  # noqa: BLE001
+            print(f"[DIAGRAM-EDIT] 층 나누기 실패(합성 그림 그대로 사용): {str(e)[:120]}")
+        _update(job, status="done", stage="완료", percent=100, result={"image": f"/generated/{fid}.png", "raw": f"/generated/{fid}_raw.png", "width": comp.width, "height": comp.height, "layers": layers,
                                                                          "title": title, "legend": legend, "instruction": instruction, "instruction_source": source, "legend_verified": legend_ok, "finish": how, "resolution": resolution, "seconds": int(time.time() - job["created"])})
     except Exception as e:  # noqa: BLE001 — 사유를 화면에 그대로 보여 준다
         print(f"[DIAGRAM-EDIT] 실패: {e}")

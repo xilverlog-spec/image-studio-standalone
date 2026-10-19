@@ -457,14 +457,25 @@ export function axonProject(axon, rect, yx, zr = 0) {
 
 // 도면 위에 표시(AI 이미지 편집) 결과 → 편집 가능한 spec: 합성된 그림을 바탕으로 깔고, 제목은 글자로, 범례는 그림 아래 글자 메모로 얹는다(전부 편집 가능).
 // 범례는 결과 그림에 실제로 나온 화살표 색만 서버가 뽑아 준 것이다.
-export function makeEditSpec({ imageUrl, w, h, title = '', legend = [] }) {
+// layers(서버가 결과를 나눠 준 것)가 있으면: imageUrl 은 화살표·구역 색을 뺀 '바탕'이고, 화살표는 편집 가능한 winds, 구역 색은 색·농도를 바꿀 수 있는 zones 가 된다.
+// layers = { arrows: [{ pts(그림 화소 좌표), width(화소), color, head, dash, smooth }], zones: [{ color, label, maskUrl }] }
+export function makeEditSpec({ imageUrl, w, h, title = '', legend = [], layers = null }) {
   const rect = [0, 0, 100, (100 * h) / w];
   const items = (Array.isArray(legend) ? legend : []).filter((l) => l && /^#[0-9a-fA-F]{6}$/.test(l.color || '')).slice(0, 6);
+  const zones = (layers?.zones || []).filter((z) => z && z.maskUrl && /^#[0-9a-fA-F]{6}$/.test(z.color || '')).slice(0, 8).map((z, i) => ({ id: `z${i + 1}`, color: z.color, label: String(z.label || '구역').slice(0, 22), mask: z.maskUrl, opacity: 1, hidden: false, blend: z.blend === 'color' ? 'color' : 'multiply' }));
   const cols = Math.min(3, Math.max(1, items.length)); const rowH = 3.8; const y0 = rect[3] + 4.2;
-  const memos = items.map((l, i) => ({ id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: l.color, icon: '' }));
+  const memos = items.map((l, i) => { const z = l.kind === 'zone' ? zones.find((q) => q.color.toLowerCase() === l.color.toLowerCase()) : null; return { id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: l.color, icon: '', ...(z ? { zone: z.id } : {}) }; });
   const bottom = items.length ? y0 + Math.ceil(items.length / cols) * rowH : rect[3];
-  return { title: String(title || ''), subtitle: '', style: 'line', layout: 'image', frame: [-1, -1, 101, bottom + 1.5], base: { svg: `<g><image href="${imageUrl}" x="0" y="0" width="${w}" height="${h}"/></g>`, vb: [0, 0, w, h], rect, isImage: true },
-    blocks: [], lines: [], winds: [], memos, textBlock: null, legend: { wind: '', core: '', opening: '' }, notes: [] };
+  const spec = { title: String(title || ''), subtitle: '', style: 'line', layout: 'image', frame: [-1, -1, 101, bottom + 1.5], base: { svg: `<g><image href="${imageUrl}" x="0" y="0" width="${w}" height="${h}"/></g>`, vb: [0, 0, w, h], rect, isImage: true },
+    blocks: [], lines: [], winds: [], memos, zones, textBlock: null, legend: { wind: '', core: '', opening: '' }, notes: [] };
+  if (layers?.arrows?.length) {
+    const k = 100 / w; const px = k * sketchView(spec).K;   // 그림 화소 1 → 다이어그램 좌표 k → 화면(1200) 좌표 px
+    const r1 = (v) => Math.round(v * 10) / 10;
+    spec.winds = layers.arrows.slice(0, 30).filter((a) => Array.isArray(a.pts) && a.pts.length >= 2 && /^#[0-9a-fA-F]{6}$/.test(a.color || '')).map((a, i) => ({
+      id: `w${i + 1}`, pts: a.pts.map((p) => [r1(p[0] * k), r1(p[1] * k)]), smooth: a.smooth !== false, head: HEADS.includes(a.head) ? a.head : 'none', dash: DASHES[a.dash] !== undefined ? a.dash : 'solid',
+      width: Math.min(14, Math.max(1.6, r1((Number(a.width) || 3) * px))), color: a.color, form: 'line', shape: 'read', bend: 1, amp: 0.45, via: null, inLabel: '', outLabel: '' }));
+  }
+  return spec;
 }
 
 // 읽은 분석 표시 → 편집 가능한 spec(입체 바탕 + 바람 번짐 띠 + 일조 점선 호와 해 아이콘 + 오른쪽 문구 블록)
@@ -509,7 +520,9 @@ export function normalizeSketch(raw) {
     via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
-  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '' }));
+  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 30).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}) }));
+  // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
+  const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply' }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
   const bs = s.base && typeof s.base === 'object' ? s.base : null;
   const base = bs && typeof bs.svg === 'string' && bs.svg.length < 3000000 && Array.isArray(bs.vb) && bs.vb.length === 4 && bs.vb.every((v) => Number.isFinite(Number(v))) && bs.vb[2] > 0 && bs.vb[3] > 0 && Array.isArray(bs.rect) && bs.rect.length === 4 && bs.rect.every((v) => Number.isFinite(Number(v)))
@@ -523,7 +536,7 @@ export function normalizeSketch(raw) {
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, base, textBlock,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, zones, base, textBlock,
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
@@ -599,7 +612,7 @@ function windGeom(w, P) {
   }
   const Q0 = w.pts.map(P); const n = Q0.length;
   const Q = Q0.map((q, i) => { const t = i / (n - 1); const cx = A[0] + (Z[0] - A[0]) * t; const cy = A[1] + (Z[1] - A[1]) * t; return [cx + (q[0] - cx) * w.bend, cy + (q[1] - cy) * w.bend]; });
-  return { d: w.smooth ? smoothPath(Q) : `M${Q.map((p) => p.map(f1).join(' ')).join(' L')}`, dense: catmullDense(Q, 8) };
+  return { d: w.smooth ? smoothPath(Q) : `M${Q.map((p) => p.map(f1).join(' ')).join(' L')}`, dense: w.smooth ? catmullDense(Q, 8) : Q, nodes: Q };
 }
 const unit = (a, b) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d]; };
 // 점마다 진행 방향(앞뒤 점으로)과 호 길이
@@ -688,19 +701,22 @@ export function renderSketch(raw, opts = {}) {
   const C = spec.layout === 'axon' ? { ...PALETTE.concept, bg: '#FFFFFF' } : PALETTE[spec.style]; // 분석 축측도는 참고 그림처럼 흰 바탕
   const pres = spec.style === 'pres';
   const concept = spec.style === 'concept';
-  const filledHead = pres || concept;
+  const filledHead = pres || concept || spec.layout === 'image';   // AI 이미지 편집 결과의 화살표는 원래 모양대로 채운 삼각 화살촉
   const P = sketchView(spec).toScreen;
   const eid = (id) => (interactive ? ` data-eid="${esc(id)}" style="cursor:move"` : '');
   const handles = []; // 선택한 요소의 크기·끝점 조절 점(편집 화면에만 그린다)
   const sq = (id, name, x, y, cur) => handles.push(`<rect data-handle="${name}" data-eid="${esc(id)}" x="${(x - 5.5).toFixed(1)}" y="${(y - 5.5).toFixed(1)}" width="11" height="11" rx="2" fill="#fff" stroke="#F28C28" stroke-width="2" style="cursor:${cur}"/>`);
   const dot = (id, name, x, y, shape) => handles.push(shape === 'small'
     ? `<path data-handle="${name}" data-eid="${esc(id)}" d="M${x.toFixed(1)} ${(y - 6).toFixed(1)} L${(x + 6).toFixed(1)} ${y.toFixed(1)} L${x.toFixed(1)} ${(y + 6).toFixed(1)} L${(x - 6).toFixed(1)} ${y.toFixed(1)} Z" fill="#fff" stroke="#F28C28" stroke-width="2" style="cursor:ns-resize"/>`
+    : shape === 'node'
+    ? `<circle data-handle="${name}" data-eid="${esc(id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="#F28C28" stroke="#fff" stroke-width="2" style="cursor:move"/>`
     : shape === 'diamond'
     ? `<path data-handle="${name}" data-eid="${esc(id)}" d="M${(x).toFixed(1)} ${(y - 8).toFixed(1)} L${(x + 8).toFixed(1)} ${y.toFixed(1)} L${x.toFixed(1)} ${(y + 8).toFixed(1)} L${(x - 8).toFixed(1)} ${y.toFixed(1)} Z" fill="#F28C28" stroke="#fff" stroke-width="2" style="cursor:grab"/>`
     : `<circle data-handle="${name}" data-eid="${esc(id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#fff" stroke="#F28C28" stroke-width="2.5" style="cursor:crosshair"/>`);
   const o = []; const sel = [];
   const defs = [`<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fff"/><line x1="0" y1="0" x2="0" y2="6" stroke="${C.core}" stroke-width="2"/></pattern>`];
-  spec.winds.forEach((w) => defs.push(`<marker id="aw_${esc(w.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${concept ? 4.8 : pres ? 4 : 5}" markerHeight="${concept ? 4.8 : pres ? 4 : 5}" orient="auto-start-reverse"><path d="${filledHead ? 'M0 0L10 5L0 10Z' : 'M1 1L9 5L1 9'}" fill="${filledHead ? w.color : 'none'}" stroke="${w.color}" stroke-width="${filledHead ? 0 : 1.6}" stroke-linejoin="round"/></marker>`));
+  const mkSize = concept ? 4.8 : pres ? 4 : spec.layout === 'image' ? 4 : 5;
+  spec.winds.forEach((w) => defs.push(`<marker id="aw_${esc(w.id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${mkSize}" markerHeight="${mkSize}" orient="auto-start-reverse"><path d="${filledHead ? 'M0 0L10 5L0 10Z' : 'M1 1L9 5L1 9'}" fill="${filledHead ? w.color : 'none'}" stroke="${w.color}" stroke-width="${filledHead ? 0 : 1.6}" stroke-linejoin="round"/></marker>`));
   o.push(`<defs>${defs.join('')}</defs>`);
   if (pres) o.push('<rect x="30" y="100" width="780" height="580" rx="14" fill="#fff" stroke="#E7DFD2"/>');
   if (concept) {
@@ -714,7 +730,13 @@ export function renderSketch(raw, opts = {}) {
 
   if (spec.base) { // 입체 바탕: 평면에서 뽑은 벽체. 클릭·끌기에 반응하지 않는다
     const bb = spec.base; const a = P([bb.rect[0], bb.rect[1]]); const z = P([bb.rect[2], bb.rect[3]]); const sx = (z[0] - a[0]) / bb.vb[2]; const sy = (z[1] - a[1]) / bb.vb[3];
-    o.push(`<g data-base="1" pointer-events="none" transform="translate(${(a[0] - bb.vb[0] * sx).toFixed(2)} ${(a[1] - bb.vb[1] * sy).toFixed(2)}) scale(${sx.toFixed(5)} ${sy.toFixed(5)})">${bb.svg}</g>`);
+    const tf = `translate(${(a[0] - bb.vb[0] * sx).toFixed(2)} ${(a[1] - bb.vb[1] * sy).toFixed(2)}) scale(${sx.toFixed(5)} ${sy.toFixed(5)})`;
+    o.push(`<g data-base="1" pointer-events="none" transform="${tf}">${bb.svg}</g>`);
+    // 구역 색 층: 바탕 위에 곱하기(multiply)로 칠한다. 마스크가 농도, fill 이 색 — 선·글자는 어둡게 그대로 비친다
+    spec.zones.forEach((z) => {
+      if (z.hidden) return; const mid = `zm_${esc(z.id)}`;
+      o.push(`<g data-zone="${esc(z.id)}" pointer-events="none" transform="${tf}"><mask id="${mid}" maskUnits="userSpaceOnUse" x="${bb.vb[0]}" y="${bb.vb[1]}" width="${bb.vb[2]}" height="${bb.vb[3]}"><image href="${esc(z.mask)}" x="${bb.vb[0]}" y="${bb.vb[1]}" width="${bb.vb[2]}" height="${bb.vb[3]}" preserveAspectRatio="none"/></mask><rect x="${bb.vb[0]}" y="${bb.vb[1]}" width="${bb.vb[2]}" height="${bb.vb[3]}" fill="${z.color}" opacity="${z.opacity}" mask="url(#${mid})" style="mix-blend-mode:${z.blend}"/></g>`);
+    });
   }
   const R = (b) => { const a = P([b.rect[0], b.rect[1]]); const z = P([b.rect[2], b.rect[3]]); return [a[0], a[1], z[0] - a[0], z[1] - a[1]]; };
   const slabs = spec.blocks.filter((b) => b.kind === 'slab').sort((p, q) => (q.rect[2] - q.rect[0]) * (q.rect[3] - q.rect[1]) - (p.rect[2] - p.rect[0]) * (p.rect[3] - p.rect[1]));
@@ -797,6 +819,7 @@ export function renderSketch(raw, opts = {}) {
       dot(w.id, 'start', D[0][0], D[0][1]); dot(w.id, 'end', D[D.length - 1][0], D[D.length - 1][1]);
       if (w.shape === 's' || w.shape === 'arc') { const mi = w.shape === 'arc' ? Math.round((D.length - 1) / 2) : Math.round((D.length - 1) / 4); dot(w.id, 'amp', D[mi][0], D[mi][1], w.shape === 's' ? 'small' : 'diamond'); }
       if (w.shape === 's' && geo.via) dot(w.id, 'via', geo.via[0], geo.via[1], 'diamond');
+      if (w.shape === 'read' && geo.nodes) geo.nodes.forEach((q, i) => { if (i > 0 && i < geo.nodes.length - 1) dot(w.id, `pt:${i}`, q[0], q[1], 'node'); }); // 꺾임·굽음 점(끌어서 옮긴다)
     }
     const s0 = D[0]; const e0 = D[D.length - 1];
     const pill = (pt, text, below) => {
@@ -951,6 +974,39 @@ export function sketchSetAmp(spec, id, pt) {
 export function sketchSetVia(spec, id, pt) {
   const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 's') return spec;
   return sketchUpdate(spec, id, { via: pt ? [Math.round(pt[0] * 10) / 10, Math.round(pt[1] * 10) / 10] : null });
+}
+// 읽은 그대로(read) 모양의 선·화살표 중간 점 i 를 옮긴다. 곡선 세기(bend)가 1 이 아니면 화면에 보이는 위치가 저장 위치와 달라 거꾸로 계산한다
+export function sketchSetPt(spec, id, i, pt) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 'read') return spec;
+  const P = f.el.pts; if (i <= 0 || i >= P.length - 1) return spec;
+  const t = i / (P.length - 1); const b = Math.max(0.05, f.el.bend || 1);
+  const c = [P[0][0] + (P[P.length - 1][0] - P[0][0]) * t, P[0][1] + (P[P.length - 1][1] - P[0][1]) * t];
+  const q = [c[0] + (pt[0] - c[0]) / b, c[1] + (pt[1] - c[1]) / b];
+  return sketchUpdate(spec, id, { pts: P.map((p, k) => (k === i ? [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10] : p)) });
+}
+// 점 추가: 가장 긴 구간의 한가운데에 점을 하나 더한다(곡선·꺾임을 더 만들 수 있다). 점 줄이기: 가장 덜 꺾인 중간 점을 하나 뺀다
+export function sketchAddPt(spec, id) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 'read' || f.el.pts.length >= 30) return spec;
+  const P = f.el.pts; let k = 0; let best = -1;
+  for (let i = 0; i < P.length - 1; i++) { const d = Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]); if (d > best) { best = d; k = i; } }
+  const m = [(P[k][0] + P[k + 1][0]) / 2, (P[k][1] + P[k + 1][1]) / 2];
+  return sketchUpdate(spec, id, { pts: [...P.slice(0, k + 1), [Math.round(m[0] * 10) / 10, Math.round(m[1] * 10) / 10], ...P.slice(k + 1)] });
+}
+export function sketchDelPt(spec, id) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'winds' || f.el.shape !== 'read' || f.el.pts.length <= 2) return spec;
+  const P = f.el.pts; let k = -1; let best = Infinity;
+  for (let i = 1; i < P.length - 1; i++) { // 앞뒤 점을 곧게 이은 선에서 가장 덜 벗어난 점
+    const a = P[i - 1]; const z = P[i + 1]; const L = Math.hypot(z[0] - a[0], z[1] - a[1]) || 1;
+    const dev = Math.abs((z[0] - a[0]) * (a[1] - P[i][1]) - (a[0] - P[i][0]) * (z[1] - a[1])) / L;
+    if (dev < best) { best = dev; k = i; }
+  }
+  return k < 0 ? spec : sketchUpdate(spec, id, { pts: P.filter((_, i) => i !== k) });
+}
+// 구역 색 층 고치기: 색을 바꾸면 그 층과 연결된 범례 글자(memo.zone)의 색이, 이름을 바꾸면 범례 글자도 함께 바뀐다
+export function sketchSetZone(spec, id, patch) {
+  if (!(spec.zones || []).some((z) => z.id === id)) return spec;
+  return { ...spec, zones: spec.zones.map((z) => (z.id === id ? { ...z, ...patch } : z)),
+    memos: spec.memos.map((m) => (m.zone === id ? { ...m, ...(patch.color ? { color: patch.color } : {}), ...(patch.label !== undefined ? { text: `■ ${String(patch.label).slice(0, 22)}` } : {}) } : m)) };
 }
 // 복사·붙여넣기·복제: 요소를 통째로 복사해 두었다가(snapshot) 새 id 로 붙인다. 붙인 요소는 dx,dy 만큼 비껴 놓아 겹쳐 보이지 않게 한다
 export function sketchSnapshot(spec, id) {

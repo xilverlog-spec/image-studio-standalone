@@ -241,6 +241,11 @@ const r1 = (v) => Math.round(v * 10) / 10;
 // items: [{ id:'c1', render:{svg}|null, caption:'', cropTop:0 }] (render 는 제목을 비운 채 그린 것). page: { w, h, medium } (mm).
 // opts: title/subtitle(페이지 제목), fontId, sizes({title,sub,label,small} 사용자가 정한 pt, 비우면 추천값), fill(true: 칸을 꽉 채움 / false: 본문 글자를 목표 pt 에 맞춤), layoutId, gap(mm),
 //       measure(함수: 내용 영역 재기), preview(true: 칸 테두리·빈 칸 표시, 저장본에는 쓰지 않음), selected(고른 칸 id)
+// 그림 조각 안의 id 와 그 참조(url(#id), href="#id")에 접두어를 붙인다. 속성 앞에 공백이 있는 id 만 건드려 data-eid 같은 것은 그대로 둔다
+export function scopeIds(svg, prefix) {
+  return svg.replace(/(\s)id="([^"]+)"/g, `$1id="${prefix}$2"`).replace(/url\(#([^)]+)\)/g, `url(#${prefix}$1)`).replace(/((?:xlink:)?href)="#([^"]+)"/g, `$1="#${prefix}$2"`);
+}
+
 export function composePage(page, items, opts = {}) {
   const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null } = opts;
   const W = Number(page.w); const H = Number(page.h);
@@ -299,6 +304,7 @@ export function composePage(page, items, opts = {}) {
     let inner = src.slice(root.index + root[0].length, src.lastIndexOf('</svg>')).split(ENGINE_FONT).join(font);
     if (!multi) bg.v = (inner.match(/^\s*<rect\b[^>]*\bfill="(#[0-9a-fA-F]{3,8})"/) || [])[1] || bg.v;   // 한 칸짜리면 페이지 바탕을 그림의 바탕색으로
     else inner = inner.replace(/^\s*<rect\b[^>]*\/>/, '');                                              // 여러 칸이면 칸마다 다른 바탕색이 얼룩지지 않게 바탕을 빼고 흰 페이지 위에 올린다
+    if (multi) inner = scopeIds(inner, `c${idx}_`);                                                       // 여러 칸에 같은 id(화살촉·마스크·무늬)가 겹쳐 서로를 덮어쓰지 않게 칸마다 접두어를 붙인다
     // 보이는 영역: 실제 내용 상자(재면 그것, 약간 여유) → 아니면 제목 자리로 비워 둔 위쪽 띠만 자른다
     let vx = vx0; let vy = vy0; let vw = vw0; let vh = vh0;
     const mb = measure ? measure(inner, [vx0, vy0, vw0, vh0]) : null;

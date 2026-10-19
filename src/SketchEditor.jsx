@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -13,6 +13,7 @@ const smallBtn = (on, danger) => ({
 const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' };
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222'];
+const ZONE_SWATCHES = ['#F6B8B3', '#F9D3A0', '#F8E8A0', '#BFE0B8', '#B5D5F2', '#D9C2E8', '#DDDDDD']; // 구역을 칠하는 연한 색(곱하기로 칠해져 선·글자는 그대로 비친다)
 const r1 = (v) => Math.round(v * 10) / 10;
 const GUIDE_COLOR = { edge: '#E0368A', center: '#E0368A', axis: '#2E9E5B', mirror: '#0FA3B1' };
 const GUIDE_LABEL = { center: '가운데', axis: '중심축', mirror: '대칭' };
@@ -33,15 +34,18 @@ function Num({ label, value, onChange, step = 0.5, testid }) {
   );
 }
 
-function Colors({ value, onChange, allowClear }) {
+function Colors({ value, onChange, allowClear, swatches = SWATCHES }) {
   return (
     <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-      {SWATCHES.map((c) => <button key={c} title={c} onClick={() => onChange(c)} style={{ width: 20, height: 20, borderRadius: 10, background: c, border: value === c ? '2px solid #111' : '1px solid #bbb', cursor: 'pointer', padding: 0 }} />)}
+      {swatches.map((c) => <button key={c} title={c} onClick={() => onChange(c)} style={{ width: 20, height: 20, borderRadius: 10, background: c, border: value === c ? '2px solid #111' : '1px solid #bbb', cursor: 'pointer', padding: 0 }} />)}
       <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#888888'} onChange={(e) => onChange(e.target.value)} style={{ width: 28, height: 24, padding: 0, border: '1px solid var(--border-color)', borderRadius: 4, background: 'none' }} />
       {allowClear && <button style={{ ...smallBtn(false), padding: '2px 7px', fontSize: 11 }} onClick={() => onChange('')}>기본색</button>}
     </div>
   );
 }
+
+import { textAtPoint, InlineInput } from './InlineText';
+import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
 export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled }) {
   const [selected, setSelected] = useState('');
@@ -58,6 +62,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const [refId, setRefId] = useState('axis');      // 정렬·대칭의 기준(요소 id 또는 'axis' = 그림 가운데)
   const [axisPick, setAxisPick] = useState('frame'); // 대칭축: 그림 가운데 / 가장 큰 도형 가운데
   const keyRef = useRef(null);
+  const hostRef = useRef(null); const [ed, setEd] = useState(null); // ed: 그림 위에서 글자를 고치는 중 { target(<text>), value, multiline, apply }
 
   // 글자·숫자를 칠 때 한 글자마다 되돌리기 칸이 생기지 않도록, 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
   const commit = (next, key = '') => {
@@ -128,7 +133,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       const pts = sketchFind(o, d.id)?.el?.pts; const ex = pts ? (d.handle === 'start' ? pts[pts.length - 1] : pts[0]) : null; // 반대쪽 끝과 수평·수직으로 맞추기
       const r = snap ? sketchSnapPointG(o, d.id, pt, 1.4, ex ? [[ex[0], ex[1], ex[0], ex[1]]] : []) : { pt, guides: [] };
       next = sketchSetEnd(o, d.id, d.handle, r.pt); gd = r.guides;
-    } else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
+    } else if (d.handle.startsWith('pt:')) next = sketchSetPt(o, d.id, Number(d.handle.slice(3)), pt);
+    else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
     else if (d.handle === 'via') next = sketchSetVia(o, d.id, pt);
     else {
       const r = snap ? sketchSnapPointG(o, d.id, pt) : { pt, guides: [] }; const hx = /[we]/.test(d.handle); const hy = /[ns]/.test(d.handle); // 움직이는 쪽 방향의 안내선만 쓴다
@@ -160,9 +166,26 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       e.preventDefault(); const st = e.shiftKey ? 2 : 0.5;
       const dx = e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0; const dy = e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0;
       commit(sketchMoveBy(norm, selected, dx, dy), `nudge:${selected}`);
+    } else if (!typing && selected && kind === 'memo' && (e.key === 'Enter' || e.key === 'F2')) { // 고른 글자(메모)를 그 자리에서 고친다
+      e.preventDefault(); const el = canvasRef.current?.querySelector(`[data-eid="${selected}"]`); if (el) openTextEdit(el);
     } else if (e.key === 'Escape') setSelected('');
   };
   keyRef.current = onKey; // 창 단위 키 입력 리스너가 항상 최신 상태의 처리 함수를 부르게 한다
+
+  // 그림 위 글자 고치기: 누른 <text> 가 어느 글자 자리인지 찾아(메모는 id 로, 나머지는 글자 내용으로) 입력칸을 연다
+  const openTextEdit = (t) => {
+    const eidEl = t.closest?.('[data-eid]'); const targets = sketchTextTargets(norm); let hit = null;
+    if (eidEl) { const m = norm.memos.find((x) => x.id === eidEl.getAttribute('data-eid')); if (m) hit = { value: m.text, apply: { id: m.id, key: 'text' } }; }
+    if (!hit) { const all = [...(canvasRef.current?.querySelectorAll('text') || [])]; const idx = all.filter((x) => normText(x.textContent) === normText(t.textContent)).indexOf(t); hit = pickByText(targets, t.textContent, idx); }
+    if (hit) setEd({ target: t, value: hit.value, multiline: !!hit.multiline, apply: hit.apply });
+    return !!hit;
+  };
+  const onDbl = (e) => { if (disabled || ed) return; const t = textAtPoint(canvasRef.current, e.clientX, e.clientY); if (t && openTextEdit(t)) { e.preventDefault(); e.stopPropagation(); } };
+  const commitText = (v) => {
+    const a = ed.apply; setEd(null);
+    const r = sketchApplyText(norm, a, v); if (!r) return;
+    if (r.global) commit({ ...norm, ...r.global }, `inline:${JSON.stringify(a)}`); else commit(sketchUpdate(norm, r.update.id, r.update.patch), `${r.update.id}:${a.key}`);
+  };
 
   const ends = sel?.el?.pts ? [sel.el.pts[0], sel.el.pts[sel.el.pts.length - 1]] : null;
   const setEnd = (which, axis, v) => {
@@ -177,7 +200,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
 
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
-      <div style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden', background: '#fff', position: 'relative' }}>
+      <div ref={hostRef} style={{ flex: '1 1 480px', minWidth: 360, border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
         <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
           {[...axisGuides, ...guides].map((g, i) => {
             const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
@@ -188,7 +211,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             </g>);
           })}
         </svg>
-        <div ref={canvasRef} onPointerDown={onDown} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default' }} />
+        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={{ __html: svg }} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+        {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">✏️ 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
 
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
@@ -208,6 +233,26 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             {CLIP && <button style={smallBtn(false)} onClick={() => pasteClip()} title="Ctrl+V">붙여넣기</button>}
           </div>
         </div>
+
+        {norm.zones.length > 0 && (
+          <div style={sec} data-testid="zone-panel">
+            <span style={title}>구역 색 (칠한 층)</span>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>AI가 칠한 구역 색을 층으로 나눴습니다. 색·농도를 바꾸면 그 구역만 다시 칠해지고 선·글자는 그대로입니다.</p>
+            {norm.zones.map((z) => (
+              <div key={z.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)', opacity: z.hidden ? 0.55 : 1 }} data-testid={`zone-${z.id}`}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 4, background: z.color, border: '1px solid #999', flexShrink: 0 }} />
+                  <input style={input} value={z.label} onChange={(e) => commit(sketchSetZone(norm, z.id, { label: e.target.value }), `zone:${z.id}:label`)} data-testid={`zone-label-${z.id}`} />
+                  <button style={{ ...smallBtn(z.hidden), padding: '4px 7px', flexShrink: 0 }} title={z.hidden ? '이 구역 색 보이기' : '이 구역 색 숨기기'} onClick={() => commit(sketchSetZone(norm, z.id, { hidden: !z.hidden }))} data-testid={`zone-hide-${z.id}`}>{z.hidden ? '숨김' : '표시'}</button>
+                </div>
+                <Colors value={z.color} swatches={ZONE_SWATCHES} onChange={(c) => commit(sketchSetZone(norm, z.id, { color: c }), `zone:${z.id}:color`)} />
+                <label style={lab}>농도 {Math.round(z.opacity * 100)}%
+                  <input type="range" min="0" max="1" step="0.05" value={z.opacity} onChange={(e) => commit(sketchSetZone(norm, z.id, { opacity: Number(e.target.value) }), `zone:${z.id}:op`)} data-testid={`zone-opacity-${z.id}`} />
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
 
         {!sel && (
           <div style={sec}>
@@ -256,11 +301,19 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <label style={lab}>곡선 모양
                 <select style={input} value={sel.el.shape} onChange={(e) => set({ shape: e.target.value })} data-testid="prop-shape">{SHAPES.map((k) => <option key={k} value={k}>{SHAPE_LABEL[k]}</option>)}</select>
               </label>
-              {sel.el.shape === 'read' && (
+              {sel.el.shape === 'read' && (<>
                 <label style={lab}>곡선 세기(읽은 흔들림 정도) {sel.el.bend}
                   <input type="range" min="0" max="1.6" step="0.05" value={sel.el.bend} onChange={(e) => set({ bend: Number(e.target.value) }, 'bend')} />
                 </label>
-              )}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }} data-testid="read-points">
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>꺾임·굽음 점 {sel.el.pts.length}개(주황 점을 끌어 옮김)</span>
+                  <button style={{ ...smallBtn(false), padding: '3px 8px' }} onClick={() => commit(sketchAddPt(norm, selected))} disabled={sel.el.pts.length >= 30} data-testid="pt-add">＋ 점 추가</button>
+                  <button style={{ ...smallBtn(false), padding: '3px 8px' }} onClick={() => commit(sketchDelPt(norm, selected))} disabled={sel.el.pts.length <= 2} data-testid="pt-del">－ 점 빼기</button>
+                </div>
+                {sel.el.pts.length > 2 && (
+                  <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={sel.el.smooth} onChange={(e) => set({ smooth: e.target.checked })} data-testid="prop-smooth" />부드러운 곡선(끄면 각진 꺾은선)</label>
+                )}
+              </>)}
               {(sel.el.shape === 's' || sel.el.shape === 'arc') && (
                 <label style={lab}>휘는 정도(음수는 반대쪽) {sel.el.amp}
                   <input type="range" min="-1.2" max="1.2" step="0.05" value={sel.el.amp} onChange={(e) => set({ amp: Number(e.target.value) }, 'amp')} />
