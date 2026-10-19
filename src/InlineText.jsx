@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
+import { judgeTextPt } from './conceptDiagram/page';
 
 // 그림 위의 글자를 눌러 그 자리에서 바로 고치기(입력칸이 글자 위에 겹쳐 열린다). Enter 확정 · Esc 취소 · 다른 곳을 누르면 확정.
 
@@ -25,14 +26,24 @@ export function textUnitSize(el) {
   }
   return fs * k;
 }
-// '이 글자는 몇 pt' 안내 상자. size: 그림 단위 크기, ptInfo: { ppu(그림 단위 1 → pt), basis(어느 크기 기준인지) }
-export function PtReadout({ size, ptInfo, text, testid = 'pt-readout' }) {
+// '이 글자는 몇 pt' 안내 상자. size: 그림 단위 크기, ptInfo: { ppu(그림 단위 1 → pt), basis(어느 크기 기준인지), tiers(📐 페이지 모드일 때 글자 위계 — 있으면 위계 판정도 보여 준다) }
+// onFix(pt): 위계에 맞는 크기로 바로 고치는 단추를 보여 줄 때(편집기가 그 글자의 크기를 바꿀 수 있을 때만 넘긴다)
+const JUDGE_STYLE = { ok: ['#F0FDF4', '#86EFAC', '#15803D', '✔'], info: ['#F1F5F9', '#CBD5E1', '#475569', 'ℹ'], warn: ['#FEF2F2', '#FCA5A5', '#B91C1C', '⚠'] };
+export function PtReadout({ size, ptInfo, text, testid = 'pt-readout', onFix }) {
   if (!ptInfo || !size) return null;
   const pt = Math.round(size * ptInfo.ppu * 10) / 10;
+  const j = judgeTextPt(pt, ptInfo.tiers);
+  const [bg, bd, fg, ic] = j ? JUDGE_STYLE[j.level] : [];
   return (
     <div style={{ padding: '7px 9px', borderRadius: 8, background: '#FFF7ED', border: '1px solid #FDBA74', fontSize: 12.5, lineHeight: 1.5, color: '#7C2D12' }} data-testid={testid}>
       🔤 {text ? <>“{String(text).slice(0, 18)}{String(text).length > 18 ? '…' : ''}” </> : null}<b style={{ fontSize: 15 }}>약 {pt}pt</b>
       <div style={{ fontSize: 10.5, color: '#9A3412' }}>{ptInfo.basis}</div>
+      {j && (
+        <div style={{ marginTop: 5, padding: '4px 7px', borderRadius: 6, background: bg, border: `1px solid ${bd}`, color: fg, fontSize: 11.5, lineHeight: 1.45 }} data-testid={`${testid}-judge`} data-level={j.level}>
+          {ic} {j.text}
+          {onFix && j.fix && Math.abs(j.fix - pt) >= 0.3 && <div><button style={{ marginTop: 3, padding: '2px 8px', borderRadius: 5, border: `1px solid ${bd}`, background: '#fff', color: fg, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }} onClick={() => onFix(j.fix)} data-testid={`${testid}-fix`}>{j.fix}pt로 맞추기</button></div>}
+        </div>
+      )}
     </div>
   );
 }

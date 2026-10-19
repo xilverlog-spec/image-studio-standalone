@@ -273,9 +273,10 @@ def is_line_drawing(img, white_frac=0.45):
     return float((a.min(axis=2) > 235).mean()) >= white_frac
 
 
-def finish(original, model_out):
-    """모델 결과 → 최종 이미지. 선 도면이면 원본 위에 색·화살표만 얹고(글자·선 원본 그대로), 사진·3D 뷰면 모델 결과를 원본 크기로 맞춰 쓴다. 반환: (이미지, 화살표 마스크, 방식)."""
-    if is_line_drawing(original):
+def finish(original, model_out, force=None):
+    """모델 결과 → 최종 이미지. 선 도면이면 원본 위에 색·화살표만 얹고(글자·선 원본 그대로), 사진·3D 뷰면 모델 결과를 원본 크기로 맞춰 쓴다. 반환: (이미지, 화살표 마스크, 방식).
+    force: 'overlay'/'model' 로 방식을 정해 준다(그림의 한 조각만 다시 그릴 때는 조각이 아니라 전체 그림이 선 도면인지로 정해야 한다)."""
+    if force == "overlay" or (force is None and is_line_drawing(original)):
         comp, arrow = composite(original, model_out)
         return comp, arrow, "overlay"
     O = original.convert("RGB")
@@ -546,10 +547,12 @@ def _run_region(job_id, png_bytes, region, ask, legend, hint, steps, seed):
             finally:
                 _free(QWEN_URL)
         _update(job, stage="4/4 화살표·구역 색을 나누는 중", percent=95)
-        comp, _arrow, how = finish(crop, out)
+        comp, _arrow, how = finish(crop, out, force="overlay" if is_line_drawing(original) else "model")
         parts = tint_parts(crop, out)
         from services import diagram_vector as DV
-        L = DV.build_layers(parts, how, [dict(l) for l in (legend or [])])
+        lg = [dict(l) for l in (legend or [])]
+        flow_bands = {n for n, l in zip(_names_for([l for l in lg if l.get("kind") == "flow"]), [l for l in lg if l.get("kind") == "flow"]) if n}
+        L = DV.build_layers(parts, how, lg, only_bands=flow_bands or None)
         fid = f"diagram_edit_{job_id}"
         arrows, zones = [], []
         if L:

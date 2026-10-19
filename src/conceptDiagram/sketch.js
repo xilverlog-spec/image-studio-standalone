@@ -10,6 +10,7 @@
 //   winds:[{id, pts:[[x,y],...], smooth, head:'end|start|both|none', dash, width, color, inLabel, outLabel}],
 //   memos:[{id, x, y, text, size, color}], legend:{wind, core}, notes:[...] }
 // 좌표는 0~100(긴 변 기준) 정규화 값이다.
+import { cropRect, fitInside, normCrop } from './imgutil';
 
 const FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif";
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -522,7 +523,7 @@ export function normalizeSketch(raw) {
   const blocks = (Array.isArray(s.blocks) ? s.blocks : []).slice(0, 30).map((b, i) => {
     const r = Array.isArray(b.rect) ? b.rect.map((v) => num(v, 0)) : [0, 0, 10, 10];
     const img = b.kind === 'image' && typeof b.href === 'string' && b.href.length > 8 && b.href.length < 6000000; // 내가 넣은 이미지
-    return { id: uid(b.id, `b${i + 1}`), kind: img ? 'image' : ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', ...(img ? { href: b.href, opacity: num(b.opacity, 1, 0.05, 1), layer: b.layer === 'front' ? 'front' : 'back', ar: num(b.ar, 0, 0, 100) } : {}), rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null, inset: num(b.inset, 6, 0, 20),
+    return { id: uid(b.id, `b${i + 1}`), kind: img ? 'image' : ['core', 'opening'].includes(b.kind) ? b.kind : 'slab', ...(img ? { href: b.href, opacity: num(b.opacity, 1, 0.05, 1), layer: b.layer === 'front' ? 'front' : 'back', ar: num(b.ar, 0, 0, 100), ...(typeof b.orig === 'string' && b.orig.length > 8 && b.orig.length < 6000000 && normCrop(b.crop) ? { orig: b.orig, crop: normCrop(b.crop) } : {}) } : {}), rect: [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])], name: String(b.name ?? ''), desc: String(b.desc ?? ''), fill: isHex(b.fill) ? b.fill : '', stroke: isHex(b.stroke) ? b.stroke : '', showName: typeof b.showName === 'boolean' ? b.showName : null, inset: num(b.inset, 6, 0, 20),
       openSides: [...new Set((Array.isArray(b.openSides) ? b.openSides : []).filter((v) => SIDES.includes(v)))] };
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
@@ -960,13 +961,27 @@ export function sketchAdd(spec, kind) {
 }
 
 // 내 이미지를 그림 한가운데에 놓는다(원본 비율, 그림 틀 가로의 40% 안쪽). img: { href, w, h(원본 크기) }
-export function sketchAddImage(spec, { href, w, h }) {
+export function sketchAddImage(spec, { href, w, h }, shift = 0) { // shift: 여러 장을 한꺼번에 넣을 때 겹치지 않게 비껴 놓는 양(그림 단위)
   const [x0, y0, x1, y1] = spec.frame; const fw = x1 - x0; const fh = y1 - y0; const ar = (w || 1) / (h || 1);
   let rw = fw * 0.4; let rh = rw / ar; if (rh > fh * 0.6) { rh = fh * 0.6; rw = rh * ar; }
   let n = 1; while (spec.blocks.some((e) => e.id === `b${n}`)) n += 1;
-  const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2; const r1 = (v) => Math.round(v * 10) / 10;
+  const cx = (x0 + x1) / 2 + shift; const cy = (y0 + y1) / 2 + shift; const r1 = (v) => Math.round(v * 10) / 10;
   const id = `b${n}`;
   return { spec: { ...spec, blocks: [...spec.blocks, { id, kind: 'image', rect: [r1(cx - rw / 2), r1(cy - rh / 2), r1(cx + rw / 2), r1(cy + rh / 2)], name: '', desc: '', fill: '', href, opacity: 1, layer: 'back', ar: Math.round(ar * 1000) / 1000 }] }, id };
+}
+// 넣은 이미지 바꾸기: 새 이미지를 옛 상자 안에 비율을 지키며 가장 크게 놓는다(자르기는 풀린다). 위치·투명도·앞뒤는 그대로
+export function sketchReplaceImage(spec, id, { href, w, h }) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks' || f.el.kind !== 'image' || typeof href !== 'string' || href.length < 9) return spec; // href 가 없으면 이미지 블록이 사각형으로 바뀌므로 손대지 않는다
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const { orig, crop, ...rest } = f.el; // eslint-disable-line no-unused-vars
+  return { ...spec, blocks: spec.blocks.map((b) => (b.id === id ? { ...rest, href, ar, rect: fitInside(f.el.rect, ar) } : b)) };
+}
+// 넣은 이미지 자르기: crop = 원본(orig)에서 남길 범위 [왼쪽, 위, 오른쪽, 아래](0~1), href/w/h = 잘라 낸 새 그림. 보이는 부분이 제자리에 남게 상자가 줄어든다. crop 이 null 이면 자르기 해제(원본 전체)
+export function sketchCropImage(spec, id, { crop, orig, href, w, h }) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks' || f.el.kind !== 'image' || typeof href !== 'string' || href.length < 9) return spec;
+  const base = f.el.orig && f.el.crop ? f.el.orig : f.el.href; const oldCrop = f.el.orig && f.el.crop ? f.el.crop : null; const nc = normCrop(crop);
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000;
+  const { orig: o0, crop: c0, ...rest } = f.el; // eslint-disable-line no-unused-vars
+  return { ...spec, blocks: spec.blocks.map((b) => (b.id === id ? { ...rest, href, ar, rect: cropRect(f.el.rect, oldCrop, nc), ...(nc ? { orig: orig || base, crop: nc } : {}) } : b)) };
 }
 // 모서리를 끌 때 원본 비율을 지킨다(반대쪽 모서리를 고정). Shift 를 누르면 자유롭게(호출한 쪽에서 안 부름)
 export function sketchLockAspect(spec, id, handle) {

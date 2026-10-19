@@ -5,6 +5,8 @@
 //   edits = { sig, ops: { e12: { t:[dx,dy], set:{ fill:'#fff', d:'M…', 'stroke-dasharray':'9 6' }, del:true, tag:'path' } } }
 //   sig = 그림 구조(요소 종류의 순서)의 지문. 구조가 달라지면(다른 그림이 되면) 옛 수정은 적용하지 않는다.
 
+import { cropRect, fitInside, normCrop } from './imgutil';
+
 const LEAF = new Set(['path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'text']);
 const SKIP = new Set(['defs', 'marker', 'pattern', 'clipPath', 'mask', 'symbol', 'style', 'linearGradient', 'radialGradient', 'filter', 'title', 'desc', 'foreignObject']);
 const TAG_RE = /<(\/?)([A-Za-z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
@@ -191,13 +193,27 @@ export const editRestore = (edits, id, sig) => withOp(edits, id, () => ({ set: {
 export const editAsPath = (edits, id, d, drop, sig) => withOp(edits, id, (o) => { o.tag = 'path'; o.set.d = d; (drop || []).forEach((k) => { o.set[k] = null; }); return o; }, sig);
 export const editTranslate = (edits, id) => edits?.ops?.[id]?.t || [0, 0];
 // 내 이미지 추가·고치기·빼기(불변). img: { href, w, h(원본 크기), box:[x,y,w,h](놓을 자리) }
-export function editAddImage(edits, sig, { href, w, h, box }) {
+export function editAddImage(edits, sig, { href, w, h, box, shift = 0 }) { // shift: 여러 장을 한꺼번에 넣을 때 겹치지 않게 비껴 놓는 양
   const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
   let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
   const bw = box[2]; const bh = box[3]; const ar = (w || 1) / (h || 1);
   let rw = bw * 0.4; let rh = rw / ar; if (rh > bh * 0.6) { rh = bh * 0.6; rw = rh * ar; }
-  next.adds.push({ id: `a${n}`, kind: 'image', href, x: r2(box[0] + (bw - rw) / 2), y: r2(box[1] + (bh - rh) / 2), w: r2(rw), h: r2(rh), ar: r2(ar * 1000) / 1000, opacity: 1, behind: false });
+  next.adds.push({ id: `a${n}`, kind: 'image', href, x: r2(box[0] + (bw - rw) / 2 + shift), y: r2(box[1] + (bh - rh) / 2 + shift), w: r2(rw), h: r2(rh), ar: r2(ar * 1000) / 1000, opacity: 1, behind: false });
   return { edits: next, id: `a${n}` };
+}
+// 넣은 이미지 바꾸기(새 이미지를 옛 상자 안에 비율을 지키며 가장 크게, 자르기는 풀림) / 자르기(보이는 부분이 제자리에 남게 상자가 줄어듦, crop null 이면 해제)
+export function editReplaceImage(edits, id, { href, w, h }) {
+  const a = (edits?.adds || []).find((q) => q.id === id); if (!a || typeof href !== 'string' || href.length < 9) return edits;
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = fitInside([a.x, a.y, a.x + a.w, a.y + a.h], ar);
+  const { orig, crop, ...rest } = a; // eslint-disable-line no-unused-vars
+  return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...rest, href, ar, x: x0, y: y0, w: r2(x1 - x0), h: r2(y1 - y0) } : q)) };
+}
+export function editCropImage(edits, id, { crop, orig, href, w, h }) {
+  const a = (edits?.adds || []).find((q) => q.id === id); if (!a || typeof href !== 'string' || href.length < 9) return edits;
+  const base = a.orig && a.crop ? a.orig : a.href; const oldCrop = a.orig && a.crop ? a.crop : null; const nc = normCrop(crop);
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = cropRect([a.x, a.y, a.x + a.w, a.y + a.h], oldCrop, nc);
+  const { orig: o0, crop: c0, ...rest } = a; // eslint-disable-line no-unused-vars
+  return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...rest, href, ar, x: x0, y: y0, w: r2(x1 - x0), h: r2(y1 - y0), ...(nc ? { orig: orig || base, crop: nc } : {}) } : q)) };
 }
 export const editUpdateAdd = (edits, id, patch) => ({ ...edits, adds: (edits?.adds || []).map((a) => (a.id === id ? { ...a, ...patch } : a)) });
 export const editRemoveAdd = (edits, id, sig) => { const n = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: (edits?.adds || []).filter((a) => a.id !== id) }; if (!n.adds.length) delete n.adds; return n; };

@@ -194,6 +194,22 @@ export function recommendType({ w, h, medium }) {
   return out;
 }
 
+// 글자 하나의 pt 가 글자 위계(제목 > 소제목 > 본문 > 작은 글자)에서 어디쯤인지 판정한다(편집기에서 글자를 눌렀을 때의 안내).
+// tiers: { title, sub, label, small, labelMin, upper: { pt, name } | null } — upper 는 그림 속 글자가 넘지 말아야 할 윗 위계(칸 제목·소제목·제목 중 가장 낮은 것).
+// 반환: { level: 'ok'|'info'|'warn', text, tier: { name, pt }, fix } — fix 는 맞추면 좋은 pt(없으면 null). 판정할 수 없으면 null
+export function judgeTextPt(pt, tiers) {
+  if (!tiers || !(pt > 0)) return null;
+  const T = [['제목', tiers.title], ['소제목', tiers.sub], ['본문', tiers.label], ['작은 글자', tiers.small]].filter(([, v]) => v > 0);
+  if (!T.length) return null;
+  const tier = T.map(([name, v]) => ({ name, pt: v, d: Math.abs(Math.log(pt / v)) })).sort((a, b) => a.d - b.d)[0];
+  const t = { name: tier.name, pt: tier.pt };
+  if (tiers.labelMin > 0 && pt < tiers.labelMin * 0.98) return { level: 'warn', tier: t, fix: Math.max(tiers.labelMin, tiers.small || 0), text: `읽기 어렵습니다: 이 용도의 최소 크기(${tiers.labelMin}pt)보다 작습니다.` };
+  if (tiers.upper && pt >= tiers.upper.pt * 0.999) return { level: 'warn', tier: t, fix: tiers.label || null, text: `${tiers.upper.name}(${tiers.upper.pt}pt)보다 크거나 같아 위계가 맞지 않습니다.` };
+  const ratio = pt / tier.pt;
+  if (ratio >= 0.88 && ratio <= 1.14) return { level: 'ok', tier: t, fix: null, text: `${tier.name} 위계(${tier.pt}pt)에 맞습니다.` };
+  return { level: 'info', tier: t, fix: tier.pt, text: `${tier.name}(${tier.pt}pt)보다 ${ratio > 1 ? '크고' : '작고'} 위계 단계 사이에 있습니다. 한 단계로 맞추면 정돈돼 보입니다.` };
+}
+
 // SVG 안의 글자 크기를 층으로 나눈다: 소제목급(드물게 쓰인 큰 글자) / 본문(가장 많이 쓰인 크기) / 가장 작은 글자
 export function typeTiers(svg) {
   const m = new Map();
@@ -271,11 +287,14 @@ export function composePage(page, items, opts = {}) {
     let fs = ptv * PT_MM; const w = lineW(txt, fs);
     if (w > maxW) { const k = Math.max(0.6, maxW / w); fs *= k; warnings.push({ level: 'info', text: `${key}이 길어 ${r1(fs / PT_MM)}pt 로 줄였습니다.` }); }
     const base = y + fs * 0.95;
-    return { pt: fs / PT_MM, bottom: base + fs * 0.35, svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${esc(txt)}</text>` };
+    return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, lineW(txt, fs)), svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${esc(txt)}</text>` };
   };
   let y = mg.t; const textW = W - mg.l - mg.r;
-  if (title) { const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', textW, '제목'); head.push(t.svg); used.title = t.pt; y = t.bottom; }
-  if (subtitle) { const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', textW, '소제목'); head.push(t.svg); used.sub = t.pt; y = t.bottom; }
+  const slots = {}; // 제목·소제목이 놓인(또는 놓일) 자리 — 미리보기 위에서 눌러 바로 고칠 수 있게 위치를 알려 준다. rect: [x, y, w, h] mm, has: 지금 글자가 있는지
+  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', textW, '제목'); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
+  else slots.title = { rect: [mg.l, 0, textW, Math.max(4, mg.t)], has: false, text: '' };
+  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', textW, '소제목'); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
+  else if (title) slots.subtitle = { rect: [mg.l, y, textW, Math.max(4, Math.min(W, H) * 0.02 + 1)], has: false, text: '' };
   const box = { x: mg.l, y: y + (title || subtitle ? Math.min(W, H) * 0.02 : 0), w: W - mg.l - mg.r, h: 0 };
   box.h = H - box.y - mg.b;
   if (box.h < H * 0.3) warnings.push({ level: 'warn', text: '제목·소제목·여백이 차지하는 높이가 커서 그림이 들어갈 자리가 좁습니다. 글자 크기나 여백을 줄이거나 용지를 키우세요.' });
@@ -294,8 +313,8 @@ export function composePage(page, items, opts = {}) {
       reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, empty: true });
       return;
     }
-    let cy = cell.y; let capPt = null;
-    if (multi && item.caption) { const t = textLine(cell.x, cy, item.caption, pt.sub, 600, '#1f242b', cell.w, `칸 ${idx + 1} 제목`); body.push(t.svg); cy = t.bottom + Math.min(cell.w, cell.h) * 0.01; capPt = t.pt; }
+    let cy = cell.y; let capPt = null; let capRect = null;
+    if (multi && item.caption) { const t = textLine(cell.x, cy, item.caption, pt.sub, 600, '#1f242b', cell.w, `칸 ${idx + 1} 제목`); body.push(t.svg); capRect = [cell.x, cy, Math.min(cell.w, t.w + 2), t.bottom - cy]; cy = t.bottom + Math.min(cell.w, cell.h) * 0.01; capPt = t.pt; }
     const cw = cell.w; const ch = cell.y + cell.h - cy;
     const src = String(item.render.svg);
     const root = src.match(/<svg\b[^>]*\bviewBox="([\d.\-\s]+)"[^>]*>/);
@@ -332,13 +351,13 @@ export function composePage(page, items, opts = {}) {
     }
     const cid = `pgclip${idx}`;
     body.push(`<clipPath id="${cid}"><rect x="${ox.toFixed(3)}" y="${oy.toFixed(3)}" width="${ow.toFixed(3)}" height="${oh.toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
-    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
+    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
   });
   const first = reports.find((r) => !r.empty);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${bg.v}"/>${frameSvg}${head.join('')}${body.join('')}${over.join('')}</svg>`;
   return {
     svg, width: Math.round(W * MM_PX), height: Math.round(H * MM_PX), page: { w: W, h: H, medium: page.medium }, box,
-    cells: reports,
+    cells: reports, slots,
     report: { rec, pt, used: { title: used.title ? r1(used.title) : null, sub: used.sub ? r1(used.sub) : null }, engine: first ? first.engine : null, scale: first ? first.scale : null, margin: mg, marginAuto: autoM, warnings },
   };
 }

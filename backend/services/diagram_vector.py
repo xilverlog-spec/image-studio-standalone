@@ -613,7 +613,7 @@ def sensitive_core(parts, S=None, exclude_bands=()):
     return thin | parts["core"]
 
 
-def build_layers(parts, how, legend):
+def build_layers(parts, how, legend, only_bands=None):
     """tint_parts() 결과와 마무리 방식('overlay' 선 도면 합성 / 'model' 사진·3D), 범례로 층을 만든다.
     반환: {'base': PIL RGB, 'arrows': [...], 'zones': [{color,label,mask(PIL L),legend_color}], 'legend': 범례(색을 층·화살표 색에 맞춘 것)}.
     화살표도 구역도 못 뽑았으면 None(호출한 쪽이 합성 그림 그대로 쓴다)."""
@@ -626,6 +626,8 @@ def build_layers(parts, how, legend):
         core = sensitive_core(parts, exclude_bands=zone_bands)
         arrow = ndi.binary_dilation(core, structure=np.ones((3, 3))) | parts["arrow"]
     arrows, acc = vectorize_arrows(core, arrow, rgb, hh, thin=(how == "overlay"))
+    if only_bands:                                 # 영역만 다시 그릴 때: 범례에 있는 동선 색 띠의 화살표만(그 밖의 색은 조각에서 생긴 얼룩일 가능성이 크다)
+        arrows = [a for a in arrows if a["band"] in only_bands] or arrows[:0]
     S = max(core.shape)
     lab, n = ndi.label(arrow, structure=np.ones((3, 3)))
     blob = np.zeros_like(arrow, bool)                                   # 두께가 큰 덩어리(굵은 색 면)는 화살표가 아니니 바탕에 그대로 둔다

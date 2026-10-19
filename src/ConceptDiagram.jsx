@@ -8,6 +8,10 @@ import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
+import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
+import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
+import { cancelPendingPaste, imagesFromClipboard } from './conceptDiagram/clip';
+import { InlineInput } from './InlineText';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
 const SK_CACHE_KEY = 'sketchReadCache.v2'; // v2: 이전 빌드(보정 알고리즘이 달랐던 때)에 저장된 낡은 읽기 결과는 쓰지 않는다
@@ -187,14 +191,17 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [pageOn, setPageOn] = useState(false); // 페이지 모드는 기억하지 않고 항상 꺼진 채로 시작한다(설정만 기억)
   const ptInfoOf = (pm) => { // 편집기에서 글자를 누르면 몇 pt 인지: 그림 단위 1 → pt
     const rep = pageOn && pm?.out ? pm.out.cells.find((c) => c.id === selCell && !c.empty) : null;
-    if (rep && rep.scale) return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, basis: `📐 페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
+    if (rep && rep.scale) {
+      const rp = pm.out.report; // 글자 위계 점검용: 목표 pt 와 그림 속 글자가 넘지 말아야 할 윗 위계(칸 제목 → 소제목 → 제목 순으로 가장 낮은 것)
+      const upper = rep.caption ? { pt: rep.caption, name: '칸 제목' } : rp.used.sub ? { pt: rp.used.sub, name: '소제목' } : rp.used.title ? { pt: rp.used.title, name: '제목' } : null;
+      return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, tiers: { title: rp.pt.title, sub: rp.pt.sub, label: rp.pt.label, small: rp.pt.small, labelMin: rp.rec.labelMin, upper }, basis: `📐 페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
+    }
     return { ppu: 0.75, basis: '저장한 그림 크기(96dpi) 기준 · 📐 페이지 크기를 정하면 그 용지에서의 pt로 보입니다' };
   };
   // ── 이 영역만 다시 그리기(AI 이미지 편집 결과): 고른 영역만 잘라 다시 그리고, 그 영역의 화살표·구역 색만 갈아 끼운다 ──
   const [regionPick, setRegionPick] = useState(false);   // 영역 고르기 모드(그림 위를 끌어 상자를 그린다)
   const [regionBox, setRegionBox] = useState(null);      // 고른 영역(그림 화소 [x0, y0, x1, y1])
   const [regionHint, setRegionHint] = useState('');      // 이 영역만을 위한 추가 요청
-  useEffect(() => { setRegionPick(false); setRegionBox(null); }, [result?.ver, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
   const onRegionPick = (r) => {
     const ai = result?.aiEdit; if (!ai) return; const k = ai.w / 100;
     const clamp = (v, hi) => Math.max(0, Math.min(hi, Math.round(v * k)));
@@ -229,6 +236,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const undoRegion = () => setResult((cur) => (cur?.aiEdit?.undoSpec ? { ...cur, spec: cur.aiEdit.undoSpec, aiEdit: { ...cur.aiEdit, undoSpec: null } } : cur));
   const editorTopRef = useRef(null); // 고른 칸의 편집기 맨 위(칸을 더블클릭하면 여기로 스크롤)
+  // ── 화면 배치: 편집기와 페이지 배치를 위아래로 보거나 나란히 본다(자동: 오른쪽 화면이 충분히 넓으면 나란히) ──
+  const SIDE_MIN_W = 1280;
+  const paneRef = useRef(null); const [paneW, setPaneW] = useState(0);
+  const [viewMode, setViewMode] = useState(() => { try { const v = localStorage.getItem('cd_view_mode'); return ['auto', 'side', 'stack'].includes(v) ? v : 'auto'; } catch { return 'auto'; } });
+  useEffect(() => { try { localStorage.setItem('cd_view_mode', viewMode); } catch { /* 저장 없이 진행 */ } }, [viewMode]);
+  useEffect(() => {
+    const el = paneRef.current; if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((es) => setPaneW(Math.round(es[0].contentRect.width))); ro.observe(el); return () => ro.disconnect();
+  }, []);
+  const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
     const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'malgun', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222' };
     try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '' }; } catch { return d; }
@@ -279,6 +296,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!prev || prev.type !== result.type || prev.ver !== result.ver) pushHistory(); // 새 그림이 들어갈 때만 기록(같은 그림을 고치는 것은 편집기가 기록)
     setCells((c) => (c[selCell] === result ? c : { ...c, [selCell]: result }));
   }, [result, pageOn, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setRegionPick(false); setRegionBox(null); }, [result?.ver, selCell]); // 다른 그림·다른 칸으로 바뀌면 영역 고르기를 끝낸다 // eslint-disable-line react-hooks/exhaustive-deps
   const selectCell = (id) => { if (id === selCell) return; setSelCell(id); setResult(cells[id] || null); setGenError(''); };
   const lastSvgEdit = useRef({ key: '', at: 0 });
   const onSvgEdits = (next, key) => { // 구조형 결과의 도형 수정(색·위치·곡선·선 종류). 같은 항목을 1초 안에 계속 고치면 한 번으로 묶는다
@@ -287,56 +305,73 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     lastSvgEdit.current = { key, at: now };
     setResult((r) => ({ ...r, edits: next, isReadPreview: false }));
   };
-  // ── 내 이미지 넣기: 사진·로고·스케치 같은 내 파일을 다이어그램 안에(또는 빈 칸에) 넣는다 ──
+  // ── 내 이미지 넣기: 사진·로고·스케치 같은 내 파일을 다이어그램 안에(또는 빈 칸에) 넣는다. 버튼·끌어다 놓기·붙여넣기(Ctrl+V)로, 여러 장도 한 번에 ──
   const myImgFileRef = useRef(null);
-  const readMyImage = (file) => new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
-    fr.onload = () => {
-      const im = new Image();
-      im.onerror = () => reject(new Error('이미지로 읽을 수 없는 파일입니다.'));
-      im.onload = () => {
-        const alpha = /png|webp|gif|svg/.test(file.type); // 투명 배경이 있을 수 있는 형식은 PNG 로 둔다
-        const tries = [[1600, alpha], [1200, alpha], [1600, false], [1100, false], [800, false]];
-        for (const [maxLong, keepAlpha] of tries) {
-          const k = Math.min(1, maxLong / Math.max(im.width, im.height)); const w = Math.max(1, Math.round(im.width * k)); const h = Math.max(1, Math.round(im.height * k));
-          const c = document.createElement('canvas'); c.width = w; c.height = h; const cx = c.getContext('2d');
-          if (!keepAlpha) { cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); }
-          cx.drawImage(im, 0, 0, w, h);
-          const url = keepAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
-          if (url.length < 2800000 || maxLong === 800) { resolve({ url, w, h }); return; }
-        }
-      };
-      im.src = fr.result;
-    };
-    fr.readAsDataURL(file);
-  });
-  const insertMyImage = async (file, cellId) => {
-    if (!file) return;
-    if (!/^image\//.test(file.type)) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
+  const [imgQ, setImgQ] = useState(getImgQuality); // 큰 사진을 줄여 담는 정도(가볍게/보통/선명하게)
+  const latest = useRef({}); latest.current = { cells, result, selCell, pageOn, pg }; // 파일을 읽는 동안 화면이 바뀔 수 있어, 읽은 뒤에는 이 최신 값으로 계산한다
+  const MAX_IMGS = 12;
+  const insertMyImages = async (fileList, cellId) => {
+    const files = [...(fileList || [])].filter((f) => f && /^image\//.test(f.type));
+    if (!files.length) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
+    const cut = Math.max(0, files.length - MAX_IMGS); files.length = Math.min(files.length, MAX_IMGS);
+    const imgs = []; const bad = [];
+    for (const f of files) { try { imgs.push(await readImageFile(f, imgQ)); } catch (e) { bad.push(`${f.name || '이미지'}: ${e.message}`); } }
+    if (!imgs.length) { addToast?.('error', '이미지를 넣지 못했습니다', bad[0] || ''); return; }
     try {
-      const img = await readMyImage(file);
-      const other = !!(pageOn && cellId && cellId !== selCell);            // 끌어다 놓은 칸이 지금 고른 칸이 아니면 그 칸에 넣는다
-      const target = other ? (cells[cellId] || null) : result;
-      let next = null; let msg = '';
-      if (!target) { // 빈 칸·빈 화면: 내 이미지가 바탕이 되는 그림(그 위에 화살표·글자·구역을 얹어 고칠 수 있다)
-        next = { type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: '', legend: [] }), ver: Date.now() };
-        msg = '이 칸을 내 이미지로 채웠습니다. 이 위에 ＋ 화살표·＋ 글자 등을 얹어 고칠 수 있습니다.';
-      } else if (target.type === 'sketch') {
-        next = { ...target, spec: sketchAddImage(normalizeSketch(target.spec), { href: img.url, w: img.w, h: img.h }).spec, isReadPreview: false };
-        msg = '그림 한가운데에 놓였습니다. 끌어서 옮기고 모서리 점으로 크기를 바꾸세요(맨 뒤로/맨 앞으로 순서도 고를 수 있습니다).';
+      const L = latest.current;
+      const ids = L.pageOn ? cellIds(L.pg.layoutId, L.pg.custom) : [];
+      const startId = L.pageOn && cellId && ids.includes(cellId) ? cellId : L.selCell; // 끌어다 놓은 칸이 시작 칸(아니면 지금 고른 칸)
+      const getT = (id) => (id === L.selCell ? L.result : (L.cells[id] || null));
+      const blankStart = !getT(startId);
+      const si = Math.max(0, ids.indexOf(startId));
+      const fillOrder = blankStart && L.pageOn ? [startId, ...[...ids.slice(si + 1), ...ids.slice(0, si)].filter((id) => !getT(id))] : [startId]; // 빈 칸에 여러 장: 시작 칸부터 칸 순서대로 이어서(끝에 닿으면 처음으로) 빈 칸을 채운다
+      const work = {}; const filled = []; const stackN = {}; let stacked = 0; let histPushed = false; let uid = 0;
+      const sizeOf = (r) => { const vb = (renderSpec(r.type, r.spec, r.baseImage ? { baseImage: r.baseImage } : undefined).svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]; return vb ? vb.trim().split(/\s+/).map(Number) : [0, 0, 1000, 700]; };
+      imgs.forEach((img, i) => {
+        let tid = startId; let asFill = false;
+        if (blankStart && i < fillOrder.length) { tid = fillOrder[i]; asFill = true; } // 빈 칸·빈 화면은 이 이미지가 바탕이 된다(그 위에 화살표·글자·구역을 얹어 고칠 수 있다)
+        const base = work[tid] !== undefined ? work[tid] : getT(tid);
+        if (asFill || !base) { work[tid] = { type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: '', legend: [] }), ver: Date.now() + (uid += 1) }; filled.push(tid); return; }
+        const shift = stagger(stackN[tid] || 0); stackN[tid] = (stackN[tid] || 0) + 1; stacked += 1; // 그림이 이미 있으면 그림 안에 얹는다(여러 장은 조금씩 비껴 놓는다)
+        if (base.type === 'sketch') work[tid] = { ...base, spec: sketchAddImage(normalizeSketch(base.spec), { href: img.url, w: img.w, h: img.h }, shift).spec, isReadPreview: false };
+        else {
+          const svg0 = renderSpec(base.type, base.spec, base.baseImage ? { baseImage: base.baseImage } : undefined).svg;
+          const r = editAddImage(base.edits, scanSvg(svg0).sig, { href: img.url, w: img.w, h: img.h, box: sizeOf(base), shift });
+          if (tid === L.selCell && !histPushed) { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: base.ver, spec: base.spec, edits: base.edits }]; h.future = []; histPushed = true; }
+          work[tid] = { ...base, edits: r.edits, isReadPreview: false };
+        }
+      });
+      if (L.pageOn) { pushHistory(); setCells((c) => ({ ...c, ...work })); setSelCell(startId); setResult(work[startId]); } else setResult(work[startId]);
+      const n = imgs.length; const cellNo = (id) => Math.max(1, ids.indexOf(id) + 1); const first = imgs[0];
+      const info = `${first.w}×${first.h}px · 약 ${first.kb.toLocaleString()}KB`;
+      let title; let msg;
+      if (n === 1) {
+        const onOther = L.pageOn && startId !== L.selCell;
+        title = onOther ? `칸 ${cellNo(startId)}에 내 이미지를 넣었습니다` : '내 이미지를 넣었습니다';
+        msg = filled.length ? `이 칸을 내 이미지로 채웠습니다(${info}). 이 위에 ＋ 화살표·＋ 글자 등을 얹어 고칠 수 있습니다.` : `그림 한가운데에 놓였습니다(${info}). 끌어서 옮기고 모서리 점으로 크기를 바꾸세요. 고른 뒤 오른쪽의 🔄 바꾸기·✂ 자르기도 쓸 수 있습니다.`;
       } else {
-        const base = renderSpec(target.type, target.spec, target.baseImage ? { baseImage: target.baseImage } : undefined).svg;
-        const vb = (base.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number) || [0, 0, 1000, 700];
-        const r = editAddImage(target.edits, scanSvg(base).sig, { href: img.url, w: img.w, h: img.h, box: vb });
-        next = { ...target, edits: r.edits, isReadPreview: false };
-        const h = textHist.current; h.past = [...h.past.slice(-49), { ver: target.ver, spec: target.spec, edits: target.edits }]; h.future = [];
-        msg = '그림 한가운데에 놓였습니다. 클릭해서 끌어 옮기고 모서리 점으로 크기를 바꾸세요.';
+        title = `이미지 ${n}장을 넣었습니다`;
+        const parts = [];
+        if (filled.length > 1) parts.push(`칸 ${filled.map(cellNo).join('·')}을(를) 차례로 채웠습니다`); else if (filled.length === 1 && L.pageOn) parts.push(`칸 ${cellNo(filled[0])}을(를) 채웠습니다`); else if (filled.length) parts.push('첫 이미지가 바탕이 되었습니다');
+        if (stacked) parts.push(`${stacked}장은 그림 안에 조금씩 비껴 얹었습니다(끌어서 옮기세요)`);
+        msg = parts.join(' · ');
       }
-      if (other) { pushHistory(); setCells((c) => ({ ...c, [cellId]: next })); setSelCell(cellId); setResult(next); } else setResult(next);
-      addToast?.('success', other ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(cellId) + 1)}에 내 이미지를 넣었습니다` : '내 이미지를 넣었습니다', msg);
+      if (cut) msg += ` 한 번에 최대 ${MAX_IMGS}장이라 ${cut}장은 넣지 않았습니다.`;
+      if (bad.length) msg += ` 읽지 못한 파일: ${bad.join(' / ')}`;
+      addToast?.(bad.length || cut ? 'info' : 'success', title, msg);
     } catch (e) { addToast?.('error', '이미지를 넣지 못했습니다', e.message); }
   };
+  const insertRef = useRef(insertMyImages); insertRef.current = insertMyImages;
+  // 클립보드(캡처·복사한 그림)에서 Ctrl+V: 편집기에서 복사해 둔 요소가 있어도 클립보드에 이미지가 있으면 이미지가 이긴다(편집기 복사는 시스템 클립보드를 글자 표식으로 덮어써 예전 이미지가 되살아나지 않는다)
+  useEffect(() => {
+    const onPaste = (e) => {
+      const t = e.target; if (/INPUT|TEXTAREA|SELECT/.test(t?.tagName || '') || t?.isContentEditable) return; // 입력칸에는 글자를 붙인다
+      if (!paneRef.current || !paneRef.current.getClientRects().length) return; // 다이어그램 탭이 보이지 않으면(다른 탭) 건드리지 않는다
+      const files = imagesFromClipboard(e); if (!files.length) return;
+      cancelPendingPaste(); e.preventDefault(); insertRef.current(files, '');
+    };
+    document.addEventListener('paste', onPaste); return () => document.removeEventListener('paste', onPaste);
+  }, []);
   // 끌어다 놓기: 파일을 오른쪽 화면(또는 페이지 미리보기의 칸)에 놓으면 그 칸에 들어간다
   const [dropCell, setDropCell] = useState(''); // 끌고 있는 파일이 올라가 있는 곳: 칸 번호 또는 'pane'
   const dragHasImage = (e) => { const it = [...(e.dataTransfer?.items || [])]; return it.length ? it.some((x) => x.kind === 'file' && (!x.type || /^image\//.test(x.type))) : [...(e.dataTransfer?.types || [])].includes('Files'); };
@@ -346,8 +381,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!hasFiles(e)) return; e.preventDefault(); setDropCell(''); // 이미지가 아닌 파일을 놓아도 브라우저가 그 파일을 열어 버려 작업이 사라지지 않게 여기서 막는다
     const files = [...(e.dataTransfer.files || [])].filter((f) => /^image\//.test(f.type));
     if (!files.length) { addToast?.('error', '이미지 파일만 넣을 수 있습니다', 'PNG·JPG·WebP·GIF 등'); return; }
-    if (files.length > 1) addToast?.('info', '한 번에 한 장씩 넣습니다', `첫 번째 이미지(${files[0].name})만 넣었습니다. 나머지는 다시 끌어다 놓으세요.`);
-    insertMyImage(files[0], pageOn ? e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid') : '');
+    insertMyImages(files, pageOn ? e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid') : '');
   };
   const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -377,6 +411,21 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       return { preview, out, error: null };
     } catch (e) { return { preview: null, out: null, error: e.message }; }
   }, [pageOn, pg, cells, selCell]);
+  const sideOn = pageOn && !!result && !!pageModel?.preview && (viewMode === 'side' || (viewMode === 'auto' && paneW >= SIDE_MIN_W));
+  // 페이지 제목·소제목·칸 제목을 미리보기 위에서 바로 고친다. 한 칸짜리 페이지에서 제목이 그림 자체의 제목(spec.title)에서 온 것이면 지울 때 그쪽도 비운다
+  const commitPgEdit = (ed, raw) => {
+    setPgEdit(null); const val = String(raw).replace(/\s*\n\s*/g, ' ').trim().slice(0, 120);
+    if (val === (ed.value || '')) return;
+    const setSpecTitle = (id, key, v) => {
+      if (id === selCell) setResult((r) => (r ? { ...r, spec: { ...r.spec, [key]: v }, isReadPreview: false } : r)); // 고른 칸은 result 가 원본이다(아래 effect 가 cells 로 옮긴다)
+      else setCells((c) => (c[id] ? { ...c, [id]: { ...c[id], spec: { ...c[id].spec, [key]: v } } } : c));
+    };
+    if (ed.kind === 'cap') { pushHistory(); setSpecTitle(ed.id, 'title', val); return; }
+    const ids = cellIds(pg.layoutId, pg.custom); const only = ids.length === 1 ? ids[0] : null;
+    const fromSpec = !!only && !pg[ed.kind] && !!cells[only]?.spec?.[ed.kind];
+    setPg((p) => ({ ...p, [ed.kind]: val }));
+    if (fromSpec && val === '') setSpecTitle(only, ed.kind, '');
+  };
   // ── 칸을 직접 끌어서 크기 조절(프리셋은 끌면 'custom' 배치로 바뀐다) ──
   const previewRef = useRef(null);
   const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
@@ -1094,11 +1143,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
           <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
-          <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절)' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다'}>🖼️ 내 이미지 넣기</button>
-          <input ref={myImgFileRef} type="file" accept="image/*" hidden data-testid="my-image-input" onChange={(e) => { insertMyImage(e.target.files?.[0]); e.target.value = ''; }} />
+          <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>🖼️ 내 이미지 넣기</button>
+          <input ref={myImgFileRef} type="file" accept="image/*" multiple hidden data-testid="my-image-input" onChange={(e) => { insertMyImages(e.target.files, ''); e.target.value = ''; }} />
+          <select value={imgQ} onChange={(e) => { setImgQ(e.target.value); setImgQuality(e.target.value); }} style={{ ...inputBase, width: 'auto', fontSize: 11.5, padding: '5px 6px' }} data-testid="img-quality" title="큰 사진을 줄여 담는 정도. 선명하게는 화질이 좋은 대신 큰 이미지가 여러 장이면 편집이 느려질 수 있습니다">
+            {Object.entries(IMG_QUALITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
           <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
         </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff', position: 'relative', outline: dropCell === 'pane' ? '3px dashed #F28C28' : 'none', outlineOffset: -6 }} data-testid="drop-pane"
+        <div ref={paneRef} style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff', position: 'relative', outline: dropCell === 'pane' ? '3px dashed #F28C28' : 'none', outlineOffset: -6 }} data-testid="drop-pane"
           onDragEnter={onPaneDrag} onDragOver={onPaneDrag} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCell(''); }} onDrop={onPaneDrop}>
           {dropCell && (
             <div style={{ position: 'sticky', top: 0, zIndex: 30, height: 0, overflow: 'visible', pointerEvents: 'none' }} data-testid="drop-hint">
@@ -1122,12 +1174,22 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
               <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>📐 페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
+              {result && pageModel?.preview && (
+                <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11.5, color: 'var(--text-secondary)' }} title={`편집기와 페이지 배치를 위아래로 보거나 나란히 봅니다. 자동: 이 화면이 가로 ${SIDE_MIN_W}px 이상이면 나란히`}>
+                  화면 배치
+                  <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ ...inputBase, width: 'auto', fontSize: 12, padding: '4px 6px' }} data-testid="view-mode">
+                    <option value="auto">자동 (넓으면 나란히)</option><option value="side">편집기 | 페이지 나란히</option><option value="stack">위아래로</option>
+                  </select>
+                </label>
+              )}
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
+          <div style={sideOn ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(300px, 1fr)', gap: 18, alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'}>
+          <div style={{ minWidth: 0 }}>
           {pageOn && result && (
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
-              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. 아래 “📄 페이지 배치”에서 다른 칸을 누르면 그 칸의 그림으로 바뀝니다.
+              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {sideOn ? '오른쪽' : '아래'} “📄 페이지 배치”에서 다른 칸을 누르면 그 칸의 그림으로 바뀝니다.
             </p>
           )}
           {result?.aiEdit && result.type === 'sketch' && (
@@ -1163,10 +1225,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
             </div>
           )}
+          </div>
           {pageOn && pageModel?.preview && (
-            <div style={{ marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
+            <div style={sideOn ? { position: 'sticky', top: 0, minWidth: 0, marginBottom: 14 } : { marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
+              <style>{'.pg-slot{outline:1.5px dashed transparent;border-radius:2px}.pg-slot:hover{outline-color:#F28C28;background:rgba(242,140,40,.10)}.pg-slot[data-has="0"]:hover::after{content:attr(data-hint);position:absolute;left:5px;top:50%;transform:translateY(-50%);font:700 12px sans-serif;color:#C2410C;white-space:nowrap;pointer-events:none}'}</style>
               {result && <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>📄 페이지 배치 · 칸 크기 조절</div>}
-              <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
+              <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}`} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
                   const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h;
@@ -1177,7 +1241,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     return (
                       <React.Fragment key={c.id}>
                         <div data-cellid={c.id} onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
-                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed #F28C28' : live && sel ? '2px solid #F28C28' : 'none', background: dropCell === c.id ? 'rgba(242,140,40,0.18)' : live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }} />
+                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed #F28C28' : live && sel ? '2px solid #F28C28' : 'none', background: dropCell === c.id ? 'rgba(242,140,40,0.18)' : live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }}>
+                          {!live && (() => { const cr = pm.cells.find((q) => q.id === c.id); if (!cr?.capRect) return null; const [cx, cy, cw, ch] = cr.capRect; return (
+                            <div className="pg-slot" data-has="1" data-testid={`cap-hit-${c.id}`} title="더블클릭: 칸 제목 고치기" onDoubleClick={(e) => { e.stopPropagation(); setPgEdit({ kind: 'cap', id: c.id, el: e.currentTarget, value: cr.captionText || '' }); }}
+                              style={{ position: 'absolute', left: `${((cx - x) / w) * 100}%`, top: `${((cy - y) / h) * 100}%`, width: `${(cw / w) * 100}%`, height: `${(ch / h) * 100}%`, cursor: 'text' }} />); })()}
+                        </div>
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
                             style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid #F28C28', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
@@ -1185,12 +1253,17 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                         {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
                       </React.Fragment>
                     );
-                  });
+                  }).concat(live ? [] : ['title', 'subtitle'].map((k) => { const sl = pm.slots?.[k]; if (!sl) return null; const [sx, sy, sw, sh] = sl.rect; return (
+                    <div key={`slot-${k}`} className="pg-slot" data-has={sl.has ? '1' : '0'} data-hint={k === 'title' ? '＋ 제목 추가' : '＋ 소제목 추가'} data-testid={`slot-${k}`} title={sl.has ? `눌러서 ${k === 'title' ? '제목' : '소제목'} 고치기` : undefined}
+                      onClick={(e) => setPgEdit({ kind: k, el: e.currentTarget, value: sl.text || '' })}
+                      style={{ position: 'absolute', left: `${(sx / pw) * 100}%`, top: `${(sy / ph) * 100}%`, width: `${(sw / pw) * 100}%`, height: `${(sh / ph) * 100}%`, cursor: 'text', zIndex: 1 }} />); }));
                 })()}
+                {pgEdit && previewRef.current && <InlineInput host={previewRef.current} target={pgEdit.el} value={pgEdit.value} multiline={false} onCommit={(v) => commitPgEdit(pgEdit, v)} onCancel={() => setPgEdit(null)} />}
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result ? '. 그림 속 도형·글자는 이 위쪽 편집기에서 바로 고칩니다' : ''}.</p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result ? `. 그림 속 도형·글자는 ${sideOn ? '왼쪽' : '이 위쪽'} 편집기에서 바로 고칩니다` : ''}. 제목·소제목은 눌러서, 칸 제목은 더블클릭해서 바로 고칩니다.</p>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

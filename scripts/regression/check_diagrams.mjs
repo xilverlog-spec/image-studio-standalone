@@ -13,11 +13,16 @@ const pageJs = path.resolve(here, '../../src/conceptDiagram/page.js');
 const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
 const svgeditJs = path.resolve(here, '../../src/conceptDiagram/svgedit.js');
 const regionJs = path.resolve(here, '../../src/conceptDiagram/regionMerge.js');
+const imgutilJs = path.resolve(here, '../../src/conceptDiagram/imgutil.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
+export { judgeTextPt } from ${fwd(pageJs)};
+export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
+export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
+export { cropRect, fitInside, normCrop, stagger, IMG_QUALITY, imgQualityOf } from ${fwd(imgutilJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
@@ -648,6 +653,91 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const old = new Float32Array([1, 1, 1, 1]); const pat = new Float32Array([0, 0, 0, 0]); const bm = m.blendMasks(old, pat, new Float32Array([0, 0.5, 1, 0.25]));
   expect(bm[0] === 1 && Math.abs(bm[1] - 0.5) < 1e-6 && bm[2] === 0 && Math.abs(bm[3] - 0.75) < 1e-6, '마스크 섞기: 비율 0 이면 옛 것, 1 이면 새 것, 중간은 섞임');
   expect(m.normalizeSketch({ ...n0, zones: [{ id: 'z1', color: '#BAD6B0', label: '녹', mask: 'data:image/png;base64,iVBORw0KGgo=', band: 'green' }] }).zones[0].band === 'green', '구역 층에 색 띠(band)가 유지됨');
+}
+// 내 이미지: 자르기(제자리 유지)·바꾸기(비율 유지)·여러 장 비껴 놓기·화질 단계
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('내 이미지: ' + msg); else ok++; };
+  const near = (a, b, e = 0.011) => Math.abs(a - b) <= e;
+  const eqRect = (a, b) => a.length === b.length && a.every((v, i) => near(v, b[i]));
+  // 순수 계산
+  expect(m.normCrop([0, 0, 1, 1]) === null && m.normCrop([0.001, 0, 1, 0.999]) === null, '거의 전체면 자르지 않은 것(null)');
+  expect(eqRect(m.normCrop([0.8, 0.1, 0.2, 0.9]), [0.2, 0.1, 0.8, 0.9]), '왼쪽>오른쪽으로 거꾸로 줘도 바로잡음');
+  const tiny = m.normCrop([0.5, 0.5, 0.51, 0.9]); expect(tiny[2] - tiny[0] >= 0.05 - 1e-9, '너무 좁은 범위는 최소 5%로 넓힘');
+  expect(m.normCrop('x') === null && m.normCrop([0, 0, 1]) === null && m.normCrop([0, 0, NaN, 1]) === null, '잘못된 입력은 null');
+  expect(eqRect(m.cropRect([10, 20, 110, 70], null, [0.25, 0.5, 0.75, 1]), [35, 45, 85, 70]), '자르기: 전체 상자 [10,20,110,70] 에서 가운데·아래 절반만 남기면 보이는 부분이 제자리에 남음');
+  const c1 = m.cropRect([10, 20, 110, 70], null, [0.25, 0.5, 0.75, 1]); const c2 = m.cropRect(c1, [0.25, 0.5, 0.75, 1], [0, 0, 1, 1]);
+  expect(eqRect(c2, [10, 20, 110, 70]), '자르기를 풀면(전체로) 처음 상자로 돌아감');
+  const c3 = m.cropRect(c1, [0.25, 0.5, 0.75, 1], [0.25, 0.5, 0.5, 1]); expect(eqRect(c3, [35, 45, 60, 70]), '이미 자른 것을 더 자르면 보이는 부분이 그대로 남음');
+  expect(eqRect(m.fitInside([0, 0, 100, 50], 2), [0, 0, 100, 50]) && eqRect(m.fitInside([0, 0, 100, 50], 1), [25, 0, 75, 50]) && eqRect(m.fitInside([0, 0, 100, 50], 4), [0, 12.5, 100, 37.5]), '바꾸기: 새 이미지를 옛 상자 안에 비율을 지키며 가장 크게(가운데)');
+  expect(m.stagger(0) === 0 && m.stagger(1) === 3 && m.stagger(2) === 6 && m.stagger(8) === 24 && m.stagger(9) === 3, '여러 장 비껴 놓기: 처음은 가운데, 다음부터 3씩(8장마다 되풀이)');
+  expect(m.IMG_QUALITY.light.limit < m.IMG_QUALITY.normal.limit && m.IMG_QUALITY.normal.limit < m.IMG_QUALITY.high.limit && m.imgQualityOf('x') === m.IMG_QUALITY.normal && m.IMG_QUALITY.high.tries[0][0] > m.IMG_QUALITY.normal.tries[0][0], '화질 단계: 가볍게 < 보통 < 선명하게, 모르는 값은 보통');
+  // 손스케치 이미지 블록
+  const url = 'data:image/png;base64,iVBORw0KGgo=';
+  const sk0 = m.normalizeSketch(m.makeEditSpec({ imageUrl: url, w: 1000, h: 600, title: '', legend: [] }));
+  const a1 = m.sketchAddImage(sk0, { href: url, w: 400, h: 200 }); const b1 = a1.spec.blocks.find((b) => b.id === a1.id);
+  const a2 = m.sketchAddImage(sk0, { href: url, w: 400, h: 200 }, 6); const b2 = a2.spec.blocks.find((b) => b.id === a2.id);
+  expect(near(b2.rect[0] - b1.rect[0], 6, 0.2) && near(b2.rect[1] - b1.rect[1], 6, 0.2), '여러 장: shift 만큼 비껴 놓임');
+  const cropped = m.sketchCropImage(a1.spec, a1.id, { crop: [0.25, 0, 0.75, 1], orig: url, href: url + 'C', w: 200, h: 200 });
+  const cb = m.normalizeSketch(cropped).blocks.find((b) => b.id === a1.id);
+  const w0 = b1.rect[2] - b1.rect[0]; const w1 = cb.rect[2] - cb.rect[0];
+  expect(near(w1, w0 / 2, 0.2) && near(cb.rect[0] - b1.rect[0], w0 / 4, 0.2) && near(cb.rect[3] - cb.rect[1], b1.rect[3] - b1.rect[1], 0.2), '손스케치 자르기: 가운데 절반만 남고 보이는 부분은 제자리, 높이는 그대로');
+  expect(cb.href === url + 'C' && cb.orig === url && Array.isArray(cb.crop) && near(cb.ar, 1, 0.01), '자른 그림(href)·원본(orig)·범위(crop)가 저장되고 비율(ar)은 자른 그림의 비율');
+  const back = m.normalizeSketch(m.sketchCropImage(cropped, a1.id, { crop: null, orig: url, href: url, w: 400, h: 200 })).blocks.find((b) => b.id === a1.id);
+  expect(eqRect(back.rect, b1.rect) && back.href === url && back.orig === undefined && back.crop === undefined, '자르기 해제: 처음 상자·원본 그림으로 돌아가고 orig/crop 사라짐');
+  const again = m.normalizeSketch(m.sketchCropImage(cropped, a1.id, { crop: [0.25, 0.25, 0.75, 0.75], orig: url, href: url + 'D', w: 200, h: 100 })).blocks.find((b) => b.id === a1.id);
+  expect(again.orig === url && near(again.rect[2] - again.rect[0], w0 / 2, 0.2) && near(again.rect[3] - again.rect[1], (b1.rect[3] - b1.rect[1]) / 2, 0.2), '다시 자르기: 원본 기준으로 범위를 고쳐 상자가 맞게 바뀜');
+  const rp = m.normalizeSketch(m.sketchReplaceImage(cropped, a1.id, { href: url + 'R', w: 100, h: 400 })).blocks.find((b) => b.id === a1.id);
+  const cx0 = (cb.rect[0] + cb.rect[2]) / 2; const cx1 = (rp.rect[0] + rp.rect[2]) / 2;
+  expect(rp.href === url + 'R' && rp.orig === undefined && rp.crop === undefined && near(rp.ar, 0.25, 0.01) && near((rp.rect[2] - rp.rect[0]) / (rp.rect[3] - rp.rect[1]), 0.25, 0.01) && near(cx0, cx1, 0.2) && rp.rect[3] - rp.rect[1] <= cb.rect[3] - cb.rect[1] + 0.2, '바꾸기: 새 이미지가 옛 상자 안에 비율을 지켜 들어가고 자르기는 풀림, 중심 유지');
+  expect(rp.opacity === a1.spec.blocks.find((b) => b.id === a1.id).opacity && rp.layer === 'back', '바꾸기: 투명도·앞뒤는 그대로');
+  expect(m.normalizeSketch({ ...cropped, blocks: cropped.blocks.map((b) => (b.id === a1.id ? { ...b, crop: [0, 0, 1, 1] } : b)) }).blocks.find((b) => b.id === a1.id).orig === undefined, '범위가 전체(자르지 않음)로 저장돼 있으면 orig/crop 을 버림');
+  // 구조형 결과의 내 이미지(edits.adds)
+  const e1 = m.editAddImage(null, 'sig', { href: url, w: 400, h: 200, box: [0, 0, 1000, 700] });
+  const e2 = m.editAddImage(e1.edits, 'sig', { href: url, w: 400, h: 200, box: [0, 0, 1000, 700], shift: 12 });
+  const ad1 = e2.edits.adds[0]; const ad2 = e2.edits.adds[1];
+  expect(near(ad2.x - ad1.x, 12, 0.1) && near(ad2.y - ad1.y, 12, 0.1) && ad1.id !== ad2.id, '구조형: 여러 장 shift 로 비껴 놓임, 번호 겹치지 않음');
+  const ec = m.editCropImage(e1.edits, e1.id, { crop: [0, 0.5, 1, 1], orig: url, href: url + 'C', w: 400, h: 100 });
+  const ac = ec.adds[0]; const a0 = e1.edits.adds[0];
+  expect(near(ac.x, a0.x, 0.05) && near(ac.w, a0.w, 0.05) && near(ac.h, a0.h / 2, 0.05) && near(ac.y, a0.y + a0.h / 2, 0.05) && ac.orig === url && ac.crop[1] === 0.5, '구조형 자르기: 아래 절반만 남고 제자리');
+  const er = m.editCropImage(ec, e1.id, { crop: null, orig: url, href: url, w: 400, h: 200 }); const ar0 = er.adds[0];
+  expect(near(ar0.h, a0.h, 0.05) && near(ar0.y, a0.y, 0.05) && ar0.orig === undefined && ar0.crop === undefined, '구조형 자르기 해제: 처음 모양으로');
+  const ee = m.editReplaceImage(ec, e1.id, { href: url + 'R', w: 50, h: 200 }); const ae = ee.adds[0];
+  expect(ae.href === url + 'R' && ae.orig === undefined && near(ae.w / ae.h, 0.25, 0.01) && ae.h <= ac.h + 0.05, '구조형 바꾸기: 상자 안에 비율을 지켜 맞춤, 자르기 풀림');
+  const svgOut = m.applyEdits('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700"><rect width="1000" height="700" fill="#fff"/></svg>', ec).svg;
+  expect(svgOut.includes('href="' + url + 'C"') && !svgOut.includes('orig') && !svgOut.includes('crop'), '그림에는 자른 그림만 들어가고 원본(orig)·범위(crop)는 새어 나가지 않음');
+  expect(m.hasEdits(ec) && ec.adds.length === 1, '자른 이미지도 수정으로 셈');
+  expect(m.sketchReplaceImage(a1.spec, a1.id, { w: 100, h: 100 }) === a1.spec && m.sketchCropImage(a1.spec, a1.id, { crop: [0, 0, 0.5, 1], w: 100, h: 100 }) === a1.spec && m.editReplaceImage(e1.edits, e1.id, { w: 1, h: 1 }) === e1.edits && m.editCropImage(e1.edits, e1.id, { crop: [0, 0, 0.5, 1], w: 1, h: 1 }) === e1.edits, '새 그림(href)이 없으면 아무것도 바꾸지 않음(이미지가 사각형으로 변하는 사고 방지)');
+}
+// 글자 하나의 pt 위계 판정(편집기에서 글자를 눌렀을 때) + 페이지 위에서 제목·칸 제목을 바로 고치기 위한 자리 정보
+{
+  const expect = (cond, msg) => { if (!cond) fails.push('글자 위계 판정: ' + msg); else ok++; };
+  const T = { title: 32, sub: 18, label: 11, small: 8, labelMin: 7, upper: null };
+  const jd = (pt, t = T) => m.judgeTextPt(pt, t);
+  expect(jd(11).level === 'ok' && jd(11).tier.name === '본문' && jd(11).fix === null, '11pt = 본문 위계에 맞음(고칠 것 없음)');
+  expect(jd(10).level === 'ok' && jd(12).level === 'ok', '본문 ±12% 안은 맞음');
+  expect(jd(8).level === 'ok' && jd(8).tier.name === '작은 글자', '8pt = 작은 글자 위계');
+  expect(jd(4).level === 'warn' && jd(4).fix === 8 && /읽기 어렵/.test(jd(4).text), '최소(7pt)보다 작으면 경고, 8pt 로 맞추라고 알림');
+  expect(jd(6.5).level === 'warn' && jd(7).level !== 'warn', '최소 크기 경계(7pt, 계산 오차 2% 허용)');
+  expect(jd(14).level === 'info' && jd(14).fix === 11 && jd(14).tier.name === '본문' && /크고/.test(jd(14).text), '위계 단계 사이(14pt)는 안내하고 가장 가까운 단계(본문 11pt)로 맞추라고 함');
+  const U = { ...T, upper: { pt: 18, name: '소제목' } };
+  expect(jd(18, U).level === 'warn' && /소제목\(18pt\)보다 크거나 같/.test(jd(18, U).text) && jd(18, U).fix === 11, '소제목(18pt)과 같거나 크면 위계 경고, 본문(11pt)으로 맞추라고 알림');
+  expect(jd(17.9, U).level !== 'warn' || jd(17.9, U).fix !== 11, '소제목보다 작으면 위 경고는 아님');
+  expect(jd(11, U).level === 'ok', '윗 위계가 있어도 본문은 맞음');
+  expect(m.judgeTextPt(0, T) === null && m.judgeTextPt(10, null) === null, '크기 0 이나 위계 정보가 없으면 판정 안 함');
+  // 페이지 위에서 바로 고치기: 제목·소제목 자리, 칸 제목 자리
+  const mk = (title, subtitle, cap) => m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/><rect x="10" y="10" width="80" height="40" fill="#ccc"/></svg>' }, caption: cap }, { id: 'c2', render: null }], { title, subtitle, layoutId: '2x1' });
+  const e = mk('', '', '칸 제목');
+  expect(e.slots.title.has === false && e.slots.title.text === '' && !e.slots.subtitle && e.slots.title.rect[1] === 0 && e.slots.title.rect[3] >= 4, '제목이 없으면 위쪽 여백에 "제목 추가" 자리만 있음');
+  const t = mk('내 제목', '', '칸 제목');
+  expect(t.slots.title.has === true && t.slots.title.text === '내 제목' && t.slots.title.rect[2] > 10 && t.slots.title.rect[2] < 400 && t.slots.subtitle && t.slots.subtitle.has === false, '제목이 있으면 글자 자리(폭은 글자만큼)와 "소제목 추가" 자리가 생김');
+  expect(t.slots.title.rect[1] + t.slots.title.rect[3] <= t.box.y + 0.01 && t.slots.subtitle.rect[1] >= t.slots.title.rect[1] + t.slots.title.rect[3] - 0.01, '제목 자리가 그림 영역 위에 놓이고 소제목 자리는 제목 아래');
+  const st = mk('내 제목', '소제목입니다', '칸 제목');
+  expect(st.slots.subtitle.has === true && st.slots.subtitle.text === '소제목입니다', '소제목이 있으면 글자 자리');
+  const c1 = st.cells.find((c) => c.id === 'c1'); const c2 = st.cells.find((c) => c.id === 'c2');
+  expect(Array.isArray(c1.capRect) && c1.captionText === '칸 제목' && c1.capRect[0] === c1.rect[0] && c1.capRect[1] === c1.rect[1] && c1.capRect[2] <= c1.rect[2] && c1.capRect[3] > 2, '칸 제목 자리는 칸의 왼쪽 위에서 시작하고 칸 폭 안');
+  expect(c2.empty === true && !c2.capRect, '빈 칸에는 칸 제목 자리가 없음');
+  const one = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/></svg>' }, caption: '그림 제목' }], { title: '', layoutId: '1x1' });
+  expect(!one.cells[0].capRect, '한 칸짜리 페이지는 칸 제목을 따로 그리지 않음');
 }
 // 출력 크기·글자 위계(page.js): 추천 pt, 크기 맞춤, 글꼴 바꿈, 경고
 {

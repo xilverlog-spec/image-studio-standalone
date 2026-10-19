@@ -45,6 +45,10 @@ function Colors({ value, onChange, allowClear, swatches = SWATCHES }) {
 }
 
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
+import { sketchReplaceImage, sketchCropImage } from './conceptDiagram/sketch';
+import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
+import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
+import ImageCropDialog from './ImageCropDialog';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
 export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick }) {
@@ -52,6 +56,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
   const regionDrag = useRef(null);
   const [textInfo, setTextInfo] = useState(null); // 마지막으로 누른 글자의 크기(그림 단위) — 몇 pt 인지 알려 주는 데 쓴다
+  const [cropFor, setCropFor] = useState(null); const [imgBusy, setImgBusy] = useState(false); const [imgNote, setImgNote] = useState(''); const imgFileRef = useRef(null); // 넣은 이미지 자르기 창·바꾸기
   const past = useRef([]); const future = useRef([]);
   const lastKey = useRef(''); const lastAt = useRef(0);
   const [, tick] = useState(0);
@@ -100,6 +105,21 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const kind = sel ? sketchKind(norm, selected) : '';
   const set = (patch, key) => commit(sketchUpdate(norm, selected, patch), key ? `${selected}:${key}` : '');
   const remove = () => { commit(sketchDelete(norm, selected)); setSelected(''); };
+  const normRef = useRef(norm); normRef.current = norm; // 파일을 읽는 동안 그림이 바뀌었을 수 있어, 끝난 뒤에는 그때의 최신 그림에 적용한다
+  const replaceImg = async (file) => {
+    if (!file || !sel || sel.el.kind !== 'image') return; const id = selected; setImgBusy(true); setImgNote('');
+    try { const im = await readImageFile(file); commit(sketchReplaceImage(normRef.current, id, { href: im.url, w: im.w, h: im.h })); setImgNote(`이미지를 바꿨습니다 (${im.w}×${im.h}px · 약 ${im.kb.toLocaleString()}KB). 위치·크기 칸 안에 비율을 지켜 맞췄습니다.`); }
+    catch (e) { setImgNote(`이미지를 바꾸지 못했습니다: ${e.message}`); } finally { setImgBusy(false); }
+  };
+  const applyCrop = async (crop) => { // crop: null 이면 자르기 해제(원본 전체)
+    const id = cropFor?.id; const el = id ? sketchFind(normRef.current, id)?.el : null; if (!el) { setCropFor(null); return; }
+    const orig = el.orig || el.href; setImgBusy(true); setImgNote('');
+    try {
+      const out = crop ? await bakeCrop(orig, crop) : { url: orig, ...(await imageSize(orig)) };
+      commit(sketchCropImage(normRef.current, id, { crop, orig, href: out.url, w: out.w, h: out.h })); setCropFor(null);
+      setImgNote(crop ? `잘라 냈습니다 (${out.w}×${out.h}px). 다시 열면 원본에서 범위를 고칠 수 있습니다.` : '자르기를 풀었습니다(원본 전체).');
+    } catch (e) { setImgNote(`자르지 못했습니다: ${e.message}`); } finally { setImgBusy(false); }
+  };
   const add = (k) => { const r = sketchAdd(norm, k); commit(r.spec); setSelected(r.id); };
   const setGlobal = (patch, key) => commit({ ...norm, ...patch }, key);
 
@@ -172,12 +192,13 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const pasteClip = (offset) => { if (!CLIP) return; PASTE_N += 1; const k = offset ?? 3 * PASTE_N; const r = sketchPaste(norm, CLIP, k, k); if (r.id) { commit(r.spec); setSelected(r.id); } };
   const onKey = (e) => {
     if (shortcutsEnabled && !shortcutsEnabled()) return; // 페이지 미리보기를 만지는 중이면 페이지 단축키가 받는다
+    if (cropFor) return; // 이미지 자르기 창이 열려 있는 동안은 편집 단축키(Delete 등)를 받지 않는다
     const tag = e.target?.tagName || '';
     const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
-    if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) e.preventDefault(); }
-    else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); remove(); } }
-    else if (mod && !typing && k === 'v' && CLIP) { e.preventDefault(); pasteClip(); }
+    if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) { e.preventDefault(); markInternalCopy(); } }
+    else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); markInternalCopy(); remove(); } }
+    else if (mod && !typing && k === 'v' && CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
     else if (mod && !typing && k === 'd' && selected) { e.preventDefault(); if (copySel()) pasteClip(3); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
@@ -244,7 +265,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
           <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 4 }} title="그림 틀 가운데의 세로·가로 중심선을 항상 보여 줍니다"><input type="checkbox" checked={showAxis} onChange={(e) => setShowAxis(e.target.checked)} data-testid="show-axis" />중심축 보기</label>
         </div>
-        {textInfo && <PtReadout size={textInfo.size} ptInfo={ptInfo} text={textInfo.text} testid="sk-pt" />}
+        {textInfo && <PtReadout size={textInfo.size} ptInfo={ptInfo} text={textInfo.text} testid="sk-pt" onFix={kind === 'memo' && sel && sel.el.text === textInfo.text ? (pt) => set({ size: Math.min(48, Math.max(8, Math.round(pt / ptInfo.ppu))) }, 'size') : undefined} />}
         <div style={sec}>
           <span style={title}>요소 추가</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -380,6 +401,12 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                 <button style={smallBtn(sel.el.layer === 'front')} onClick={() => set({ layer: 'front' })} data-testid="img-front" title="모든 도형·화살표 위">맨 앞으로</button>
                 {sel.el.ar > 0 && <button style={smallBtn(false)} onClick={() => { const r = sel.el.rect; set({ rect: [r[0], r[1], r[2], r[1] + (r[2] - r[0]) / sel.el.ar] }); }} data-testid="img-ratio">원본 비율로</button>}
               </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">🔄 이미지 바꾸기</button>
+                <button style={smallBtn(!!sel.el.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: selected })} data-testid="img-crop" title="이미지의 필요한 부분만 남깁니다">✂ 자르기{sel.el.crop ? ' (자른 상태)' : ''}</button>
+                <input ref={imgFileRef} type="file" accept="image/*" hidden data-testid="img-replace-input" onChange={(e) => { replaceImg(e.target.files?.[0]); e.target.value = ''; }} />
+              </div>
+              {imgNote && <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }} data-testid="img-note">{imgNote}</p>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <Num label="왼쪽 X" value={sel.el.rect[0]} onChange={(v) => setRect(0, v)} />
                 <Num label="위쪽 Y" value={sel.el.rect[1]} onChange={(v) => setRect(1, v)} />
@@ -471,11 +498,12 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => setSelected('')}>선택 해제</button>
               <button style={smallBtn(false)} onClick={() => { if (copySel()) pasteClip(3); }} title="Ctrl+D" data-testid="duplicate">복제</button>
-              <button style={smallBtn(false)} onClick={copySel} title="Ctrl+C" data-testid="copy">복사</button>
+              <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy(); }} title="Ctrl+C" data-testid="copy">복사</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="delete">삭제</button>
             </div>
           </div>
         )}
+        {cropFor && sel && sel.el.kind === 'image' && <ImageCropDialog src={sel.el.orig || sel.el.href} crop={sel.el.crop || null} busy={imgBusy} onApply={applyCrop} onCancel={() => setCropFor(null)} />}
         <p style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>좌표는 그림 안 위치(0~100)입니다. 위쪽 ‘SVG 저장’을 누르면 지금 모습 그대로 저장됩니다.</p>
       </div>
     </div>

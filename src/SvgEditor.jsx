@@ -1,7 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { applyEdits, hasEdits, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
+import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
+import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
+import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
+import ImageCropDialog from './ImageCropDialog';
 
 // 평면 다이어그램·배치 개념도·매스 과정도·버블도·층별 조닝도 같은 '구조형 결과'의 편집기.
 // 그림 속 도형을 하나씩 눌러 고른 뒤 색·위치(끌기)·곡선(마디 끌기)·선 종류·굵기·투명도를 고친다. 글자는 더블클릭으로 그 자리에서 고친다.
@@ -56,6 +59,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const [node, setNode] = useState(-1);          // 고른 경로 마디(segs 번호)
   const [ov, setOv] = useState(null);            // 화면 위 손잡이·선택 상자(화소 좌표)
   const [ed, setEd] = useState(null);            // 글자 고치는 중
+  const [cropFor, setCropFor] = useState(null); const [imgBusy, setImgBusy] = useState(false); const [imgNote, setImgNote] = useState(''); const imgFileRef = useRef(null); // 넣은 이미지 자르기 창·바꾸기
   const [ctxOk, setCtxOk] = useState(true);         // 화살촉이 선 색을 따라가는 context-stroke 를 브라우저가 지원하는가
   const justAdded = useRef('');                  // 방금 추가한 글자(내용 칸에 바로 커서를 둔다)
   const [dragging, setDragging] = useState(false);
@@ -334,6 +338,20 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     commit(editAsPath(Eref.current, sel, lineToCurveD(x1, y1, x2, y2), ['x1', 'y1', 'x2', 'y2'], sigRef.current));
   };
   const myAdd = sel ? adds.find((a) => a.id === sel) : null;
+  const replaceImg = async (file) => {
+    if (!file || !myAdd) return; const id = sel; setImgBusy(true); setImgNote('');
+    try { const im = await readImageFile(file); commit(editReplaceImage(Eref.current, id, { href: im.url, w: im.w, h: im.h })); setImgNote(`이미지를 바꿨습니다 (${im.w}×${im.h}px · 약 ${im.kb.toLocaleString()}KB). 자리 안에 비율을 지켜 맞췄습니다.`); }
+    catch (e) { setImgNote(`이미지를 바꾸지 못했습니다: ${e.message}`); } finally { setImgBusy(false); }
+  };
+  const applyCrop = async (crop) => { // crop: null 이면 자르기 해제(원본 전체)
+    const id = cropFor?.id; const a = id ? (Eref.current.adds || []).find((q) => q.id === id) : null; if (!a) { setCropFor(null); return; }
+    const orig = a.orig || a.href; setImgBusy(true); setImgNote('');
+    try {
+      const out = crop ? await bakeCrop(orig, crop) : { url: orig, ...(await imageSize(orig)) };
+      commit(editCropImage(Eref.current, id, { crop, orig, href: out.url, w: out.w, h: out.h })); setCropFor(null);
+      setImgNote(crop ? `잘라 냈습니다 (${out.w}×${out.h}px). 다시 열면 원본에서 범위를 고칠 수 있습니다.` : '자르기를 풀었습니다(원본 전체).');
+    } catch (e) { setImgNote(`자르지 못했습니다: ${e.message}`); } finally { setImgBusy(false); }
+  };
   const myShape = sel ? shapeOf(sel) : null;
   const addShape = (kind) => { // 그림 한가운데에 새 도형·글자·화살표를 넣고 바로 고른다
     const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
@@ -439,11 +457,11 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   keyRef.current = (e) => {
     if (shortcutsEnabled && !shortcutsEnabled()) return;
     const typing = /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || '') || e.target?.isContentEditable;
-    if (typing || ed) return;
+    if (typing || ed || cropFor) return; // 이미지 자르기 창이 열려 있는 동안은 편집 단축키(Delete 등)를 받지 않는다
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod) { // Ctrl+C 복사 · Ctrl+V 붙여넣기 · Ctrl+D 복제 · Ctrl+A 모두 선택 (Ctrl+Z/Y 는 부모가 처리)
-      if (k === 'c' && selIds.length && !window.getSelection?.()?.toString()) { e.preventDefault(); copySel(); }
-      else if (k === 'v' && SV_CLIP) { e.preventDefault(); pasteClip(); }
+      if (k === 'c' && selIds.length && !window.getSelection?.()?.toString()) { e.preventDefault(); if (copySel()) markInternalCopy(); }
+      else if (k === 'v' && SV_CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
       else if (k === 'd' && selIds.length) { e.preventDefault(); duplicateSel(); }
       else if (k === 'a') { e.preventDefault(); selectAll(); }
       return;
@@ -499,7 +517,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             {onAddImageClick && <button style={smallBtn(false)} onClick={onAddImageClick} data-testid="sv-add-image">＋ 이미지</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button style={smallBtn(false)} onClick={copySel} data-testid="sv-copy" title="Ctrl+C">복사</button>
+            <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy(); }} data-testid="sv-copy" title="Ctrl+C">복사</button>
             <button style={smallBtn(false)} onClick={() => pasteClip()} data-testid="sv-paste" title="Ctrl+V">붙여넣기</button>
             <button style={smallBtn(false)} onClick={duplicateSel} data-testid="sv-dup" title="Ctrl+D">복제</button>
           </div>
@@ -573,6 +591,13 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <button style={smallBtn(!myAdd.behind)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { behind: false }))} data-testid="sv-img-front" title="모든 도형 위">맨 앞으로</button>
               {myAdd.ar > 0 && <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { h: r2(myAdd.w / myAdd.ar) }))} data-testid="sv-img-ratio">원본 비율로</button>}
             </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="sv-img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">🔄 이미지 바꾸기</button>
+              <button style={smallBtn(!!myAdd.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: sel })} data-testid="sv-img-crop" title="이미지의 필요한 부분만 남깁니다">✂ 자르기{myAdd.crop ? ' (자른 상태)' : ''}</button>
+              <input ref={imgFileRef} type="file" accept="image/*" hidden data-testid="sv-img-replace-input" onChange={(e) => { replaceImg(e.target.files?.[0]); e.target.value = ''; }} />
+            </div>
+            {imgNote && <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }} data-testid="sv-img-note">{imgNote}</p>}
+            {cropFor && cropFor.id === sel && <ImageCropDialog src={myAdd.orig || myAdd.href} crop={myAdd.crop || null} busy={imgBusy} onApply={applyCrop} onCancel={() => setCropFor(null)} />}
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-img-delete">삭제</button>
@@ -602,7 +627,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
                 </select>
               </label>
             )}
-            {tag === 'text' && <PtReadout size={textUnitSize(el)} ptInfo={ptInfo} text={el.textContent} testid="sv-pt" />}
+            {tag === 'text' && <PtReadout size={textUnitSize(el)} ptInfo={ptInfo} text={el.textContent} testid="sv-pt" onFix={(pt) => { const k = fs ? textUnitSize(el) / fs : 1; patch(sel, { 'font-size': r2(pt / ptInfo.ppu / (k || 1)) }, 'fs'); }} />}
             {tag !== 'line' && tag !== 'polyline' && (
               <div style={lab}>{tag === 'text' ? '글자 색' : '채움 색'}<Colors value={fill} onChange={(c) => setColor('fill', c)} none={fillNone} onNone={tag === 'text' ? undefined : () => setNone('fill')} /></div>
             )}
