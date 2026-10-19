@@ -143,6 +143,9 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
   );
 }
 
+// 설명·참고 이미지가 바뀌면 다시 정할 수 있는 자동 판단 결과(손스케치는 읽기가 비싸고 이 경로로 바뀌지 않으므로 제외)
+const AUTO_REROUTE = ['plan', 'axon', 'edit', 'form', 'site', 'freeform'];
+
 export default function ConceptDiagram({ addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
   const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
@@ -208,7 +211,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const pickStyle = async (file) => {
     if (!file) return;
-    try { setStyleImage(await readResizedPng(file)); if (subjectKind === 'auto' && (autoKind === 'plan' || autoKind === 'axon' || autoKind === 'edit')) { setRead(null); setAutoKind(null); setAutoInfo(null); } } // 참고 이미지를 나중에 넣으면 평면도의 자동 판단(평면 다이어그램/분석 축측도)을 다시 한다
+    try { setStyleImage(await readResizedPng(file)); if (subjectKind === 'auto' && AUTO_REROUTE.includes(autoKind)) { setRead(null); setAutoKind(null); setAutoInfo(null); } } // 참고 이미지를 나중에 넣으면 평면도의 자동 판단(평면 다이어그램/분석 축측도)을 다시 한다
     catch (e) { addToast?.('error', '이미지 불러오기 실패', e.message); }
   };
 
@@ -465,6 +468,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const r = job.result; const img = await urlToJpegDataUrl(r.image, 2000);
       setResult({ type: 'sketch', spec: makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }), ver: Date.now() });
       addToast?.('success', '다이어그램 생성 완료', `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
+      if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
       if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
     } catch (e) { addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`); }
     finally { setBusy(false); setEditProg(null); }
@@ -477,9 +481,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     setGenError('');
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
     let readNow = read;
-    if (readMode && readNow && subjectKind === 'auto' && autoInfo && ['plan', 'axon', 'edit'].includes(readNow.kind)) { // 설명·참고 이미지를 바꿔서 평면도에 알맞은 방식(평면 다이어그램/분석 축측도/AI 이미지 편집)이 달라졌으면 다시 정한다
+    if (readMode && readNow && subjectKind === 'auto' && autoInfo && AUTO_REROUTE.includes(readNow.kind)) { // 설명·참고 이미지를 바꿔서 알맞은 방식(평면 다이어그램/분석 축측도/AI 이미지 편집/건물 형태/배치도/자유 해석)이 달라졌으면 다시 정한다
       const want = routeSubject(autoInfo.type, { hasRef: !!styleImage, text: userText });
-      if (['plan', 'axon', 'edit'].includes(want) && want !== readNow.kind) readNow = null;
+      if (AUTO_REROUTE.includes(want) && want !== readNow.kind) readNow = null;
     }
     if (readMode && !readNow) {
       readNow = await readImage();
@@ -734,7 +738,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
-          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note">🖼️ <b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 더 빠른 단순 블록 그림은 “이미지 종류 직접 지정 → 평면도”로 만드세요.</p>}
+          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note">🖼️ <b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(평면 다이어그램·건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
           {editProg && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
               <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, #e2e8f0)', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: '#F28C28', transition: 'width .6s' }} /></div>

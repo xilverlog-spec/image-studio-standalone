@@ -319,7 +319,13 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(R('plan_drawing', { text: '공용과 사적 공간 구분' }) === 'plan', '분석 단서 없는 설명은 평면 다이어그램');
   for (const t of ['동선을 표시한 다이어그램', '동선을 나타내는 건축다이어그램을 만들어줘', '부서별 조닝', 'zoning diagram']) expect(R('plan_drawing', { text: t }) === 'edit', `동선·조닝 요청 '${t}' → AI 이미지 편집`);
   expect(R('plan_drawing', { text: '통풍과 동선' }) === 'axon' && R('plan_drawing', { text: '동선', hasRef: true }) === 'axon', '분석 단서·참고 이미지가 있으면 동선 요청이어도 분석 축측도가 우선');
-  expect(R('site_plan', { text: '동선' }) === 'site' && R('hand_sketch', { text: '동선' }) === 'sketch', '평면도가 아니면 동선 단서가 있어도 경로가 바뀌지 않음');
+  // 사진·3D 뷰·배치도·그 밖의 그림: 흐름·구역·방향·색을 얹는 요청 → AI 이미지 편집, 아니면 기존 경로(2026-10-16)
+  for (const [ty, t, want] of [['building_photo', '주출입구와 보행자 접근 동선', 'edit'], ['building_photo', '일조 방향과 시선', 'edit'], ['building_photo', '기능별로 색을 나눠 구분', 'edit'], ['building_photo', '', 'form'], ['building_photo', '매스 과정도', 'form'],
+    ['site_plan', '차량 동선과 보행 동선', 'edit'], ['site_plan', '구역 구분', 'edit'], ['site_plan', '', 'site'], ['site_plan', '코어 스퀘어와 순환', 'site'],
+    ['artwork_3d', '동선을 표시', 'edit'], ['artwork_3d', '가변형 공간이 많다는 다이어그램', 'freeform'], ['artwork_3d', '바람 흐름', 'freeform'], ['other', '접근 동선', 'edit'], ['other', '', 'freeform'], ['hand_sketch', '동선', 'sketch']]) {
+    expect(R(ty, { text: t }) === want, `${ty} + '${t}' → ${want} (실제 ${R(ty, { text: t })})`);
+  }
+  for (const ty of ['building_photo', 'site_plan', 'artwork_3d', 'other']) expect(R(ty, { text: '동선', hasRef: true }) !== 'edit', `${ty}: 스타일 참고 이미지가 있으면 이미지 편집으로 보내지 않음(참고 이미지를 쓰지 못함)`);
   expect(R('other') === 'freeform' && R('엉뚱') === 'freeform' && R(undefined) === 'freeform', '모르는 종류는 자유 해석');
   expect(m.normalizeSubjectType({ type: 'Hand_Sketch', reason: 'x' }).type === 'hand_sketch' && m.normalizeSubjectType({ type: 'zzz' }).type === 'other' && m.normalizeSubjectType(null).type === 'other', '분류 응답 정리');
   expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon', 'edit'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음');

@@ -287,7 +287,7 @@ def _hue_name(h):
     return None
 
 
-def legend_from_result(final, original, arrow, gem_legend, min_arrow_px=350, min_fill_frac=0.004):
+def legend_from_result(final, original, arrow, gem_legend, min_arrow_px=350, min_fill_frac=0.004, photo=False):
     """결과에 실제로 나온 색만 범례로: ① 굵은 화살표 색(kind=flow) ② 원본 위에 새로 칠해진 연한 채움 색(kind=zone, 선 도면 합성일 때만).
     뜻은 Gemini 가 정한 같은 색 이름·종류의 설명을 쓴다(없으면 '구역'/'동선')."""
     rgb = np.asarray(final.convert("RGB"))
@@ -306,7 +306,7 @@ def legend_from_result(final, original, arrow, gem_legend, min_arrow_px=350, min
     out.sort(key=lambda t: -t[0])
     flows = [{"color": "#%02X%02X%02X" % tuple(c), "kind": "flow", "label": lab.get(("flow", n)) or lab.get(("zone", n)) or "동선"} for _cnt, _k, n, c in out[:4]]
     zones = []
-    if original is not None:
+    if original is not None and not photo:   # 선 도면 합성: 원본에서 바뀐(칠해진) 곳의 색
         o = np.asarray(original.convert("RGB").resize(final.size)).astype(np.int16)
         tinted = (np.abs(rgb.astype(np.int16) - o).sum(axis=2) > 24) & (hsv[..., 1] > 25) & (hsv[..., 1] < 140)
         if arrow is not None:
@@ -320,10 +320,68 @@ def legend_from_result(final, original, arrow, gem_legend, min_arrow_px=350, min
                 found.append((frac, name, np.median(rgb[m], axis=0).astype(int)))
         found.sort(key=lambda t: -t[0])
         zones = [{"color": "#%02X%02X%02X" % tuple(c), "kind": "zone", "label": lab.get(("zone", n)) or lab.get(("flow", n)) or "구역"} for _f, n, c in found[:5]]
+    elif original is not None and photo:     # 사진·3D 뷰: 모델이 장면을 다시 그려서 차이로는 못 찾는다 → 원본보다 '늘어난' 색만(잔디·하늘처럼 원래 있던 색은 제외)
+        oh = np.asarray(original.convert("RGB").resize(final.size).convert("HSV"))
+        found = []
+        for name in dict.fromkeys(b[0] for b in _HUE_BANDS):
+            lut = np.array([_hue_name(h) == name for h in range(256)])
+            out_m = lut[hsv[..., 0]] & (hsv[..., 1] > 45) & (hsv[..., 2] > 90)
+            org_m = lut[oh[..., 0]] & (oh[..., 1] > 45) & (oh[..., 2] > 90)
+            delta = float(out_m.mean()) - float(org_m.mean())
+            if delta >= 0.01 and ("zone", name) in lab:
+                found.append((delta, name, np.median(rgb[out_m & ~ndi.binary_dilation(org_m, structure=np.ones((5, 5)))], axis=0).astype(int) if (out_m & ~org_m).any() else np.median(rgb[out_m], axis=0).astype(int)))
+        found.sort(key=lambda t: -t[0])
+        zones = [{"color": "#%02X%02X%02X" % tuple(c), "kind": "zone", "label": lab[("zone", n)]} for _f, n, c in found[:5]]
     if lab:   # Gemini 가 범례를 줬다면, 뜻을 모르는 색(원본에 원래 있던 갈색 정원 등이 곱하기로 바뀐 것)은 범례에서 뺀다
         zones = [z for z in zones if z["label"] != "구역"]
         flows = [f for f in flows if f["label"] != "동선"]
     return zones + flows
+
+
+def verify_zone_legend(final, legend):
+    """구역 범례를 '지시'가 아니라 '결과 그림'으로 바로잡는다. 이미지 편집 모델은 '이 방은 이 색'이라는 대응을 자주 틀려서(시험: 침실이 지시와 다른 색으로 칠해짐),
+    지시문 기준 범례는 그림과 반대로 적힐 수 있다. 그래서 완성된 그림을 Gemini 가 다시 보고, 실제로 칠해진 방들이 공통으로 가진 뜻을 범례로 쓴다.
+    반환: (범례, 확인됨 여부). 확인에 실패하면 지시 기준 범례를 그대로 두고 False 를 돌려 화면이 경고하게 한다."""
+    zones = [z for z in legend if z.get("kind") == "zone"]
+    if not zones:
+        return legend, True
+    try:
+        import base64
+        from services import gemini_chat as G
+        img = final.convert("RGB")
+        k = 1800 / max(img.size)
+        if k < 1:
+            img = img.resize((round(img.width * k), round(img.height * k)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        names = ", ".join(f'{n} ({z["color"]})' for n, z in zip(_names_for(zones), zones))
+        prompt = (f"The attached architectural diagram has pastel color fills on areas/rooms. The fill colors present are: {names}. "
+                  "For each of these fill colors, look at the picture and list the area or room names (Korean, copied from the visible text) that are actually filled with that color, "
+                  "then give a short Korean legend label (max 14 characters) for what those areas have in common (e.g. 공용 공간, 침실, 업무 공간). "
+                  'Answer JSON only, no code fence: {"zones":[{"color":"red|orange|yellow|green|blue|purple","rooms":["..."],"label":"..."}]}')
+        d = _parse_json(G.gemini_chat_completion(INSTRUCT_MODEL, [{"role": "user", "content": prompt, "images": [base64.b64encode(buf.getvalue()).decode()]}], max_tokens=3000, temperature=0.1))
+        got = {str(r.get("color", "")).lower(): str(r.get("label", ""))[:20] for r in (d.get("zones") or []) if isinstance(r, dict) and r.get("label")}
+        out = []
+        for l in legend:
+            if l.get("kind") == "zone":
+                nm = _names_for([l])[0]
+                out.append(dict(l, label=got.get(nm) or l["label"], verified=nm in got))
+            else:
+                out.append(l)
+        return out, all(l.get("verified", True) for l in out)
+    except Exception as e:  # noqa: BLE001
+        print(f"[DIAGRAM-EDIT] 범례 확인 실패(지시 기준 범례를 그대로 씀): {str(e)[:100]}")
+        return legend, False
+
+
+def _names_for(entries):
+    """범례 항목의 색(#RRGGBB) → 색 이름(red/orange/…)."""
+    out = []
+    for e in entries:
+        c = e["color"].lstrip("#")
+        h = Image.new("RGB", (1, 1), tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))).convert("HSV").getpixel((0, 0))[0]
+        out.append(_hue_name(h) or "")
+    return out
 
 
 # ── 작업 ──────────────────────────────────────────────────────────────────
@@ -357,12 +415,14 @@ def _run(job_id, png_bytes, ask, steps, seed):
                 _free(QWEN_URL)                    # 끝나면(실패해도) Qwen 이 잡은 그래픽 메모리를 돌려준다
         _update(job, stage="4/4 원본 도면 위에 색·화살표를 얹는 중", percent=95)
         comp, arrow, how = finish(original, out)
-        legend = legend_from_result(comp, original if how == "overlay" else None, arrow, routes)
+        legend = legend_from_result(comp, original, arrow, routes, photo=(how == "model"))
+        _update(job, stage="4/4 범례를 결과 그림으로 확인하는 중", percent=97)
+        legend, legend_ok = verify_zone_legend(comp, legend)
         fid = f"diagram_edit_{job_id}"
         comp.save(os.path.join(_out_dir(), fid + ".png"))
         out.save(os.path.join(_out_dir(), fid + "_raw.png"))
         _update(job, status="done", stage="완료", percent=100, result={"image": f"/generated/{fid}.png", "raw": f"/generated/{fid}_raw.png", "width": comp.width, "height": comp.height,
-                                                                         "title": title, "legend": legend, "instruction": instruction, "instruction_source": source, "finish": how, "resolution": resolution, "seconds": int(time.time() - job["created"])})
+                                                                         "title": title, "legend": legend, "instruction": instruction, "instruction_source": source, "legend_verified": legend_ok, "finish": how, "resolution": resolution, "seconds": int(time.time() - job["created"])})
     except Exception as e:  # noqa: BLE001 — 사유를 화면에 그대로 보여 준다
         print(f"[DIAGRAM-EDIT] 실패: {e}")
         _update(job, status="error", stage="실패", error=str(e)[:400])
