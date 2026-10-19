@@ -457,6 +457,17 @@ export function axonProject(axon, rect, yx, zr = 0) {
 
 // 도면 위에 표시(AI 이미지 편집) 결과 → 편집 가능한 spec: 합성된 그림을 바탕으로 깔고, 제목은 글자로, 범례는 그림 아래 글자 메모로 얹는다(전부 편집 가능).
 // 범례는 결과 그림에 실제로 나온 화살표 색만 서버가 뽑아 준 것이다.
+// 연한 구역 색을 범례 글자로 쓰면 흰 바탕에서 읽히지 않는다 → 같은 색조를 어둡고 진하게 만든 글자색(층 색과 연결: 층 색을 바꾸면 이 글자색도 따라간다)
+export function legendInk(hex) {
+  const n = parseInt(String(hex).slice(1), 16); const r = ((n >> 16) & 255) / 255; const g = ((n >> 8) & 255) / 255; const b = (n & 255) / 255;
+  const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l0 = (mx + mn) / 2; const d = mx - mn;
+  let h = 0; if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+  const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0; const sat = Math.max(s0, d ? 0.45 : 0); const l = Math.min(l0, 0.38);
+  const c = (1 - Math.abs(2 * l - 1)) * sat; const x = c * (1 - Math.abs(((h / 60) % 2) - 1)); const m0 = l - c / 2;
+  const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const to = (v) => Math.round((v + m0) * 255).toString(16).padStart(2, '0');
+  return `#${to(r1)}${to(g1)}${to(b1)}`.toUpperCase();
+}
 // layers(서버가 결과를 나눠 준 것)가 있으면: imageUrl 은 화살표·구역 색을 뺀 '바탕'이고, 화살표는 편집 가능한 winds, 구역 색은 색·농도를 바꿀 수 있는 zones 가 된다.
 // layers = { arrows: [{ pts(그림 화소 좌표), width(화소), color, head, dash, smooth }], zones: [{ color, label, maskUrl }] }
 export function makeEditSpec({ imageUrl, w, h, title = '', legend = [], layers = null }) {
@@ -464,7 +475,7 @@ export function makeEditSpec({ imageUrl, w, h, title = '', legend = [], layers =
   const items = (Array.isArray(legend) ? legend : []).filter((l) => l && /^#[0-9a-fA-F]{6}$/.test(l.color || '')).slice(0, 6);
   const zones = (layers?.zones || []).filter((z) => z && z.maskUrl && /^#[0-9a-fA-F]{6}$/.test(z.color || '')).slice(0, 8).map((z, i) => ({ id: `z${i + 1}`, color: z.color, label: String(z.label || '구역').slice(0, 22), mask: z.maskUrl, opacity: 1, hidden: false, blend: z.blend === 'color' ? 'color' : 'multiply' }));
   const cols = Math.min(3, Math.max(1, items.length)); const rowH = 3.8; const y0 = rect[3] + 4.2;
-  const memos = items.map((l, i) => { const z = l.kind === 'zone' ? zones.find((q) => q.color.toLowerCase() === l.color.toLowerCase()) : null; return { id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: l.color, icon: '', ...(z ? { zone: z.id } : {}) }; });
+  const memos = items.map((l, i) => { const z = l.kind === 'zone' ? zones.find((q) => q.color.toLowerCase() === l.color.toLowerCase()) : null; return { id: `m${i + 1}`, x: Math.round((100 / cols) * ((i % cols) + 0.5) * 10) / 10, y: Math.round((y0 + Math.floor(i / cols) * rowH) * 10) / 10, text: `${l.kind === 'zone' ? '■' : '━'} ${String(l.label || (l.kind === 'zone' ? '구역' : '동선')).slice(0, 22)}`, size: 15, color: z ? legendInk(z.color) : l.color, icon: '', ...(z ? { zone: z.id } : {}) }; });
   const bottom = items.length ? y0 + Math.ceil(items.length / cols) * rowH : rect[3];
   const spec = { title: String(title || ''), subtitle: '', style: 'line', layout: 'image', frame: [-1, -1, 101, bottom + 1.5], base: { svg: `<g><image href="${imageUrl}" x="0" y="0" width="${w}" height="${h}"/></g>`, vb: [0, 0, w, h], rect, isImage: true },
     blocks: [], lines: [], winds: [], memos, zones, textBlock: null, legend: { wind: '', core: '', opening: '' }, notes: [] };
@@ -1006,7 +1017,7 @@ export function sketchDelPt(spec, id) {
 export function sketchSetZone(spec, id, patch) {
   if (!(spec.zones || []).some((z) => z.id === id)) return spec;
   return { ...spec, zones: spec.zones.map((z) => (z.id === id ? { ...z, ...patch } : z)),
-    memos: spec.memos.map((m) => (m.zone === id ? { ...m, ...(patch.color ? { color: patch.color } : {}), ...(patch.label !== undefined ? { text: `■ ${String(patch.label).slice(0, 22)}` } : {}) } : m)) };
+    memos: spec.memos.map((m) => (m.zone === id ? { ...m, ...(patch.color ? { color: legendInk(patch.color) } : {}), ...(patch.label !== undefined ? { text: `■ ${String(patch.label).slice(0, 22)}` } : {}) } : m)) };
 }
 // 복사·붙여넣기·복제: 요소를 통째로 복사해 두었다가(snapshot) 새 id 로 붙인다. 붙인 요소는 dx,dy 만큼 비껴 놓아 겹쳐 보이지 않게 한다
 export function sketchSnapshot(spec, id) {

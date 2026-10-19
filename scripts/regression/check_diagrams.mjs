@@ -14,7 +14,7 @@ const inlineJs = path.resolve(here, '../../src/conceptDiagram/inlineText.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
@@ -373,8 +373,11 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   // 구역 층 고치기: 색·이름이 연결된 범례 글자에 따라감
   const s2 = m.sketchSetZone(n, 'z1', { color: '#F6B8B3', label: '공용' });
   const mm = s2.memos.find((q) => q.zone === 'z1');
-  expect(s2.zones[0].color === '#F6B8B3' && mm.color === '#F6B8B3' && mm.text === '■ 공용' && s2.memos.find((q) => q.text.includes('주 동선')).color === '#F20B09', '구역 색·이름을 바꾸면 연결된 범례 글자만 따라 바뀜');
+  expect(s2.zones[0].color === '#F6B8B3' && mm.color === m.legendInk('#F6B8B3') && mm.text === '■ 공용' && s2.memos.find((q) => q.text.includes('주 동선')).color === '#F20B09', '구역 색·이름을 바꾸면 연결된 범례 글자만 따라 바뀜');
   expect(m.sketchSetZone(n, 'nope', { color: '#000000' }) === n && m.sketchSetZone(n, 'z2', { hidden: true }).zones[1].hidden === true && m.sketchSetZone(n, 'z2', { opacity: 0.4 }).zones[1].opacity === 0.4, '없는 층은 그대로, 숨김·농도 변경');
+  const lum = (h) => { const v = parseInt(h.slice(1), 16); return (0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255)) / 255; };
+  expect(lum(m.legendInk('#F6B8B3')) < 0.5 && lum(m.legendInk('#BFE9F9')) < 0.5 && lum(m.legendInk('#F5E9B1')) < 0.55 && /^#[0-9A-F]{6}$/.test(m.legendInk('#DDDDDD')) && m.legendInk('#DDDDDD') !== '#DDDDDD', '연한 구역 색의 범례 글자색은 읽을 수 있게 진하게(색조 유지)');
+  expect(Math.abs(parseInt(m.legendInk('#B5D5F2').slice(5), 16) - parseInt(m.legendInk('#B5D5F2').slice(1, 3), 16)) > 20, '연한 파랑은 진한 파랑 계열로(파랑 성분이 빨강보다 큼)');
   // 읽은 그대로(read) 선의 점 편집
   const w = n.winds[0]; const mid = w.pts[1];
   const a = m.sketchSetPt(n, w.id, 1, [mid[0] + 5, mid[1] - 3]); const p1 = a.winds[0].pts[1];
