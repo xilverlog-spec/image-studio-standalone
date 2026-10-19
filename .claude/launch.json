@@ -9,19 +9,6 @@
         "dev"
       ],
       "port": 5173
-    },
-    {
-      "name": "cd-test",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "--port",
-        "5181",
-        "--strictPort"
-      ],
-      "port": 5181
     }
   ]
 }
