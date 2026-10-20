@@ -6,6 +6,13 @@ import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
 import ImageCropDialog from './ImageCropDialog';
 import ZoomView from './ZoomView';
+import { editRotate, editRotateAdd, editAddBadge, editRenumber, editAddCallout, editAddIcon, editAddTable, addShiftPatch } from './conceptDiagram/svgedit';
+import { tableSetCell } from './conceptDiagram/table';
+import TableEditor from './TableEditor';
+import { CONTEXT_FX } from './conceptDiagram/imgfx';
+import IconPicker from './IconPicker';
+import { ICON_LABEL } from './conceptDiagram/icons';
+import { snapDeg, normDeg, rotRectKeep } from './conceptDiagram/rotate';
 
 // 평면 다이어그램·배치 개념도·매스 과정도·버블도·층별 조닝도 같은 '구조형 결과'의 편집기.
 // 그림 속 도형을 하나씩 눌러 고른 뒤 색·위치(끌기)·곡선(마디 끌기)·선 종류·굵기·투명도를 고친다. 글자는 더블클릭으로 그 자리에서 고친다.
@@ -58,6 +65,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const [guides, setGuides] = useState([]);      // 끄는 동안 붙은 안내선({ dim:'x'|'y', v: 화면 좌표 })
   const [note, setNote] = useState('');          // 복사·붙여넣기 같은 짧은 알림
   const [node, setNode] = useState(-1);          // 고른 경로 마디(segs 번호)
+  const [rotInfo, setRotInfo] = useState(null);  // 회전 손잡이를 끄는 동안 보여 줄 각도 { deg, multi }
   const [ov, setOv] = useState(null);            // 화면 위 손잡이·선택 상자(화소 좌표)
   const [ed, setEd] = useState(null);            // 글자 고치는 중
   const [cropFor, setCropFor] = useState(null); const [imgBusy, setImgBusy] = useState(false); const [imgNote, setImgNote] = useState(''); const imgFileRef = useRef(null); // 넣은 이미지 자르기 창·바꾸기
@@ -110,7 +118,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       const boxes = multi.map((id) => elOf(id)).filter(Boolean).map((n) => { const r = n.getBoundingClientRect(); return [r.left - hr.left, r.top - hr.top, r.width, r.height]; });
       if (!boxes.length) { setOv(null); return; }
       const x0 = Math.min(...boxes.map((b) => b[0])); const y0 = Math.min(...boxes.map((b) => b[1])); const x1 = Math.max(...boxes.map((b) => b[0] + b[2])); const y1 = Math.max(...boxes.map((b) => b[1] + b[3]));
-      setOv({ box: [x0, y0, x1 - x0, y1 - y0], multi: boxes, pts: [], ctrls: [], lines: [], w: hr.width, h: hr.height }); return;
+      setOv({ box: [x0, y0, x1 - x0, y1 - y0], multi: boxes, pts: [], ctrls: [], lines: [], w: hr.width, h: hr.height, rotC: [(x0 + x1) / 2, (y0 + y1) / 2], rot: [(x0 + x1) / 2, y0 - 30] }); return;
     }
     const el = sel ? elOf(sel) : null; if (!el) { setOv(null); return; }
     const br = el.getBoundingClientRect();
@@ -139,6 +147,9 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     } else if (tag === 'ellipse') {
       o.pts.push({ h: 'o:rx', p: rel(toClient(el, num(el.getAttribute('cx')) + num(el.getAttribute('rx')), num(el.getAttribute('cy')))) }, { h: 'o:ry', p: rel(toClient(el, num(el.getAttribute('cx')), num(el.getAttribute('cy')) + num(el.getAttribute('ry')))) });
     }
+    const coAdd = (E.adds || []).find((a) => a.id === sel && a.kind === 'callout');
+    if (coAdd) o.pts.push({ h: 'tip:0', p: rel(toClient(el, coAdd.tx, coAdd.ty)) }); // 리더선 라벨: 끝점(가리키는 곳) 손잡이
+    if (!isBg(sel) && !(E.adds || []).some((a) => a.id === sel && (a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table'))) { try { const bb = el.getBBox(); const cc = rel(toClient(el, bb.x + bb.width / 2, bb.y + bb.height / 2)); o.rotC = cc; o.rot = [cc[0], o.box[1] - 30]; } catch { /* 숨긴 요소 등은 회전 손잡이 없이 */ } } // 돌리는 중심 = 도형 가운데(돌아가 있어도 보이는 가운데)
     setOv(o);
   }, [view.svg, sel, multi, node, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const h = hostRef.current; if (!h || typeof ResizeObserver === 'undefined') return undefined; const ro = new ResizeObserver(() => setTick((n) => n + 1)); ro.observe(h); return () => ro.disconnect(); }, []);
@@ -167,7 +178,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       setMulti(nx.length > 1 ? nx : []); setSel(nx[nx.length - 1] || ''); setNode(-1); return;
     }
     if (multi.length > 1 && multi.includes(id)) { // 고른 것 중 하나를 잡으면 모두 함께 옮긴다
-      const items = multi.map((mid) => { const el2 = elOf(mid); const inv2 = invOf(el2 && el2.parentNode && el2.parentNode.getScreenCTM ? el2.parentNode.getScreenCTM() : null); const ad = (Eref.current.adds || []).find((a) => a.id === mid); return inv2 && !isBg(mid) ? { id: mid, inv: inv2, start: through(inv2, e.clientX, e.clientY), t0: editTranslate(Eref.current, mid), add0: ad ? { x: ad.x, y: ad.y } : null } : null; }).filter(Boolean);
+      const items = multi.map((mid) => { const el2 = elOf(mid); const inv2 = invOf(el2 && el2.parentNode && el2.parentNode.getScreenCTM ? el2.parentNode.getScreenCTM() : null); const ad = (Eref.current.adds || []).find((a) => a.id === mid); return inv2 && !isBg(mid) ? { id: mid, inv: inv2, start: through(inv2, e.clientX, e.clientY), t0: editTranslate(Eref.current, mid), add0: ad ? { ...ad } : null } : null; }).filter(Boolean);
       drag.current = { kind: 'moveMulti', items, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, snap: buildSnap(items.map((i) => i.id)) };
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
     }
@@ -177,7 +188,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const inv = invOf(el.parentNode && el.parentNode.getScreenCTM ? el.parentNode.getScreenCTM() : null); if (!inv) return;
     const start = through(inv, e.clientX, e.clientY);
     const ad = (Eref.current.adds || []).find((a) => a.id === id); // 내 이미지는 자리(x, y)를 직접 바꾼다
-    drag.current = { kind: ad ? 'moveadd' : 'move', id, start, inv, t0: editTranslate(Eref.current, id), cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, add0: ad ? { x: ad.x, y: ad.y } : null, snap: buildSnap([id]) };
+    drag.current = { kind: ad ? 'moveadd' : 'move', id, start, inv, t0: editTranslate(Eref.current, id), cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, add0: ad ? { ...ad } : null, snap: buildSnap([id]) };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
   };
   const boxOf = (id) => { const n = elOf(id); if (!n) return null; const r = n.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
@@ -212,8 +223,22 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     drag.current = { kind: 'marquee', x0: e.clientX, y0: e.clientY, bgId, add: e.shiftKey || e.ctrlKey || e.metaKey, moved: false };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
   };
+  const startRotate = (e) => { // 회전 손잡이: 고른 것(들)의 가운데(여러 개면 묶음의 가운데)를 중심으로 마우스가 돈 만큼 돌린다
+    const ids = (multi.length > 1 ? multi : sel ? [sel] : []).filter((i) => !isBg(i)); if (!ids.length || !ov?.rotC || !hostRef.current) return;
+    const hr = hostRef.current.getBoundingClientRect(); const piv = [hr.left + ov.rotC[0], hr.top + ov.rotC[1]];
+    const items = ids.map((id) => {
+      const n = elOf(id); if (!n) return null; const ad = (Eref.current.adds || []).find((a) => a.id === id);
+      const inv = invOf(n.parentNode && n.parentNode.getScreenCTM ? n.parentNode.getScreenCTM() : null); if (!inv) return null;
+      let geom = null; if (!ad) { let bb = null; try { bb = n.getBBox(); } catch { return null; } geom = { bbox: [bb.x, bb.y, bb.width, bb.height], t0: byId[id]?.attrs?.transform || '' }; }
+      return { id, add: !!ad, a0: ad ? (ad.rot || 0) : (Eref.current.ops[id]?.r || 0), geom, inv };
+    }).filter(Boolean);
+    if (!items.length) return;
+    drag.current = { kind: 'rotate', items, piv, multi: items.length > 1, ang0: Math.atan2(e.clientY - piv[1], e.clientX - piv[0]), cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+  };
   const startHandle = (e, h) => {
     e.preventDefault(); e.stopPropagation();
+    if (h === 'rot') { startRotate(e); return; }
     const el = elOf(sel); if (!el) return;
     const [kind, arg] = h.split(':'); const tag = el.tagName.toLowerCase();
     const d = { kind, arg, id: sel, el, tag, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, key: `${sel}:${kind}` };
@@ -233,17 +258,24 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     if (d.kind === 'marquee') { if (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 4) return; d.moved = true; setMarq({ x0: d.x0, y0: d.y0, x1: e.clientX, y1: e.clientY }); return; }
     if (!d.moved) { if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; d.moved = true; setDragging(true); }
     const sig = sigRef.current;
+    if (d.kind === 'rotate') { // Shift = 15° 단위, Alt = 붙지 않음, 한 개일 때 그냥 끌면 45° 배수 근처(3° 안)에서 살짝 붙는다. 여러 개는 변화량만 맞춘다
+      const da = ((Math.atan2(e.clientY - d.piv[1], e.clientX - d.piv[0]) - d.ang0) * 180) / Math.PI; const one = !d.multi;
+      const snapped = snapDeg(one ? d.items[0].a0 + da : da, { step: e.shiftKey ? 15 : 0, soft: one && !e.altKey && !e.shiftKey });
+      const delta = one ? snapped - d.items[0].a0 : snapped; let next = d.base;
+      d.items.forEach((it) => { const about = d.multi ? through(it.inv, d.piv[0], d.piv[1]) : null; const ang = it.a0 + delta; next = it.add ? editRotateAdd(next, it.id, ang, about) : editRotate(next, it.id, ang, it.geom, sig, about); });
+      setRotInfo({ deg: snapped, multi: d.multi }); commit(next, 'rot'); return;
+    }
     if (d.kind === 'moveMulti') {
       const [cdx, cdy] = clientDelta(d, e); let next = d.base;
       d.items.forEach((it) => {
         const p = through(it.inv, d.cx + cdx, d.cy + cdy); const dx = p[0] - it.start[0]; const dy = p[1] - it.start[1];
-        next = it.add0 ? editUpdateAdd(next, it.id, { x: r2(it.add0.x + dx), y: r2(it.add0.y + dy) }) : editMoveTo(next, it.id, it.t0[0] + dx, it.t0[1] + dy, sig);
+        next = it.add0 ? editUpdateAdd(next, it.id, addShiftPatch(it.add0, dx, dy)) : editMoveTo(next, it.id, it.t0[0] + dx, it.t0[1] + dy, sig);
       });
       commit(next, 'dragmulti'); return;
     }
     if (d.kind === 'moveadd') {
       const [cdx, cdy] = clientDelta(d, e); const p = through(d.inv, d.cx + cdx, d.cy + cdy); const dx = p[0] - d.start[0]; const dy = p[1] - d.start[1];
-      commit(editUpdateAdd(d.base, d.id, { x: r2(d.add0.x + dx), y: r2(d.add0.y + dy) }), `drag:${d.id}`); return;
+      commit(editUpdateAdd(d.base, d.id, addShiftPatch(d.add0, dx, dy)), `drag:${d.id}`); return;
     }
     if (d.kind === 'imgsize') {
       const p = through(d.inv, e.clientX, e.clientY); const a0 = d.add0; const R = [a0.x, a0.y, a0.x + a0.w, a0.y + a0.h];
@@ -251,7 +283,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       let w = Math.max(8, Math.abs(p[0] - fx)); let h = Math.max(8, Math.abs(p[1] - fy));
       if (!e.shiftKey && a0.ar > 0) h = w / a0.ar;
       const x = d.arg.includes('w') ? fx - w : fx; const y = d.arg.includes('n') ? fy - h : fy;
-      commit(editUpdateAdd(d.base, d.id, { x: r2(x), y: r2(y), w: r2(w), h: r2(h) }), d.key); return;
+      const kr = a0.rot ? rotRectKeep(R, [x, y, x + w, y + h], a0.rot) : [x, y, x + w, y + h]; // 돌아간 이미지는 반대쪽 모서리가 화면에서 제자리에 남게 보정
+      commit(editUpdateAdd(d.base, d.id, { x: r2(kr[0]), y: r2(kr[1]), w: r2(w), h: r2(h) }), d.key); return;
     }
     if (d.kind === 'move') {
       const [cdx, cdy] = clientDelta(d, e); const p = through(d.inv, d.cx + cdx, d.cy + cdy);
@@ -259,6 +292,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       commit(editMoveTo(d.base, d.id, d.t0[0] + dx, d.t0[1] + dy, sig), `drag:${d.id}`); return;
     }
     const p = through(d.inv, e.clientX, e.clientY); const dv = [p[0] - d.start[0], p[1] - d.start[1]];
+    if (d.kind === 'tip') { commit(editUpdateAdd(d.base, d.id, { tx: r2(p[0]), ty: r2(p[1]) }), d.key); return; } // 리더선 라벨의 끝점
     let set = null;
     if (d.tag === 'path') {
       const i = Number(d.arg);
@@ -281,7 +315,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     if (set) commit(editSet(d.base, d.id, set, sig), d.key);
   };
   const onUp = (e) => {
-    window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setTick((n) => n + 1);
+    window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setTick((n) => n + 1);
     if (d && d.kind === 'marquee') {
       setMarq(null);
       if (!d.moved) { if (!d.add) { setMulti([]); setSel(d.bgId); setNode(-1); } return; } // 끌지 않고 놓음: 배경(또는 빈 곳) 클릭
@@ -300,7 +334,16 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   // ── 글자 더블클릭 고치기 ──
   const onDbl = (e) => {
     if (disabled || ed) return;
+    const cellEl = e.target.closest?.('[data-cell]'); // 개요표의 셀(빈 칸 포함)·제목
+    if (cellEl) {
+      const gC = cellEl.closest('[data-eid]'); const tb = gC ? (Eref.current.adds || []).find((a) => a.id === gC.getAttribute('data-eid') && a.kind === 'table') : null;
+      if (tb) { const [r, c] = cellEl.getAttribute('data-cell').split(',').map(Number); e.preventDefault(); e.stopPropagation(); setEd({ field: { value: r < 0 ? tb.table.title : (tb.table.rows[r]?.[c] ?? '') }, target: cellEl, addId: tb.id, addCell: [r, c] }); return; }
+    }
     const b = bodyRef.current; const t = textAtPoint(b, e.clientX, e.clientY); if (!t) return;
+    const gE = t.closest?.('[data-eid]'); const bd = gE ? (Eref.current.adds || []).find((a) => a.id === gE.getAttribute('data-eid') && a.kind === 'badge') : null;
+    if (bd) { e.preventDefault(); e.stopPropagation(); setEd({ field: { value: bd.text }, target: t, addId: bd.id }); return; } // 번호 마커의 숫자
+    const co = gE ? (Eref.current.adds || []).find((a) => a.id === gE.getAttribute('data-eid') && a.kind === 'callout') : null;
+    if (co) { e.preventDefault(); e.stopPropagation(); const isDesc = normText(t.textContent) !== normText(co.title); setEd({ field: { value: isDesc ? co.desc : co.title, multiline: isDesc }, target: t, addId: co.id, addKey: isDesc ? 'desc' : 'title' }); return; } // 리더선 라벨의 제목·설명
     const mine = shapeOf(t.getAttribute('data-eid')); // 내가 그린 글자: 그 자리에서 고친다(그림의 글자 목록과 상관없음)
     if (mine && mine.kind === 'text') { e.preventDefault(); e.stopPropagation(); setEd({ field: { value: mine.text }, target: t, shapeId: mine.id }); return; }
     if (mine && mine.kind === 'raw') { e.preventDefault(); e.stopPropagation(); setEd({ field: { value: t.textContent }, target: t, shapeId: mine.id }); return; } // 복사해 온 글자도 그 자리에서
@@ -339,6 +382,24 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     commit(editAsPath(Eref.current, sel, lineToCurveD(x1, y1, x2, y2), ['x1', 'y1', 'x2', 'y2'], sigRef.current));
   };
   const myAdd = sel ? adds.find((a) => a.id === sel) : null;
+  const curAngle = sel ? (myAdd ? (myAdd.rot || 0) : (E.ops[sel]?.r || 0)) : 0;
+  const rotPanel = (single) => (
+    <div style={{ ...lab, gap: 6, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="sv-rotate">
+      <span style={title}>회전{single ? '' : ' (묶음의 가운데 중심으로 함께)'}</span>
+      {single && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, alignItems: 'end' }}>
+          <label style={lab}>각도(°) — 시계 방향이 +
+            <input type="number" step="1" style={input} value={r2(curAngle)} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) rotateSel(normDeg(v) - curAngle); }} data-testid="sv-rot-input" />
+          </label>
+          <button style={smallBtn(false)} disabled={!curAngle} onClick={() => rotateSel(-curAngle)} title="돌리기 전 모양으로 되돌립니다" data-testid="sv-rot-zero">0°</button>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+        {[['−90°', -90], ['−15°', -15], ['+15°', 15], ['+90°', 90]].map(([t, d]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => rotateSel(d)} data-testid={`sv-rot-${d}`}>{t}</button>)}
+      </div>
+      <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>그림 위 <b>동그라미 손잡이</b>를 끌어도 돌아갑니다(Shift: 15° 단위 · Alt: 붙지 않음). 돌린 뒤 크기·모양을 고쳐도 가운데 둘레로 다시 돕니다.</span>
+    </div>
+  );
   const replaceImg = async (file) => {
     if (!file || !myAdd) return; const id = sel; setImgBusy(true); setImgNote('');
     try { const im = await readImageFile(file); commit(editReplaceImage(Eref.current, id, { href: im.url, w: im.w, h: im.h })); setImgNote(`이미지를 바꿨습니다 (${im.w}×${im.h}px · 약 ${im.kb.toLocaleString()}KB). 자리 안에 비율을 지켜 맞췄습니다.`); }
@@ -359,6 +420,22 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const sh = newShape(kind, box); if (kind === 'arrow' && !ctxOk) sh.ctx = false;
     const r = editAddShape(Eref.current, sigRef.current, sh); commit(r.edits);
     setSel(`e${baseLeaf + r.index}`); setNode(-1); if (kind === 'text') justAdded.current = r.id;
+  };
+  const addMarker = () => { // 번호 마커(검은 원, 다음 번호 자동)를 그림 한가운데 근처에 넣고 바로 고른다
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = editAddBadge(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
+  };
+  const addTable = () => { // 개요표(예시 내용이 든 건축개요 표)를 그림 왼쪽 가운데 근처에 넣고 바로 고른다
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = editAddTable(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
+  };
+  const addIcon = () => { // 아이콘 칩을 그림 한가운데 근처에 넣고 바로 고른다(아이콘은 속성에서 바꾼다)
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = editAddIcon(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
+  };
+  const addCallout = () => { // 리더선 라벨(제목+설명+끝점 있는 안내선)을 그림 한가운데 근처에 넣고 바로 고른다
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = editAddCallout(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
   };
   // ── 복사·붙여넣기·복제, 여러 개 한꺼번에 고치기 ──
   const leafIdsOf = (ids) => { const out = []; ids.forEach((id) => { const n = byId[id]; if (!n) return; if (n.kind === 'g') kids(id).forEach((k) => out.push(k.id)); else out.push(id); }); return [...new Set(out)]; };
@@ -388,22 +465,36 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     SV_PASTE_N += 1; const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const step = Math.max(8, (vb ? vb[2] : 1000) / 60) * (n0 || SV_PASTE_N);
     let next = Eref.current; const ids = [];
     SV_CLIP.items.forEach((it) => {
-      if (it.type === 'add') { const cur = next.adds || []; let n = 1; while (cur.some((a) => a.id === `a${n}`)) n += 1; const a = { ...it.a, id: `a${n}`, x: r2(it.a.x + step), y: r2(it.a.y + step) }; next = { ...next, adds: [...cur, a] }; ids.push(a.id); }
+      if (it.type === 'add') { const cur = next.adds || []; let n = 1; while (cur.some((a) => a.id === `a${n}`)) n += 1; const a = { ...it.a, id: `a${n}`, ...addShiftPatch(it.a, step, step) }; next = { ...next, adds: [...cur, a] }; ids.push(a.id); }
       else { const r = editAddShape(next, sigRef.current, rawShift(it.sh, step, step)); next = r.edits; ids.push(`e${baseLeaf + r.index}`); }
     });
-    commit(next); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); flash(`${ids.length}개를 붙여넣었습니다`);
+    next = editRenumber(next); commit(next); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); flash(`${ids.length}개를 붙여넣었습니다`);
   };
   const duplicateSel = () => { if (copySel()) pasteClip(1); };
   const selectAll = () => { const ids = []; bodyRef.current?.querySelectorAll('[data-eid]:not([data-hit])').forEach((n) => { const id = n.getAttribute('data-eid'); const info = byId[id]; if (info && info.kind !== 'g' && !isBg(id) && n.getAttribute('display') !== 'none') ids.push(id); }); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); };
   const nudgeAll = (dx, dy, key) => {
-    let next = Eref.current; selIds.forEach((id) => { if (isBg(id)) return; const ad = (next.adds || []).find((a) => a.id === id); next = ad ? editUpdateAdd(next, id, { x: r2(ad.x + dx), y: r2(ad.y + dy) }) : editMove(next, id, dx, dy, sigRef.current); });
+    let next = Eref.current; selIds.forEach((id) => { if (isBg(id)) return; const ad = (next.adds || []).find((a) => a.id === id); next = ad ? editUpdateAdd(next, id, addShiftPatch(ad, dx, dy)) : editMove(next, id, dx, dy, sigRef.current); });
     commit(next, key ? `multi:${key}` : '');
   };
   const moveClient = (next, id, dxc, dyc) => { // 화면에서 (dxc, dyc) 만큼 움직이게 그 요소의 좌표를 옮긴다(부모 변환·배율을 거꾸로 계산)
     if (!dxc && !dyc) return next; const n = elOf(id); if (!n) return next;
     const inv = invOf(n.parentNode && n.parentNode.getScreenCTM ? n.parentNode.getScreenCTM() : null); if (!inv) return next;
     const a = through(inv, 0, 0); const b = through(inv, dxc, dyc); const dx = b[0] - a[0]; const dy = b[1] - a[1]; const ad = (next.adds || []).find((q) => q.id === id);
-    return ad ? editUpdateAdd(next, id, { x: r2(ad.x + dx), y: r2(ad.y + dy) }) : editMove(next, id, dx, dy, sigRef.current);
+    return ad ? editUpdateAdd(next, id, addShiftPatch(ad, dx, dy)) : editMove(next, id, dx, dy, sigRef.current);
+  };
+  const geomOf = (id) => { const n = elOf(id); if (!n) return null; let bb = null; try { bb = n.getBBox(); } catch { return null; } return { bbox: [bb.x, bb.y, bb.width, bb.height], t0: byId[id]?.attrs?.transform || '' }; };
+  const rotateSel = (delta) => { // 고른 것(들)을 delta° 돌린다(시계 방향 +). 여러 개면 묶음의 가운데를 중심으로 함께
+    const ids = selIds.filter((i) => !isBg(i)); if (!ids.length || !delta) return;
+    const bs = ids.map(boxOf).filter(Boolean);
+    const about = ids.length > 1 && bs.length ? [(Math.min(...bs.map((b) => b.l)) + Math.max(...bs.map((b) => b.r))) / 2, (Math.min(...bs.map((b) => b.t)) + Math.max(...bs.map((b) => b.b))) / 2] : null;
+    let next = Eref.current;
+    ids.forEach((id) => {
+      const n = elOf(id); if (!n) return; const inv = invOf(n.parentNode && n.parentNode.getScreenCTM ? n.parentNode.getScreenCTM() : null); const ab = about && inv ? through(inv, about[0], about[1]) : null;
+      const ad = (next.adds || []).find((q) => q.id === id);
+      if (ad) next = editRotateAdd(next, id, (ad.rot || 0) + delta, ab);
+      else { const g = geomOf(id); if (g) next = editRotate(next, id, (next.ops[id]?.r || 0) + delta, g, sigRef.current, ab); }
+    });
+    commit(next, ids.length === 1 ? `${ids[0]}:rot` : 'multi:rot');
   };
   const alignSel = (mode) => { // 여러 개면 서로 맞추고, 하나면 그림 틀에 맞춘다
     const items = selIds.filter((id) => !isBg(id)).map((id) => ({ id, b: boxOf(id) })).filter((x) => x.b); if (!items.length) return;
@@ -498,11 +589,17 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               {ov.pts.map((p) => (p.sq
                 ? <rect key={p.h} data-h={p.h} x={p.p[0] - 5} y={p.p[1] - 5} width="10" height="10" rx="2" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'nwse-resize' }} />
                 : <circle key={p.h} data-h={p.h} cx={p.p[0]} cy={p.p[1]} r="6" fill={p.sel ? '#F28C28' : '#fff'} stroke="#F28C28" strokeWidth="2.2" style={{ pointerEvents: 'auto', cursor: 'move' }} />))}
+              {ov.rot && (<g>
+                <line x1={ov.rot[0]} y1={ov.rot[1] + 8} x2={ov.rot[0]} y2={ov.box[1] - 3} stroke="#F28C28" strokeWidth="1.6" />
+                <circle data-h="rot" data-testid="sv-rot-handle" cx={ov.rot[0]} cy={ov.rot[1]} r="8.5" fill="#fff" stroke="#F28C28" strokeWidth="2.4" style={{ pointerEvents: 'auto', cursor: 'grab' }} />
+                <path d={`M${ov.rot[0] - 3.4} ${ov.rot[1] + 0.4} a3.4 3.4 0 1 1 1.2 2.6`} fill="none" stroke="#F28C28" strokeWidth="1.8" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+              </g>)}
+              {rotInfo && ov.rotC && (<g data-testid="sv-rot-label"><rect x={ov.rotC[0] - 30} y={ov.rotC[1] - 13} width="60" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{rotInfo.multi && rotInfo.deg > 0 ? '+' : ''}{Math.round(rotInfo.deg * 10) / 10}°</text></g>)}
             </svg>
           )}
           {ed && hostRef.current && (
-            <InlineInput host={hostRef.current} target={ed.target} value={ed.field.value} multiline={/\n/.test(ed.field.value)}
-              onCommit={(v) => { const fl = ed.field; const sid = ed.shapeId; setEd(null); if (v === fl.value) return; if (sid) { const sh = shapes.find((q) => q.id === sid); commit(editUpdateShape(Eref.current, sid, sh && sh.kind === 'raw' ? { el: rawSetText(sh, v).el } : { text: v })); } else onTextEdit?.(fl, v); }} onCancel={() => setEd(null)} />
+            <InlineInput host={hostRef.current} target={ed.target} value={ed.field.value} multiline={!!ed.field.multiline || /\n/.test(ed.field.value)}
+              onCommit={(v) => { const fl = ed.field; const sid = ed.shapeId; const aid = ed.addId; setEd(null); if (v === fl.value) return; if (aid && ed.addCell) { const tb = (Eref.current.adds || []).find((a) => a.id === aid); if (tb) commit(editUpdateAdd(Eref.current, aid, { table: tableSetCell(tb.table, ed.addCell[0], ed.addCell[1], v) })); return; } if (aid && ed.addKey) { commit(editUpdateAdd(Eref.current, aid, { [ed.addKey]: ed.addKey === 'desc' ? String(v).split('\n').slice(0, 3).join('\n') : String(v) })); return; } if (aid) { commit(editRenumber(editUpdateAdd(Eref.current, aid, { text: String(v).slice(0, 3), auto: false }))); return; } if (sid) { const sh = shapes.find((q) => q.id === sid); commit(editUpdateShape(Eref.current, sid, sh && sh.kind === 'raw' ? { el: rawSetText(sh, v).el } : { text: v })); } else onTextEdit?.(fl, v); }} onCancel={() => setEd(null)} />
           )}
         </div>
         </ZoomView>
@@ -517,6 +614,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <button style={smallBtn(false)} onClick={() => addShape('rect')} data-testid="sv-add-rect">＋ 사각형</button>
             <button style={smallBtn(false)} onClick={() => addShape('ellipse')} data-testid="sv-add-ellipse">＋ 원</button>
             <button style={smallBtn(false)} onClick={() => addShape('arrow')} data-testid="sv-add-arrow">＋ 화살표</button>
+            <button style={smallBtn(false)} onClick={addMarker} data-testid="sv-add-marker" title="검은 원 안의 흰 숫자(번호는 자동으로 1, 2, 3…)">＋ 번호</button>
+            <button style={smallBtn(false)} onClick={addCallout} data-testid="sv-add-callout" title="굵은 제목 + 설명 + 끝점이 있는 안내선">＋ 리더선</button>
+            <button style={smallBtn(false)} onClick={addIcon} data-testid="sv-add-icon" title="색 칩 안의 아이콘(건물·설비·에너지·안전·주거·동선 등 100여 개 중에서 고름)">＋ 아이콘</button>
+            <button style={smallBtn(false)} onClick={addTable} data-testid="sv-add-table" title="건축개요·면적표 같은 라벨–값 표(2~4열)">＋ 표</button>
             {onAddImageClick && <button style={smallBtn(false)} onClick={onAddImageClick} data-testid="sv-add-image">＋ 이미지</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -572,6 +673,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
               {[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([t, dx, dy]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => nudgeAll(dx * 5, dy * 5)} data-testid={`sv-multi-nudge-${t}`}>{t} 5</button>)}
             </div>
+            {rotPanel(false)}
           </div>
         )}
 
@@ -582,13 +684,108 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           </div>
         )}
 
-        {sel && multi.length < 2 && myAdd && (
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'badge' && (
+          <div style={sec} data-testid="sv-badge-props">
+            <span style={title}>선택: 번호 마커 ({sel})</span>
+            <div style={lab}>모양
+              <div style={{ display: 'flex', gap: 6 }}>{[['circle', '● 원'], ['square', '■ 사각']].map(([v, tt]) => <button key={v} style={{ ...smallBtn(myAdd.shape === v), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { shape: v }))} data-testid={`sv-badge-${v}`}>{tt}</button>)}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, alignItems: 'end' }}>
+              <label style={lab}>번호 ({myAdd.auto === false ? '직접 정함' : '자동'})
+                <input style={input} maxLength={3} value={myAdd.text} onChange={(e) => commit(editRenumber(editUpdateAdd(Eref.current, sel, { text: e.target.value, auto: false })), `${sel}:num`)} data-testid="sv-badge-num" />
+              </label>
+              <button style={smallBtn(false)} disabled={myAdd.auto !== false} onClick={() => commit(editRenumber(editUpdateAdd(Eref.current, sel, { auto: true })))} title="직접 정한 번호를 버리고 자동 번호로 되돌립니다" data-testid="sv-badge-auto">↺ 자동</button>
+            </div>
+            <label style={lab}>크기 {r2(myAdd.w)}
+              <input type="range" min="10" max="150" step="1" value={Math.min(150, Math.max(10, myAdd.w))} onChange={(e) => { const w = Number(e.target.value); const cx = myAdd.x + myAdd.w / 2; const cy = myAdd.y + myAdd.h / 2; commit(editUpdateAdd(Eref.current, sel, { w, h: w, x: r2(cx - w / 2), y: r2(cy - w / 2) }), `${sel}:size`); }} data-testid="sv-badge-size" />
+            </label>
+            <div style={lab}>색(바탕)<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>숫자를 더블클릭해도 고칩니다. 마커를 지우면 뒤 번호가 자동으로 당겨집니다(직접 정한 번호는 그대로).</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-badge-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'callout' && (
+          <div style={sec} data-testid="sv-callout-props">
+            <span style={title}>선택: 리더선 라벨 ({sel})</span>
+            <label style={lab}>제목<input style={input} value={myAdd.title} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { title: e.target.value }), `${sel}:title`)} data-testid="sv-co-title" /></label>
+            <label style={lab}>설명 (줄바꿈으로 최대 3줄)
+              <textarea style={{ ...input, resize: 'vertical', minHeight: 52, fontFamily: 'inherit' }} rows={3} value={myAdd.desc} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { desc: e.target.value }), `${sel}:desc`)} data-testid="sv-co-desc" />
+            </label>
+            <div style={lab}>선 종류
+              <div style={{ display: 'flex', gap: 6 }}>{[['straight', '직선'], ['elbow', '꺾은선']].map(([v, tt]) => <button key={v} style={{ ...smallBtn(myAdd.line === v), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { line: v }))} data-testid={`sv-co-line-${v}`}>{tt}</button>)}</div>
+            </div>
+            <div style={lab}>끝 모양
+              <div style={{ display: 'flex', gap: 6 }}>{[['dot', '● 점'], ['arrow', '▶ 화살표'], ['none', '없음']].map(([v, tt]) => <button key={v} style={{ ...smallBtn(myAdd.end === v), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { end: v }))} data-testid={`sv-co-end-${v}`}>{tt}</button>)}</div>
+            </div>
+            <label style={lab}>글자 크기 {r2(myAdd.size)}
+              <input type="range" min="6" max="120" step="1" value={Math.min(120, Math.max(6, myAdd.size))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:size`)} data-testid="sv-co-size" />
+            </label>
+            <div style={lab}>색<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>글을 끌면 끝점까지 통째로 움직입니다. <b>끝점의 동그라미 손잡이</b>를 끌어 가리킬 곳을 정하세요. 제목·설명 글자를 더블클릭해도 고칩니다(Enter 확정 · Shift+Enter 줄바꿈).</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-co-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'icon' && (
+          <div style={sec} data-testid="sv-icon-props">
+            <span style={title}>선택: 아이콘 칩 ({sel})</span>
+            <div style={lab}>아이콘 — {ICON_LABEL[myAdd.icon] || myAdd.icon}
+              <IconPicker value={myAdd.icon} onPick={(n) => commit(editUpdateAdd(Eref.current, sel, { icon: n }))} testid="sv-icon-picker" />
+            </div>
+            <div style={lab}>모양
+              <div style={{ display: 'flex', gap: 6 }}>{[['rounded', '둥근 사각'], ['circle', '원'], ['bare', '아이콘만']].map(([v, tt]) => <button key={v} style={{ ...smallBtn((myAdd.shape || 'rounded') === v), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { shape: v }))} data-testid={`sv-icon-shape-${v}`}>{tt}</button>)}</div>
+            </div>
+            <label style={lab}>크기 {r2(myAdd.w)}
+              <input type="range" min="12" max="240" step="1" value={Math.min(240, Math.max(12, myAdd.w))} onChange={(e) => { const w = Number(e.target.value); const cx = myAdd.x + myAdd.w / 2; const cy = myAdd.y + myAdd.h / 2; commit(editUpdateAdd(Eref.current, sel, { w, h: w, x: r2(cx - w / 2), y: r2(cy - w / 2) }), `${sel}:size`); }} data-testid="sv-icon-size" />
+            </label>
+            <div style={lab}>색{myAdd.shape === 'bare' ? '(아이콘)' : '(칩 바탕)'}<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-icon-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'table' && (
+          <div style={sec} data-testid="sv-table-props">
+            <span style={title}>선택: 개요표 ({sel})</span>
+            <TableEditor table={myAdd.table} onChange={(tb, key) => commit(editUpdateAdd(Eref.current, sel, { table: tb }), `${sel}:${key || 'table'}`)} testid="sv-tb" />
+            <label style={lab}>글자 크기 {r2(myAdd.size)}
+              <input type="range" min="6" max="80" step="1" value={Math.min(80, Math.max(6, myAdd.size))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:size`)} data-testid="sv-tb-size" />
+            </label>
+            <div style={lab}>색(제목 띠·선)<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>열 너비는 글자 길이에 맞춰 저절로 정해집니다. 표를 끌어 옮기고, 칸·제목은 더블클릭으로도 고칩니다(Enter 확정). 병합 셀·계산은 지원하지 않습니다.</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-table-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind !== 'badge' && myAdd.kind !== 'callout' && myAdd.kind !== 'icon' && myAdd.kind !== 'table' && (
           <div style={sec} data-testid="sv-img-props">
             <span style={title}>선택: 내 이미지 ({sel})</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>끌어서 옮기고, 모서리 네모 점을 끌어 크기를 바꿉니다(원본 비율 유지, Shift: 자유롭게).</p>
             <label style={lab}>투명도 {Math.round(myAdd.opacity * 100)}%
               <input type="range" min="0.05" max="1" step="0.05" value={myAdd.opacity} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { opacity: Number(e.target.value) }), `${sel}:op`)} data-testid="sv-img-opacity" />
             </label>
+            <label style={lab}>탈색 {myAdd.gray || 0}% <span style={{ fontWeight: 400 }}>(100% = 흑백)</span>
+              <input type="range" min="0" max="100" step="5" value={myAdd.gray || 0} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { gray: Number(e.target.value) }), `${sel}:gray`)} data-testid="sv-img-gray" />
+            </label>
+            <label style={lab}>가장자리 흐리게 {myAdd.edge || 0}%
+              <input type="range" min="0" max="100" step="5" value={myAdd.edge || 0} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { edge: Number(e.target.value) }), `${sel}:edge`)} data-testid="sv-img-edge" />
+            </label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { gray: CONTEXT_FX.gray, opacity: CONTEXT_FX.opacity, edge: CONTEXT_FX.edge, behind: true }))} data-testid="sv-img-context" title="흑백 + 투명도 35% + 맨 뒤로 — 그 위에 매스·동선을 얹는 흐린 바탕(대지·평면 맥락)">🌫 맥락 바탕으로 흐리게</button>
+              {((myAdd.gray || 0) > 0 || (myAdd.edge || 0) > 0 || myAdd.opacity < 1) && <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { gray: 0, edge: 0, opacity: 1 }))} data-testid="sv-img-fx-reset" title="탈색·가장자리·투명도를 처음 상태로">효과 지우기</button>}
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button style={smallBtn(!!myAdd.behind)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { behind: true }))} data-testid="sv-img-back" title="배경 바로 위, 도형·글자 아래">맨 뒤로</button>
               <button style={smallBtn(!myAdd.behind)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { behind: false }))} data-testid="sv-img-front" title="모든 도형 위">맨 앞으로</button>
@@ -601,6 +798,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             </div>
             {imgNote && <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }} data-testid="sv-img-note">{imgNote}</p>}
             {cropFor && cropFor.id === sel && <ImageCropDialog src={myAdd.orig || myAdd.href} crop={myAdd.crop || null} busy={imgBusy} onApply={applyCrop} onCancel={() => setCropFor(null)} />}
+            {rotPanel(true)}
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-img-delete">삭제</button>
@@ -672,6 +870,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <button style={smallBtn(false)} onClick={lineToCurve} data-testid="sv-line2curve" title="이 직선을 휘는 곡선으로 바꿉니다(바꾼 뒤 주황 점으로 모양을 고칩니다)">∿ 곡선으로 바꾸기</button>
             )}
 
+            {!isBg(sel) && rotPanel(true)}
             <div style={{ ...lab, gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }}>
               <span style={title}>위치 {tr[0] || tr[1] ? `(이동 ${r2(tr[0])}, ${r2(tr[1])})` : ''}</span>
               {!isBg(sel) && (

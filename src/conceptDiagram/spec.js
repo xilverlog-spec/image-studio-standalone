@@ -1,7 +1,7 @@
 import { ANCHORS, SITE_SHAPES, renderSiteConcept } from './siteConcept';
 import { renderMassing } from './massing';
 import { renderLayout2d, normalizeLayoutPanels } from './layout2d';
-import { ICON_NAMES, ICON_LABEL } from './icons';
+import { ICON_LABEL, ICON_GROUPS, resolveIcon } from './icons';
 import { renderProgram, normalizeProgram } from './program';
 import { renderStack, normalizeStack } from './stack';
 import { renderSketch, normalizeSketch, getSketchTextFields } from './sketch';
@@ -150,7 +150,7 @@ const STACK_SCHEMA = `{
 }`;
 
 export const SITE_RULES = `위치는 반드시 이 9개 앵커 중 하나로만 지정한다: ${ANCHORS.join(', ')} (center=대지 중앙, n=북쪽/위, e=동쪽/오른쪽 …).
-icon은 반드시 다음 중 하나: ${ICON_NAMES.map((n) => `${n}(${ICON_LABEL[n]})`).join(', ')}.
+icon은 반드시 아래 목록의 이름(왼쪽 영문) 중 하나로만 쓴다(뜻이 가장 가까운 것을 고른다). 분류별: ${ICON_GROUPS.map((g) => `[${g.label}] ${g.names.map((n) => `${n}(${ICON_LABEL[n]})`).join(', ')}`).join(' / ')}.
 - 한 패널에는 개념 하나만 담는다(흐름이면 flow, 구역이면 zone+marker, 순환이면 cycle).
 - marker는 한 패널에 최대 6개. label 텍스트는 15자 이내. 모든 글자는 한국어 그대로 쓴다.
 - 색은 패널마다 조화로운 계열(같은 패널 안에서는 accent와 같은 계열)을 쓴다.`;
@@ -265,7 +265,7 @@ export function normalizeSpec(type, spec) {
         anchor: o.anchor !== undefined ? fixAnchor(o.anchor) : undefined,
         from: o.from !== undefined ? fixAnchor(o.from) : undefined,
         to: Array.isArray(o.to) ? o.to.map(fixAnchor) : (o.to !== undefined ? fixAnchor(o.to) : undefined),
-        icon: o.kind === 'marker' ? (ICON_NAMES.includes(o.icon) ? o.icon : 'star') : o.icon,
+        icon: o.kind === 'marker' ? resolveIcon(o.icon) : o.icon,
       })),
     })),
   };

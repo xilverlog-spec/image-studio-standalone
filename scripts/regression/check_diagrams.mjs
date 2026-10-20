@@ -15,15 +15,39 @@ const svgeditJs = path.resolve(here, '../../src/conceptDiagram/svgedit.js');
 const regionJs = path.resolve(here, '../../src/conceptDiagram/regionMerge.js');
 const imgutilJs = path.resolve(here, '../../src/conceptDiagram/imgutil.js');
 const viewlayoutJs = path.resolve(here, '../../src/conceptDiagram/viewlayout.js');
+const scopeJs = path.resolve(here, '../../src/conceptDiagram/scope.js');
+const rotateJs = path.resolve(here, '../../src/conceptDiagram/rotate.js');
+const markerJs = path.resolve(here, '../../src/conceptDiagram/marker.js');
+const calloutJs = path.resolve(here, '../../src/conceptDiagram/callout.js');
+const iconsJs = path.resolve(here, '../../src/conceptDiagram/icons.js');
+const tableJs = path.resolve(here, '../../src/conceptDiagram/table.js');
+const imgfxJs = path.resolve(here, '../../src/conceptDiagram/imgfx.js');
+const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
-fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
+fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES, SITE_RULES, normalizeSpec } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
 export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
 export { cropRect, fitInside, normCrop, stagger, IMG_QUALITY, imgQualityOf } from ${fwd(imgutilJs)};
+export { assignNumbers, badgeInk, badgeFontK } from ${fwd(markerJs)};
+export { sketchRenumber } from ${fwd(sketch)};
+export { editAddBadge, editRenumber } from ${fwd(svgeditJs)};
+export { calloutLayout, calloutSvg, calloutBox, descLines } from ${fwd(calloutJs)};
+export { sketchSetTip } from ${fwd(sketch)};
+export { editAddCallout, addShiftPatch } from ${fwd(svgeditJs)};
+export { ICON_NAMES, ICON_GROUPS, ICON_LABEL, BASIC_NAMES, resolveIcon, iconGlyph, iconChipSvg, CHIP_SHAPES } from ${fwd(iconsJs)};
+export { ICONSET, ICON_CATS } from ${fwd(iconsetJs)};
+export { editAddIcon } from ${fwd(svgeditJs)};
+export { normalizeTable, tableSetCell, tableAddRow, tableDelRow, tableMoveRow, tableSetCols, tableLayout, tableSvg, SAMPLE_TABLE, isLabelCol, TABLE_MAX_ROWS } from ${fwd(tableJs)};
+export { editAddTable } from ${fwd(svgeditJs)};
+export { imageFx, clampPct, hasFx, CONTEXT_FX } from ${fwd(imgfxJs)};
+export { editRotate, editRotateAdd } from ${fwd(svgeditJs)};
+export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
+export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
+export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL } from ${fwd(scopeJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
@@ -981,6 +1005,322 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     const y = (re) => Number(re.exec(r.svg)[1]); expect(y(/y="([\d.]+)"[^>]*>\| 구조계획/) < y(/y="([\d.]+)"[^>]*>공원 속/), '구분 라벨이 제목 위에 놓임');
     const plain = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '일반 제목' }); expect(!plain.svg.includes('<tspan') && !plain.svg.includes('text-anchor="end"'), '아무것도 안 정하면 예전과 같은 출력(꼬리말·강조 없음)');
     const onlyNo = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', pageNo: '7' }); expect(onlyNo.svg.includes('>07<'), '쪽번호만 있어도 꼬리말'); }
+}
+// 종류 카탈로그·범위 판정(R2)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`종류 범위: ${label}`); };
+  const ids = m.CATALOG.map((c) => c.id);
+  expect(new Set(ids).size === ids.length, '카탈로그 id 가 겹치지 않음');
+  expect(Object.keys(m.DIAGRAM_TYPES).every((t) => m.CATALOG.some((c) => c.group === 'text' && c.id === t && c.thumb?.type === t)), '설명만으로 만드는 모든 종류(배치·매스·버블·층별)가 카탈로그에 있음');
+  expect(Object.keys(m.SUBJECT_KINDS).filter((k) => !['other', 'site'].includes(k)).every((k) => m.CATALOG.some((c) => c.group === 'image' && c.id === k)), '이미지로 만드는 모든 방식(도면 위 표시·평면·형태·손스케치·자유 해석·축측도)이 카탈로그에 있음(배치도 읽기는 배치 개념도 카드가 안내)');
+  expect(m.CATALOG.filter((c) => c.group !== 'out').every((c) => c.can.length && c.cannot.length && c.needs && c.summary && c.label), '지원 종류마다 가능·불가·입력 안내가 있음');
+  expect(m.CATALOG.filter((c) => c.group === 'out').every((c) => c.alt && (c.status === 'no' || c.status === 'plan') && Array.isArray(c.nearest)), '지원 안 함 종류마다 대안 안내가 있음');
+  expect(m.CATALOG.every((c) => (c.nearest || []).every((n) => m.catalogById(n.type))), '가까운 종류가 모두 카탈로그에 있음');
+  expect(m.CATALOG.filter((c) => c.group === 'text').every((c) => { try { const r = m.renderSpec(c.thumb.type, m.EXAMPLE_SPECS[c.thumb.type]); return /^<svg[\s\S]*<\/svg>$/.test(r.svg) && !/NaN|undefined/.test(r.svg); } catch { return false; } }), '예시 썸네일이 모두 그려짐');
+  expect(m.CATALOG.filter((c) => c.group === 'image').every((c) => m.PICTOS[c.thumb.picto] && /^<svg[\s\S]*<\/svg>$/.test(m.pictoSvg(c.thumb.picto))), '이미지 종류의 작은 그림이 모두 있음');
+  // 범위 판정: 지원하지 않는 종류를 달라는 말
+  const sc = (t) => m.checkScope(t);
+  expect(!sc('건축개요표를 만들어줘').inScope && sc('건축개요표를 만들어줘').category.id === 'table', '개요표 → 표');
+  expect(sc('간트 공정표 작성해 주세요').category?.id === 'table' && sc('프로젝트 조직도를 그려줘').category?.id === 'table', '공정표·조직도 → 표');
+  expect(sc('이 건물 조감도를 그려줘').category?.id === 'render' && sc('투시도 이미지 생성').category?.id === 'render', '조감도·투시도 만들기 → 렌더');
+  expect(sc('1층 평면도를 그려줘').category?.id === 'drawing' && sc('단면도를 작성해 주세요').category?.id === 'drawing', '평면도·단면도 작성 → 도면');
+  expect(sc('회사 로고 만들어줘').category?.id === 'illust', '로고 → 일러스트');
+  expect(sc('구조계획 카드 보드로 정리해줘').category?.id === 'cards' && sc('친환경 계획을 한 장으로 정리').category?.id === 'cards', '계획 카드 보드 → 개발 예정');
+  expect(sc('조직도를 그려줘').nearest[0]?.type === 'program' && sc('평면도를 그려줘').nearest[0]?.type === 'stack', '가까운 종류 제안(조직도→버블도, 도면→층별 조닝도)');
+  expect(sc('조직도를 그려줘').nearest[0]?.label.includes('버블도'), '제안에 종류 이름이 붙음');
+  for (const t of ['중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조', '이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계', '1층 로비·카페, 2~3층 연구실, 중앙 보이드와 채광', '배치도 위에 보행 동선과 차량 동선을 표시', '조감도 위에 보행 흐름을 얹어줘', '대표 공간과 표지 디자인', '']) expect(sc(t).inScope === true, `범위 안 설명은 그대로 통과: ${t.slice(0, 20)}`);
+  expect(m.IMAGE_OTHER_NEAREST.every((n) => m.SUBJECT_KINDS[n.kind]) && m.IMAGE_OTHER_NEAREST[0].kind === 'freeform', '이미지 그 외 안내의 방식이 실제 읽기 방식이고 자유 해석이 맨 앞');
+}
+// 회전(R3): 계산 모듈 + 손스케치
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`회전: ${label}`); };
+  const near = (a, b, e = 0.01) => Math.abs(a - b) <= e;
+  const nearPt = (p, q, e = 0.01) => near(p[0], q[0], e) && near(p[1], q[1], e);
+  // 계산 모듈
+  expect(m.normDeg(270) === -90 && m.normDeg(360) === 0 && m.normDeg(-181) === 179 && m.normDeg(180) === 180 && m.normDeg(NaN) === 0 && Object.is(m.normDeg(-0), 0), '각도 정규화(-180~180, NaN=0, -0 없음)');
+  expect(nearPt(m.rotPt([10, 0], 90, [0, 0]), [0, 10]) && nearPt(m.rotPt([1, 0], 180, [1, 1]), [1, 2]), '점 돌리기(시계 방향 +, 화면 좌표)');
+  expect(m.snapDeg(44.2, { soft: true }) === 45 && m.snapDeg(40, { soft: true }) === 40 && m.snapDeg(37, { step: 15 }) === 30 && m.snapDeg(38, { step: 15 }) === 45, '각도 붙이기(45° 근처 3° 안, 15° 단위)');
+  { const bb = m.rectBBox([0, 0, 10, 4], 90); expect(near(bb[0], 3) && near(bb[1], -3) && near(bb[2], 7) && near(bb[3], 7), '90° 돌린 사각형의 바깥 상자'); }
+  expect(m.rotCursor('e', 0) === 'ew-resize' && m.rotCursor('n', 0) === 'ns-resize' && m.rotCursor('ne', 0) === 'nesw-resize' && m.rotCursor('e', 90) === 'ns-resize' && m.rotCursor('se', 90) === 'nesw-resize' && m.rotCursor('x', 30) === 'move', '크기 조절 점 커서가 돌아간 만큼 바뀜');
+  { const t = m.parseTransform('translate(10 20) rotate(90 5 5)'); expect(nearPt(m.applyMat(t, [5, 5]), [15, 25]) && nearPt(m.applyMat(m.parseTransform('rotate(-90 10 10)'), [20, 10]), [10, 0]), 'transform 문자열 해석(translate·rotate 중심)'); }
+  expect(nearPt(m.applyMat(m.parseTransform('matrix(1 0 0 1 3 4) scale(2)'), [1, 1]), [5, 6]) && nearPt(m.applyMat(m.parseTransform(''), [7, 8]), [7, 8]) && nearPt(m.applyMat(m.parseTransform('garbage(1)'), [7, 8]), [7, 8]), 'matrix·scale·빈 문자열·모르는 것은 그대로');
+  { const old = [0, 0, 10, 4]; const nw = [0, 0, 16, 4]; const k = m.rotRectKeep(old, nw, 90);
+    const worldOld = m.rotPt([0, 0], 90, m.rectCenter(old)); const worldNew = m.rotPt([k[0], k[1]], 90, m.rectCenter(k)); expect(nearPt(worldOld, worldNew), '돌린 사각형 크기를 바꿔도 바꾸지 않은 모서리는 화면에서 제자리'); }
+  expect(m.rotRectKeep([0, 0, 10, 4], [0, 0, 16, 4], 0).join() === '0,0,16,4', '각도 0 이면 그대로');
+  // 정규화·저장
+  const sp = (extra = {}) => ({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40], ...extra }], lines: [{ id: 'p1', pts: [[10, 10], [30, 10]] }], winds: [{ id: 'w1', pts: [[10, 50], [40, 50]], shape: 'straight' }], memos: [{ id: 'm1', x: 50, y: 10, text: '글자', size: 14 }, { id: 'm2', x: 80, y: 10, text: '해', size: 14, icon: 'sun', rot: 30 }] });
+  expect(m.normalizeSketch(sp({ rot: 30 })).blocks[0].rot === 30 && m.normalizeSketch(sp({ rot: 370 })).blocks[0].rot === 10, '도형 각도 저장(370°→10°)');
+  expect(!('rot' in m.normalizeSketch(sp({ rot: 360 })).blocks[0]) && !('rot' in m.normalizeSketch(sp()).blocks[0]), '각도 0 은 저장하지 않음(예전 스펙과 같다)');
+  { const n = m.normalizeSketch({ ...sp(), memos: [{ id: 'm1', x: 1, y: 2, text: 'a', rot: -45 }, { id: 'm2', x: 3, y: 4, text: 's', icon: 'sun', rot: 30 }] }); expect(n.memos[0].rot === -45 && !('rot' in n.memos[1]), '글자는 각도 저장, 해 아이콘은 안 돎'); }
+  // 그리기
+  { const svg0 = m.renderSketch(sp()).svg; const svg1 = m.renderSketch(sp({ rot: 30 })).svg;
+    expect(!/\stransform="rotate\(/.test(svg0), '돌리지 않으면 rotate 변환이 없음(빗금 무늬 patternTransform 은 제외)'); expect(/transform="rotate\(30 [\d.]+ [\d.]+\)"/.test(svg1) && !/NaN|undefined/.test(svg1), '돌린 도형은 가운데 중심 rotate(30 …)');
+    const iv = m.renderSketch(sp({ rot: 30 }), { interactive: true, selected: 'b1' }).svg;
+    expect(/<g transform="rotate\(30 [\d.]+ [\d.]+\)">[\s\S]*data-handle="rot"/.test(iv) && (iv.match(/data-handle="[nesw]{1,2}"/g) || []).length === 8, '선택하면 돌린 틀 안에 8개 크기 점 + 회전 손잡이');
+    expect(/data-handle="n"[^>]*cursor:ew-resize|cursor:ns-resize/.test(m.renderSketch(sp(), { interactive: true, selected: 'b1' }).svg), '안 돌린 도형의 크기 점 커서는 예전과 같다');
+    for (const id of ['p1', 'w1', 'm1']) expect(m.renderSketch(sp(), { interactive: true, selected: id }).svg.includes('data-handle="rot"'), `${id} 선택 시 회전 손잡이`);
+    expect(!m.renderSketch(sp(), { interactive: true, selected: 'm2' }).svg.includes('data-handle="rot"'), '해 아이콘에는 회전 손잡이 없음');
+    expect(!m.renderSketch(sp({ rot: 30 })).svg.includes('data-handle'), '저장용 그림에는 손잡이가 없음'); }
+  // 각도 설정
+  { const n = m.normalizeSketch(sp()); const r = m.sketchSetAngle(n, 'b1', 45); expect(r.blocks[0].rot === 45 && m.sketchRotation(r, 'b1') === 45, '도형 각도 설정'); expect(!('rot' in m.sketchSetAngle(r, 'b1', 0).blocks[0]), '0 으로 되돌리면 저장 항목이 사라짐'); expect(m.sketchSetAngle(n, 'm2', 30) === n, '해 아이콘은 돌릴 수 없음'); expect(m.sketchCanRotate(n, 'm1') && !m.sketchCanRotate(n, 'm2'), '회전 가능 여부'); }
+  { const n = m.normalizeSketch(sp()); const L = n.lines[0]; const c0 = m.sketchPivot(n, 'p1'); const r = m.sketchSetAngle(n, 'p1', 90); const L2 = r.lines[0];
+    expect(m.sketchRotation(n, 'p1') === 0 && near(m.sketchRotation(r, 'p1'), 90, 0.1), '선의 각도 = 시작→끝 방향');
+    expect(near(Math.hypot(L2.pts[1][0] - L2.pts[0][0], L2.pts[1][1] - L2.pts[0][1]), 20) && nearPt(m.sketchPivot(r, 'p1'), c0), '선을 돌려도 길이와 가운데가 그대로');
+    const w = m.sketchRotateBy(m.sketchRotateBy(m.sketchRotateBy(m.sketchRotateBy(n, 'w1', 90), 'w1', 90), 'w1', 90), 'w1', 90); expect(w.winds[0].pts.every((p, i) => nearPt(p, n.winds[0].pts[i], 0.05)), '화살표를 90°씩 네 번 돌리면 제자리'); void L; }
+  { const n = m.normalizeSketch(sp({ rot: 90 })); const bb = m.sketchBox(n, 'b1'); expect(near(bb[0], 30) && near(bb[2], 50) && near(bb[1], 10) && near(bb[3], 50), '돌린 도형의 정렬·붙기용 영역은 돌린 뒤의 바깥 상자'); }
+  { const n = m.normalizeSketch(sp({ rot: 30 })); const r = m.sketchMirrorCopy(n, 'b1', 50, 'h'); const nb = r.spec.blocks.find((b) => b.id === r.id); expect(nb.rot === -30, '대칭 복제하면 각도 부호가 뒤집힘'); }
+  // 돌아간 도형의 크기 조절
+  { const n = m.normalizeSketch(sp({ rot: 40 })); const e0 = n.blocks[0]; const c0 = m.rectCenter(e0.rect); const fixed0 = m.rotPt([e0.rect[0], e0.rect[1]], 40, c0); // 왼쪽 위 모서리
+    const tip = m.rotPt([e0.rect[2] + 12, e0.rect[3] + 6], 40, c0); // 오른쪽 아래 손잡이를 도형 바깥쪽으로 끈 마우스 위치
+    const r = m.sketchResizeBlock(n, 'b1', 'se', tip); const e1 = r.blocks[0]; const fixed1 = m.rotPt([e1.rect[0], e1.rect[1]], 40, m.rectCenter(e1.rect));
+    expect(nearPt(fixed0, fixed1, 0.05) && (e1.rect[2] - e1.rect[0]) > (e0.rect[2] - e0.rect[0]) && e1.rot === 40, '40° 돌아간 도형의 오른쪽 아래를 끌면 왼쪽 위 모서리는 화면에서 제자리, 각도는 유지');
+    const none = m.sketchResizeBlock(m.normalizeSketch(sp()), 'b1', 'e', [70, 30]); expect(near(none.blocks[0].rect[2], 70), '안 돌린 도형은 예전 방식과 같다'); }
+}
+// 회전(R3): 구조형 편집(svgedit)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`회전(구조형): ${label}`); };
+  const near = (a, b, e = 0.05) => Math.abs(a - b) <= e;
+  const nearPt = (p, q, e = 0.05) => near(p[0], q[0], e) && near(p[1], q[1], e);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect x="10" y="10" width="40" height="20" fill="#ccc"/><g transform="translate(100 50)"><rect x="0" y="0" width="20" height="10"/></g></svg>';
+  const sc = m.scanSvg(svg); const sig = sc.sig; const E0 = m.emptyEdits(svg);
+  const trOf = (edits, id) => { const o = m.applyEdits(svg, edits, { ids: true }).svg; const mm = new RegExp(`<rect[^>]*data-eid="${id}"[^>]*>`).exec(o); const t = mm && /\stransform="([^"]*)"/.exec(mm[0]); return t ? t[1] : ''; };
+  const visual = (edits, id, p) => m.applyMat(m.parseTransform(trOf(edits, id)), p); // 요소 자기 좌표의 점이 그려지는 자리
+  const G = { bbox: [10, 10, 40, 20], t0: '' };
+  const E1 = m.editRotate(E0, 'e0', 90, G, sig);
+  expect(E1.ops.e0.r === 90 && E1.ops.e0.rc.join() === '30,20' && !E1.ops.e0.t, '돌리면 r·rc 가 저장되고 이동은 생기지 않음');
+  expect(/^rotate\(90 30 20\)$/.test(trOf(E1, 'e0')) && nearPt(visual(E1, 'e0', [30, 20]), [30, 20]), '그릴 때 rotate(90 30 20), 가운데는 제자리');
+  expect(nearPt(visual(E1, 'e0', [10, 10]), [40, 0]), '왼쪽 위 모서리가 시계 방향 90° 돌아 위쪽 오른쪽으로 감');
+  const E2 = m.editRotate(E1, 'e0', 180, G, sig); expect(E2.ops.e0.r === 180 && nearPt(visual(E2, 'e0', [30, 20]), [30, 20]), '다시 돌려도(180°) 가운데는 제자리');
+  { const E3 = m.editRotate(E2, 'e0', 0, G, sig); expect(!E3.ops.e0 && m.hasEdits(E3) === false, '0° 로 되돌리면 수정 항목이 사라짐'); }
+  { const Em = m.editMove(E1, 'e0', 15, 5, sig); const Er = m.editRotate(Em, 'e0', 180, G, sig); expect(Em.ops.e0.t.join() === '15,5' && /^translate\(15 5\) rotate\(90 30 20\)$/.test(trOf(Em, 'e0')), '이동 + 회전: translate 가 바깥');
+    expect(nearPt(visual(Er, 'e0', [30, 20]), [45, 25]), '이동한 뒤 다시 돌려도 보이는 가운데(45,25)는 제자리'); }
+  { const G2 = { bbox: [0, 0, 20, 10], t0: 'translate(100 50)' }; const Eg = m.editRotate(E0, 'e1', 90, G2, sig); expect(/rotate\(90 110 55\)/.test(trOf(Eg, 'e1')), '원래 변환이 있는 요소는 변환을 적용한 가운데(110,55)를 중심으로 돈다'); }
+  { const Ev = m.editRotate(E0, 'e0', 37, G, sig); const o = m.applyEdits(svg, Ev).svg; expect(!/NaN|undefined/.test(o) && /rotate\(37 30 20\)/.test(o), '저장용 그림에도 회전이 들어감(손잡이 없이)'); }
+  { const e0 = m.editRotate(E0, 'e0', 90, G, sig, [0, 0]); // 여러 개를 함께: (0,0) 둘레로 돌리면 가운데 (30,20) → (-20,30)
+    expect(nearPt(visual(e0, 'e0', [30, 20]), [-20, 30]) && e0.ops.e0.r === 90, '함께 돌리기: 묶음 중심 둘레로 가운데가 옮겨 가고 각도도 더해짐'); }
+  expect(m.editRotate(E1, 'e0', 90, G, sig) .ops.e0.rc.join() === '30,20', '같은 각도로 다시 불러도 그대로');
+  // 내 이미지
+  { const Ea = { sig, ops: {}, adds: [{ id: 'a1', kind: 'image', href: 'data:image/png;base64,AAAA', x: 10, y: 10, w: 40, h: 20, opacity: 1, behind: false }] };
+    const R = m.editRotateAdd(Ea, 'a1', 90); const a = R.adds[0]; expect(a.rot === 90 && a.x === 10 && a.y === 10, '이미지 회전은 각도만 저장(자리 그대로)');
+    const o = m.applyEdits(svg, R, { ids: true }).svg; expect(/<image[^>]*transform="rotate\(90 30 20\)"[^>]*data-eid="a1"/.test(o), '이미지는 가운데 중심 rotate(90 30 20) 로 그려짐');
+    const R2 = m.editRotateAdd(Ea, 'a1', 90, [0, 0]); expect(near(R2.adds[0].x + 20, -20) && near(R2.adds[0].y + 10, 30), '함께 돌리기: 이미지 가운데가 (0,0) 둘레로 옮겨 감');
+    expect(!('rot' in m.editRotateAdd(R, 'a1', 0).adds[0]), '0° 로 되돌리면 각도 항목이 사라짐');
+    const rep = m.editReplaceImage(R, 'a1', { href: 'data:image/png;base64,BBBB', w: 100, h: 100 }); expect(rep.adds[0].rot === 90 && !/NaN/.test(JSON.stringify(rep)), '이미지를 바꿔도 각도는 유지');
+    const cr = m.editCropImage(R, 'a1', { crop: [0.1, 0.1, 0.9, 0.9], orig: 'data:image/png;base64,AAAA', href: 'data:image/png;base64,CCCC', w: 80, h: 40 }); expect(cr.adds[0].rot === 90 && cr.adds[0].crop && !/NaN/.test(JSON.stringify(cr)), '자르기 해도 각도는 유지'); }
+}
+// 번호 마커(R3-2)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`번호 마커: ${label}`); };
+  expect(m.assignNumbers([{ auto: true, text: '' }, { auto: true, text: '' }, { auto: true, text: '' }]).join() === '1,2,3', '자동 번호는 1,2,3…');
+  expect(m.assignNumbers([{ auto: true, text: '' }, { auto: false, text: '2' }, { auto: true, text: '' }]).join() === '1,2,3', '직접 정한 번호(2)는 두고 자동은 1·3');
+  expect(m.assignNumbers([{ auto: false, text: '가' }, { auto: true, text: '' }]).join() === '가,1', '숫자가 아닌 고정 글자는 그대로');
+  expect(m.assignNumbers([]).length === 0, '빈 목록');
+  expect(m.badgeInk('#222222') === '#FFFFFF' && m.badgeInk('#F8E8A0') === '#222222' && m.badgeInk('nope') === '#FFFFFF', '바탕이 밝으면 어두운 숫자, 어두우면 흰 숫자');
+  expect(m.badgeFontK('1') === 1 && m.badgeFontK('12') === 0.8 && m.badgeFontK('123') < 0.7, '숫자가 길면 글자가 작아짐');
+  // 손스케치
+  const base = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 40] }], lines: [], winds: [], memos: [{ id: 'm1', x: 70, y: 10, text: '메모', size: 14 }] });
+  let sp = base(); const ids = [];
+  for (let i = 0; i < 3; i++) { const r = m.sketchAdd(sp, 'marker'); sp = r.spec; ids.push(r.id); }
+  const nums = (spec) => spec.memos.filter((x) => x.badge).map((x) => x.text).join();
+  expect(nums(sp) === '1,2,3' && sp.memos.find((x) => x.id === ids[0]).badge === 'circle' && sp.memos.find((x) => x.id === ids[0]).color === '#222222', '마커를 놓을 때마다 1,2,3 자동, 기본은 검은 원');
+  expect(new Set(sp.memos.filter((x) => x.badge).map((x) => `${x.x.toFixed(2)},${x.y.toFixed(2)}`)).size === 3, '놓을 때마다 비껴 놓임');
+  expect(nums(m.sketchDelete(sp, ids[1])) === '1,2', '가운데 마커를 지우면 뒤 번호가 당겨짐(1,2)');
+  { const t = m.sketchTextTargets(sp).find((x) => x.apply.id === ids[1]); const r = m.sketchApplyText(sp, t.apply, '7'); expect(r.update.patch.text === '7' && r.update.patch.auto === false, '번호를 직접 고치면 고정(auto=false)');
+    const fixed = m.sketchRenumber(m.sketchUpdate(sp, ids[1], { text: '2', auto: false })); expect(nums(fixed) === '1,2,3', '고정 번호 2 가 있으면 자동은 1·3'); }
+  { const fixed = m.sketchUpdate(sp, ids[0], { text: '5', auto: false }); expect(nums(m.sketchRenumber(fixed)) === '5,1,2', '첫 마커를 5로 고정하면 나머지는 1,2'); }
+  { const snap = m.sketchSnapshot(sp, ids[0]); const r = m.sketchPaste(sp, snap, 3, 3); expect(nums(r.spec) === '1,2,3,4', '붙여넣은 마커는 다음 번호'); }
+  expect(!m.sketchCanRotate(sp, ids[0]) && m.sketchCanRotate(sp, 'm1'), '번호 마커는 돌리지 않는다(글자는 돌릴 수 있음)');
+  expect(!('rot' in m.normalizeSketch({ ...sp, memos: sp.memos.map((x) => (x.badge ? { ...x, rot: 30 } : x)) }).memos.find((x) => x.badge)), '마커의 각도는 저장하지 않음');
+  { const svg = m.renderSketch(sp).svg; expect((svg.match(/<circle cx="[\d.]+" cy="[\d.]+" r="[\d.]+" fill="#222222"\/>/g) || []).length === 3 && />1<\/text>/.test(svg) && />3<\/text>/.test(svg) && /fill="#FFFFFF" pointer-events="none">1</.test(svg), '검은 원 3개 + 흰 숫자 1,2,3'); expect(!/NaN|undefined/.test(svg), 'SVG 에 NaN 없음');
+    const sq = m.renderSketch(m.sketchUpdate(sp, ids[0], { badge: 'square', color: '#E8833A' })).svg; expect(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" rx="[\d.]+" fill="#E8833A"\/>/.test(sq), '사각 모양·색 바꾸기');
+    const iv = m.renderSketch(sp, { interactive: true, selected: ids[0] }).svg; expect(iv.includes('stroke-dasharray="6 4"') && !iv.includes('data-handle="rot"') && iv.includes(`data-eid="${ids[0]}"`), '선택하면 고리 표시, 회전 손잡이는 없음, 눌러서 고를 수 있음');
+    const two = m.renderSketch(m.sketchUpdate(sp, ids[0], { text: '12' })).svg; expect(/pointer-events="none">12<\/text>/.test(two) && /font-size="1[0-9]\.\d"[^>]*pointer-events="none">12</.test(two), '두 자리 번호도 그려짐(글자가 조금 작아짐)'); }
+  expect(m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: '12345', badge: 'circle' }] }).memos[0].text === '123', '번호는 3자까지');
+  expect(m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: '메모', badge: 'zzz' }] }).memos[0].badge === undefined, '모르는 모양은 일반 글자');
+  // 구조형
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; let E = m.emptyEdits(svg0); const aids = [];
+  for (let i = 0; i < 3; i++) { const r = m.editAddBadge(E, sig, { box: [0, 0, 200, 100] }); E = r.edits; aids.push(r.id); }
+  const anums = (e) => (e.adds || []).filter((a) => a.kind === 'badge').map((a) => a.text).join();
+  expect(anums(E) === '1,2,3' && E.adds[0].shape === 'circle' && E.adds[0].fill === '#222222' && E.adds[0].w === E.adds[0].h, '구조형: 마커 1,2,3 자동, 지름 w=h');
+  expect(m.hasEdits(E), '마커가 있으면 수정 있음으로 본다');
+  expect(anums(m.editRemoveAdd(E, aids[1], sig)) === '1,2', '구조형: 가운데를 지우면 뒤 번호가 당겨짐');
+  expect(anums(m.editRenumber({ ...E, adds: E.adds.map((a, i) => (i === 1 ? { ...a, text: '2', auto: false } : a)) })) === '1,2,3', '구조형: 고정 번호는 건너뜀');
+  { const out = m.applyEdits(svg0, E).svg; expect((out.match(/<circle /g) || []).length === 3 && />1<\/text>/.test(out) && !/data-eid/.test(out) && !/NaN|undefined/.test(out), '저장용 그림: 원 3개·숫자·손잡이 표시 없음'); }
+  { const out = m.applyEdits(svg0, E, { ids: true }).svg; expect(new RegExp(`<g data-eid="${aids[0]}">`).test(out), '편집 화면: 마커마다 data-eid'); }
+  { const E2 = { ...E, adds: E.adds.map((a, i) => (i === 0 ? { ...a, shape: 'square', fill: '#F8E8A0' } : a)) }; const out = m.applyEdits(svg0, E2).svg; expect(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" rx="[\d.]+" fill="#F8E8A0"\/>/.test(out) && /fill="#222222" pointer-events|fill="#222222">1</.test(out), '사각·밝은 바탕이면 어두운 숫자'); }
+  { const R = m.editRotateAdd(E, aids[0], 90); expect(R === E && !('rot' in E.adds[0]), '마커는 각도를 갖지 않음'); const R2 = m.editRotateAdd(E, aids[0], 90, [0, 0]); const a = R2.adds[0]; const c0 = [E.adds[0].x + E.adds[0].w / 2, E.adds[0].y + E.adds[0].w / 2]; expect(Math.abs((a.x + a.w / 2) - (-c0[1])) < 0.1 && !('rot' in a), '함께 돌릴 때는 자리만 묶음 중심 둘레로 옮겨 감'); }
+}
+// 리더선 라벨(R3-3)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`리더선 라벨: ${label}`); };
+  expect(m.descLines('가\n\n 나 \n다\n라').join('|') === '가|나|다', '설명은 빈 줄을 버리고 3줄까지');
+  const base = { x: 100, y: 100, title: '제목', desc: '설명 하나\n설명 둘', size: 14, color: '#222222', line: 'straight', end: 'dot' };
+  const R = m.calloutLayout({ ...base, tx: 400, ty: 220 }); const Lf = m.calloutLayout({ ...base, tx: 20, ty: 220 });
+  expect(R.pts.length === 2 && R.S[0] === R.x + R.w && R.pts[1][0] === 400 && R.pts[1][1] === 220, '끝점이 오른쪽이면 밑줄 오른쪽 끝에서 끝점까지 직선');
+  expect(Lf.S[0] === Lf.x && Lf.pts[1][0] === 20, '끝점이 왼쪽이면 밑줄 왼쪽 끝에서 나간다');
+  expect(R.w >= 14 * 4 && R.h > 14 * 2 && R.lines.length === 3 && R.lines[0].bold && !R.lines[1].bold, '제목은 굵게, 설명 두 줄이 그 아래');
+  { const E = m.calloutLayout({ ...base, tx: 400, ty: 220, line: 'elbow' }); expect(E.pts.length === 3 && E.pts[1][0] === 400 && E.pts[1][1] === E.S[1], '꺾은선은 가로로 나간 뒤 세로로 꺾는다');
+    const B = m.calloutLayout({ ...base, tx: 110, ty: 220, line: 'elbow' }); expect(B.pts.length === 2, '되돌아가는 방향이면 꺾지 않고 직선'); }
+  { const w1 = m.calloutLayout({ ...base, title: '긴 제목이 들어갑니다 정말로', tx: 400, ty: 200 }).w; const w2 = m.calloutLayout({ ...base, title: '짧', tx: 400, ty: 200 }).w; expect(w1 > w2, '긴 제목이면 상자가 넓어진다'); }
+  { const svg = m.calloutSvg({ ...base, tx: 400, ty: 220 }); expect(svg.includes('<polyline') && svg.includes('<circle') && /font-weight="800"[^>]*>제목</.test(svg) && />설명 하나</.test(svg) && !svg.includes('data-eid') && !/NaN|undefined/.test(svg), '그림: 선·끝점 점·제목·설명, 편집 표시 없음');
+    const ar = m.calloutSvg({ ...base, tx: 400, ty: 220, end: 'arrow' }); expect(ar.includes('<polygon') && !ar.includes('<circle'), '끝 모양 화살표');
+    const no = m.calloutSvg({ ...base, tx: 400, ty: 220, end: 'none' }); expect(!no.includes('<polygon') && !no.includes('<circle'), '끝 모양 없음');
+    const iv = m.calloutSvg({ ...base, tx: 400, ty: 220 }, { id: 'm9', interactive: true }); expect(iv.includes('data-eid="m9"') && iv.includes('fill="transparent"') && iv.includes('stroke="transparent"'), '편집 화면: 눌러서 고를 수 있는 투명 영역');
+    const esc = m.calloutSvg({ ...base, title: 'A<B&"C"', tx: 400, ty: 220 }); expect(esc.includes('A&lt;B&amp;&quot;C&quot;'), '글자의 특수문자 이스케이프');
+    const em = m.calloutSvg({ ...base, title: '', desc: '', tx: 400, ty: 220 }); expect(!/NaN|undefined/.test(em) && em.includes('<polyline'), '제목·설명이 비어도 그려짐'); }
+  { const bx = m.calloutBox({ ...base, tx: 400, ty: 220 }); expect(bx[0] <= 100 && bx[2] >= 400 && bx[3] >= 220 && bx[1] <= 100, '상자 영역은 글 상자와 끝점을 모두 감쌈'); }
+  // 손스케치
+  const sk = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 40] }], lines: [], winds: [], memos: [{ id: 'm1', x: 70, y: 10, text: '메모', size: 14 }] });
+  let sp = sk(); const ra = m.sketchAdd(sp, 'callout'); sp = ra.spec; const cid = ra.id; const c0 = sp.memos.find((x) => x.id === cid);
+  expect(c0.callout === true && c0.text === '제목' && Number.isFinite(c0.tx) && Number.isFinite(c0.ty) && c0.line === 'straight' && c0.end === 'dot', '손스케치: 리더선 라벨 추가');
+  expect(m.sketchAdd(sp, 'callout').spec.memos.filter((x) => x.callout).length === 2, '여러 개 추가');
+  { const n = m.normalizeSketch(JSON.parse(JSON.stringify(sp))).memos.find((x) => x.id === cid); expect(n.callout && n.desc === c0.desc && n.tx === c0.tx && !('rot' in n), '저장·불러오기 후에도 유지, 각도는 없음');
+    const bad = m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: 't', callout: true, line: 'zzz', end: 'qqq', desc: 'a\nb\nc\nd' }] }).memos[0]; expect(bad.line === 'straight' && bad.end === 'dot' && bad.desc.split('\n').length === 3, '모르는 선·끝 모양은 기본값, 설명은 3줄까지'); }
+  { const mv = m.sketchMoveBy(sp, cid, 5, 3).memos.find((x) => x.id === cid); expect(Math.abs(mv.x - (c0.x + 5)) < 1e-9 && Math.abs(mv.tx - (c0.tx + 5)) < 1e-9 && Math.abs(mv.ty - (c0.ty + 3)) < 1e-9, '옮기면 글 상자와 끝점이 함께'); }
+  { const tp = m.sketchSetTip(sp, cid, [33, 44]).memos.find((x) => x.id === cid); expect(tp.tx === 33 && tp.ty === 44 && tp.x === c0.x, '끝점만 옮기기'); expect(m.sketchSetTip(sp, 'm1', [1, 1]) === sp, '리더선 라벨이 아니면 그대로'); }
+  expect(!m.sketchCanRotate(sp, cid), '리더선 라벨은 돌리지 않는다');
+  { const bx = m.sketchBox(sp, cid); expect(bx[0] <= Math.min(c0.x, c0.tx) + 1e-9 && bx[2] >= Math.max(c0.x, c0.tx) - 1e-9, '영역은 글 상자 자리와 끝점을 감쌈'); }
+  { const sn = m.sketchSnapshot(sp, cid); const r = m.sketchPaste(sp, sn, 3, 3); const p2 = r.spec.memos.find((x) => x.id === r.id); expect(p2.callout && Math.abs(p2.tx - (c0.tx + 3)) < 1e-9 && Math.abs(p2.x - (c0.x + 3)) < 1e-9, '붙여넣기: 끝점도 같이 비껴 놓임'); }
+  { const mc = m.sketchMirrorCopy(sp, cid, 50, 'h'); const q = mc.spec.memos.find((x) => x.id === mc.id); expect(Math.abs(q.tx - (100 - c0.tx)) < 1e-9 && Math.abs(q.x - (100 - c0.x)) < 1e-9, '대칭 복제: 끝점도 뒤집힘'); }
+  { const tg = m.sketchTextTargets(sp).filter((x) => x.apply.id === cid); expect(tg.length === 2 && tg.some((x) => x.apply.key === 'desc' && x.multiline), '글자 고치기 자리: 제목 + 설명(여러 줄)');
+    const r = m.sketchApplyText(sp, { id: cid, key: 'desc' }, '새 설명\n둘째'); expect(r.update.patch.desc === '새 설명\n둘째' && !('auto' in r.update.patch), '설명 고치기'); }
+  { const out = m.renderSketch(sp).svg; expect(out.includes('<polyline') && />제목</.test(out) && />설명을 입력하세요</.test(out) && !out.includes('data-eid') && !out.includes('data-handle') && !/NaN|undefined/.test(out), '그림: 선·제목·설명, 편집 표시 없음');
+    const iv = m.renderSketch(sp, { interactive: true, selected: cid }).svg; expect(iv.includes(`data-eid="${cid}"`) && iv.includes('data-handle="tip"') && iv.includes('stroke-dasharray="6 4"') && !iv.includes('data-handle="rot"'), '선택하면 끝점 손잡이·점선 틀, 회전 손잡이는 없음');
+    const un = m.renderSketch(sp, { interactive: true }).svg; expect(!un.includes('data-handle="tip"'), '선택하지 않으면 손잡이 없음');
+    const el = m.renderSketch(m.sketchUpdate(sp, cid, { line: 'elbow', end: 'arrow' })).svg; expect(el.includes('<polygon'), '꺾은선·화살표로 바꾸기'); }
+  expect(m.sketchDelete(sp, cid).memos.every((x) => x.id !== cid), '지우기');
+  // 구조형
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; let E = m.emptyEdits(svg0); const r1 = m.editAddCallout(E, sig, { box: [0, 0, 200, 100] }); E = r1.edits; const a1 = E.adds.find((x) => x.id === r1.id);
+  expect(a1.kind === 'callout' && a1.title === '제목' && a1.size >= 10 - 1e-9 && Number.isFinite(a1.tx) && a1.fill === '#222222', '구조형: 리더선 라벨 추가');
+  expect(m.hasEdits(E), '리더선 라벨이 있으면 수정 있음으로 본다');
+  { const out = m.applyEdits(svg0, E).svg; expect(out.includes('<polyline') && />제목</.test(out) && !/data-eid/.test(out) && !/NaN|undefined/.test(out), '저장용 그림: 선·글, 편집 표시 없음');
+    const iv = m.applyEdits(svg0, E, { ids: true }).svg; expect(new RegExp(`<g data-eid="${r1.id}"`).test(iv), '편집 화면: data-eid'); }
+  { const sh = m.addShiftPatch(a1, 4, 6); expect(sh.x === Math.round((a1.x + 4) * 100) / 100 && sh.tx === Math.round((a1.tx + 4) * 100) / 100 && sh.ty === Math.round((a1.ty + 6) * 100) / 100, '옮김 조각: 끝점도 함께'); expect(!('tx' in m.addShiftPatch({ id: 'a2', kind: 'image', x: 1, y: 1 }, 2, 2)), '이미지는 x, y 만'); }
+  { const R = m.editRotateAdd(E, r1.id, 90); expect(R === E, '혼자 돌려도 변화 없음(글자는 기울지 않는다)'); const R2 = m.editRotateAdd(E, r1.id, 90, [100, 50]); const q = R2.adds.find((x) => x.id === r1.id); expect(Number.isFinite(q.x) && Number.isFinite(q.tx) && !('rot' in q) && (q.tx !== a1.tx || q.ty !== a1.ty), '함께 돌릴 때는 자리와 끝점이 묶음 중심 둘레로 옮겨 감'); }
+  expect(!(m.editRemoveAdd(E, r1.id, sig).adds || []).length, '지우기');
+}
+// 아이콘 세트·아이콘 칩(R4)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`아이콘: ${label}`); };
+  const names = m.ICON_NAMES; const cats = new Set(m.ICON_CATS.map((c) => c.id));
+  expect(names.length === 12 + Object.keys(m.ICONSET).length && new Set(names).size === names.length, '이름 중복 없음(기본 12 + Lucide)');
+  expect(Object.keys(m.ICONSET).length >= 80 && Object.keys(m.ICONSET).length <= 120, `Lucide 아이콘 ${Object.keys(m.ICONSET).length}개(약 80~120개)`);
+  expect(names.every((n) => typeof m.ICON_LABEL[n] === 'string' && m.ICON_LABEL[n].length > 0), '모든 아이콘에 한국어 뜻');
+  expect(Object.values(m.ICONSET).every((v) => cats.has(v.cat) && v.svg.length > 20 && !/<script|on\w+=|href=|style=/.test(v.svg)), '분류가 있고 그림 데이터가 안전함(스크립트·링크·style 없음)');
+  expect(m.ICON_GROUPS.reduce((a, g) => a + g.names.length, 0) === names.length && m.ICON_GROUPS[0].id === 'basic' && m.ICON_GROUPS.every((g) => g.names.length > 0), '분류별 묶음이 전체와 같고 비어 있지 않음');
+  expect(!Object.keys(m.ICONSET).some((n) => m.BASIC_NAMES.includes(n)), 'Lucide 이름이 기본 12개와 겹치지 않음');
+  expect(names.every((n) => { const g = m.iconGlyph(n, '#fff'); return g.length > 20 && !/NaN|undefined/.test(g); }), '모든 아이콘이 그려짐(NaN 없음)');
+  expect(m.iconGlyph('building-2', '#123456').includes('stroke="#123456"') && m.iconGlyph('leaf', '#123456').includes('fill="#123456"'), '선 아이콘은 stroke, 기본 아이콘은 fill 로 색이 들어감');
+  expect(m.resolveIcon('Tree_Pine') === 'tree-pine' && m.resolveIcon(' building-2 ') === 'building-2' && m.resolveIcon('없는것') === 'star' && m.resolveIcon('zzz', 'leaf') === 'leaf' && m.resolveIcon(undefined) === 'star', '이름 맞추기(대소문자·_·공백, 없으면 기본값)');
+  // AI 입력 규칙·정리
+  expect(m.SITE_RULES.includes('building-2(') && m.SITE_RULES.includes('[기본]') && m.SITE_RULES.includes('[동선·방향]') && m.SITE_RULES.length < 6000, `AI 규칙에 분류별 아이콘 목록(길이 ${m.SITE_RULES.length}자)`);
+  { const sp = m.normalizeSpec('site', { panels: [{ heading: 'a', overlays: [{ kind: 'marker', anchor: 'n', label: 'x', icon: 'Hard_Hat', color: '#222222', side: 'left' }, { kind: 'marker', anchor: 's', label: 'y', icon: '없는아이콘', color: '#222222', side: 'left' }] }] });
+    const ic = JSON.stringify(sp); expect(ic.includes('"icon":"hard-hat"') && ic.includes('"icon":"star"'), '배치 개념도 marker: 이름을 맞추고 모르는 이름은 star'); }
+  // 손스케치 칩
+  const sk = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 40] }], lines: [], winds: [], memos: [{ id: 'm1', x: 70, y: 10, text: '메모', size: 14 }] });
+  let sp = sk(); const ra = m.sketchAdd(sp, 'icon', { icon: 'hard-hat' }); sp = ra.spec; const cid = ra.id; const c0 = sp.memos.find((x) => x.id === cid);
+  expect(c0.chip === 'hard-hat' && c0.chipShape === 'rounded' && c0.text === '' && !('rot' in c0), '손스케치: 아이콘 칩 추가');
+  expect(m.sketchAdd(sp, 'icon').spec.memos.filter((x) => x.chip).pop().chip === 'map-pin' && m.sketchAdd(sp, 'icon', { icon: 'nope' }).spec.memos.filter((x) => x.chip).pop().chip === 'map-pin', '아이콘을 안 정하거나 모르는 이름이면 map-pin');
+  { const n = m.normalizeSketch(JSON.parse(JSON.stringify(sp))).memos.find((x) => x.id === cid); expect(n.chip === 'hard-hat' && n.chipShape === 'rounded', '저장·불러오기 후에도 유지');
+    const bad = m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: 't', chip: 'zzz' }, { id: 'm2', x: 1, y: 1, text: '', chip: 'zap', chipShape: 'weird' }] }).memos; expect(!('chip' in bad[0]) && bad[1].chip === 'zap' && bad[1].chipShape === 'rounded', '모르는 아이콘은 일반 글자로, 모르는 모양은 둥근 사각'); }
+  expect(!m.sketchCanRotate(sp, cid), '아이콘 칩은 돌리지 않는다');
+  { const out = m.renderSketch(sp).svg; expect(/<rect x="[\d.]+" y="[\d.]+" width="38\.4" height="38\.4" rx="7\.7" fill="#222222"\/>/.test(out) && out.includes('stroke="#FFFFFF"') && !out.includes('data-eid') && !/NaN|undefined/.test(out), '그림: 둥근 사각 칩(한 변 size×2.4) + 흰 아이콘, 편집 표시 없음');
+    const ci = m.renderSketch(m.sketchUpdate(sp, cid, { chipShape: 'circle' })).svg; expect(/<circle cx="[\d.]+" cy="[\d.]+" r="19\.2" fill="#222222"\/>/.test(ci), '원 모양');
+    const bare = m.renderSketch(m.sketchUpdate(sp, cid, { chipShape: 'bare', color: '#1F6FB5' })).svg; expect(bare.includes('stroke="#1F6FB5"') && !/<rect[^>]*width="38\.4"/.test(bare), '바탕 없음: 아이콘만 그 색으로');
+    const iv = m.renderSketch(sp, { interactive: true, selected: cid }).svg; expect(iv.includes(`data-eid="${cid}"`) && iv.includes('stroke-dasharray="6 4"') && !iv.includes('data-handle="rot"') && iv.includes('fill="transparent"'), '편집 화면: 눌러서 고를 수 있음·점선 틀·회전 손잡이 없음'); }
+  { const mv = m.sketchMoveBy(sp, cid, 4, 2).memos.find((x) => x.id === cid); expect(Math.abs(mv.x - c0.x - 4) < 1e-9, '옮기기'); const pa = m.sketchPaste(sp, m.sketchSnapshot(sp, cid), 3, 3); expect(pa.spec.memos.find((x) => x.id === pa.id).chip === 'hard-hat', '복사·붙여넣기'); }
+  // 구조형 칩
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; let E = m.emptyEdits(svg0); const r1 = m.editAddIcon(E, sig, { box: [0, 0, 200, 100], icon: 'zap' }); E = r1.edits; const a1 = E.adds.find((x) => x.id === r1.id);
+  expect(a1.kind === 'icon' && a1.icon === 'zap' && a1.shape === 'rounded' && a1.w === a1.h && a1.w >= 28 - 1e-9 && a1.fill === '#222222', '구조형: 아이콘 칩 추가(한 변 w=h)');
+  expect(m.editAddIcon(E, sig, { box: [0, 0, 200, 100], icon: 'nope', shape: 'zzz' }).edits.adds.pop().icon === 'map-pin', '구조형: 모르는 아이콘은 map-pin');
+  expect(m.hasEdits(E), '아이콘 칩이 있으면 수정 있음');
+  { const out = m.applyEdits(svg0, E).svg; expect(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" rx="[\d.]+" fill="#222222"\/>/.test(out) && out.includes('stroke="#FFFFFF"') && !/data-eid/.test(out) && !/NaN|undefined/.test(out), '저장용 그림: 칩 + 아이콘, 편집 표시 없음');
+    const iv = m.applyEdits(svg0, E, { ids: true }).svg; expect(new RegExp(`<g data-eid="${r1.id}">`).test(iv) && iv.includes('fill="transparent"'), '편집 화면: data-eid·눌림 영역');
+    const E2 = { ...E, adds: E.adds.map((q) => (q.id === r1.id ? { ...q, shape: 'bare', fill: '#C0392B' } : q)) }; expect(m.applyEdits(svg0, E2).svg.includes('stroke="#C0392B"'), '바탕 없음·색 바꾸기'); }
+  { const R = m.editRotateAdd(E, r1.id, 90); expect(R === E, '혼자 돌려도 변화 없음'); const R2 = m.editRotateAdd(E, r1.id, 90, [100, 50]); expect(Number.isFinite(R2.adds[0].x) && !('rot' in R2.adds[0]), '함께 돌릴 때는 자리만 옮겨 감'); }
+  expect(!(m.editRemoveAdd(E, r1.id, sig).adds || []).length, '지우기');
+}
+// 개요표(R5 v1)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`개요표: ${label}`); };
+  const T0 = m.normalizeTable(m.SAMPLE_TABLE);
+  expect(T0.cols === 2 && T0.rows.length === 4 && T0.rows.every((r) => r.length === 2) && T0.style === 'label' && T0.title === '건축개요', '예시 표');
+  { const bad = m.normalizeTable({ title: 'x'.repeat(99), cols: 9, style: 'zzz', rows: [['a'], 'x', ['b', 'c', 'd', 'e', 'f', 'g'], null, ['긴'.repeat(80), '줄\n바꿈']] });
+    expect(bad.cols === 4 && bad.style === 'label' && bad.title.length === 40 && bad.rows.every((r) => r.length === 4) && bad.rows[4][0].length === 40 && !bad.rows[4][1].includes('\n'), '열 수 2~4·모든 행 칸 수 같게·글자 길이·줄바꿈 제거·모르는 스타일은 라벨형');
+    expect(m.normalizeTable(null).cols === 2 && m.normalizeTable(undefined).rows.length === 0 && m.normalizeTable({ cols: 1 }).cols === 2 && m.normalizeTable({ rows: Array.from({ length: 50 }, () => ['a', 'b']) }).rows.length === m.TABLE_MAX_ROWS, '빈 입력·1열은 2열·행은 30개까지'); }
+  { const a = m.tableSetCell(T0, 1, 1, '근린생활시설'); expect(a.rows[1][1] === '근린생활시설' && T0.rows[1][1] === '공동주택', '셀 고치기는 새 표를 돌려줌(원본 불변)');
+    expect(m.tableSetCell(T0, -1, 0, '새 제목').title === '새 제목' && m.tableSetCell(T0, 99, 0, 'x').rows.length === T0.rows.length && m.tableSetCell(T0, 0, 9, 'x').rows[0].join() === T0.rows[0].join(), '제목 고치기(r=-1)·범위 밖은 그대로'); }
+  { const ad = m.tableAddRow(T0); expect(ad.rows.length === 5 && ad.rows[4].every((v) => v === '') && ad.rows[4].length === 2, '행 추가'); expect(m.tableAddRow(T0, 1).rows[1].every((v) => v === '') && m.tableAddRow(T0, 1).rows[2][0] === '용도', '가운데에 행 끼우기');
+    expect(m.tableDelRow(T0, 0).rows.length === 3 && m.tableDelRow(m.normalizeTable({ rows: [['a', 'b']] }), 0).rows.length === 1, '행 지우기(마지막 한 행은 남김)');
+    expect(m.tableMoveRow(T0, 0, 1).rows[1][0] === '대지위치' && m.tableMoveRow(T0, 0, -1).rows[0][0] === '대지위치', '행 위·아래 옮기기(끝에서는 그대로)'); }
+  { const c4 = m.tableSetCols(T0, 4); expect(c4.cols === 4 && c4.rows.every((r) => r.length === 4 && r[2] === '' && r[0].length > 0), '열 늘리기: 빈 열'); const c2 = m.tableSetCols(c4, 2); expect(c2.rows[0].length === 2 && c2.rows[0][1] === T0.rows[0][1], '열 줄이기: 오른쪽이 잘림'); expect(m.tableSetCols(T0, 7).cols === 4 && m.tableSetCols(T0, 0).cols === 2, '열 수 한도'); }
+  { const L = m.tableLayout({ x: 100, y: 50, size: 14, table: T0 }); expect(L.colW.length === 2 && L.colW[1] > L.colW[0] && Math.abs(L.w - (L.colW[0] + L.colW[1])) < 1e-9 && L.h > 14 * 2 * 4 && L.rows.length === 4, '열 너비는 글자에 맞춰 정해지고 합이 전체 너비');
+    expect(Math.abs(L.colX[1] - (100 + L.colW[0])) < 1e-9 && L.rows[0].y > 50 && L.rows[3].y > L.rows[0].y, '열·행 위치 순서');
+    const wide = m.tableLayout({ x: 0, y: 0, size: 14, table: m.tableSetCell(T0, 0, 1, '아주아주아주아주 긴 값이 들어갑니다 정말로') }); expect(wide.colW[1] > L.colW[1], '긴 글자면 그 열이 넓어짐');
+    const tl = m.tableLayout({ x: 0, y: 0, size: 14, table: { ...T0, title: '아주아주 긴 표 제목이 들어가면 표가 넓어집니다' } }); expect(tl.w >= 14 * 1.05 * 20, '제목이 더 길면 표 폭이 제목에 맞춰짐'); }
+  { const svg = m.tableSvg({ x: 100, y: 50, size: 14, color: '#2F6B4F', table: T0 }); expect(svg.includes('>건축개요<') && svg.includes('>대지위치<') && svg.includes('fill="#EDEDED"') && !svg.includes('data-eid') && !svg.includes('data-cell') && !/NaN|undefined/.test(svg), '라벨형: 제목·라벨 열 회색·편집 표시 없음');
+    const st = m.tableSvg({ x: 0, y: 0, size: 14, color: '#1F6FB5', table: { ...T0, style: 'stripe', rows: [['면적', '12,345㎡'], ['비율', '78%'], ['비고', '없음']] } }); expect(st.includes('fill="#1F6FB5"') && st.includes('text-anchor="end"') && /fill="#[0-9a-f]{6}"\/>/.test(st) && !st.includes('#EDEDED'), '줄무늬형: 제목 띠 색·숫자는 오른쪽 맞춤·회색 라벨 열 없음');
+    const noTitle = m.tableSvg({ x: 0, y: 0, size: 14, table: { ...T0, title: '' } }); expect(!noTitle.includes('font-weight="800"') && !/NaN|undefined/.test(noTitle), '제목이 없어도 그려짐');
+    const empty = m.tableSvg({ x: 0, y: 0, size: 14, table: { rows: [] } }); expect(empty.startsWith('<g') && !/NaN|undefined/.test(empty), '행이 없어도 깨지지 않음');
+    const esc = m.tableSvg({ x: 0, y: 0, size: 14, table: m.tableSetCell(T0, 0, 0, 'A<B&"C"') }); expect(esc.includes('A&lt;B&amp;&quot;C&quot;'), '특수문자 이스케이프');
+    const iv = m.tableSvg({ x: 0, y: 0, size: 14, table: T0 }, { id: 'm7', interactive: true }); expect(iv.includes('data-eid="m7"') && (iv.match(/data-cell="/g) || []).length === 4 * 2 + 1 && iv.includes('data-cell="-1,0"') && iv.includes('data-cell="3,1"'), '편집 화면: 셀마다 눌림 영역(제목 포함, 빈 칸도)'); }
+  expect(m.isLabelCol({ style: 'label', cols: 4 }, 2) && !m.isLabelCol({ style: 'label', cols: 3 }, 2) && !m.isLabelCol({ style: 'stripe', cols: 2 }, 0), '라벨 열 규칙(4열이면 셋째 열도)');
+  // 손스케치
+  const sk = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 40] }], lines: [], winds: [], memos: [{ id: 'm1', x: 70, y: 10, text: '메모', size: 14 }] });
+  let sp = sk(); const ra = m.sketchAdd(sp, 'table'); sp = ra.spec; const tid = ra.id; const t0 = sp.memos.find((x) => x.id === tid);
+  expect(t0.table && t0.table.rows.length === 4 && t0.text === '' && !('rot' in t0) && t0.color === '#2F6B4F', '손스케치: 개요표 추가');
+  { const n = m.normalizeSketch(JSON.parse(JSON.stringify(sp))).memos.find((x) => x.id === tid); expect(n.table.title === '건축개요' && n.table.rows[3][1] === '12,345㎡', '저장·불러오기 후에도 유지');
+    const bad = m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: '', table: { cols: 9, rows: [['a']] } }, { id: 'm2', x: 1, y: 1, text: 'x', table: 'zzz' }] }).memos; expect(bad[0].table.cols === 4 && bad[0].table.rows[0].length === 4 && !('table' in bad[1]), '잘못된 표 값 정리'); }
+  expect(!m.sketchCanRotate(sp, tid) && m.sketchCanRotate(sp, 'm1'), '개요표는 돌리지 않는다');
+  { const out = m.renderSketch(sp).svg; expect(out.includes('>건축개요<') && out.includes('>용도<') && !out.includes('data-eid') && !out.includes('data-cell') && !/NaN|undefined/.test(out), '그림: 표 글자 있음·편집 표시 없음');
+    const iv = m.renderSketch(sp, { interactive: true, selected: tid }).svg; expect(iv.includes(`data-eid="${tid}"`) && iv.includes('data-cell="1,1"') && iv.includes('stroke-dasharray="6 4"') && !iv.includes('data-handle="rot"'), '편집 화면: 셀 눌림 영역·점선 틀·회전 손잡이 없음'); }
+  { const r = m.sketchApplyText(sp, { tableId: tid, r: 1, c: 1, key: 't1,1' }, '근린생활시설'); const nx = m.sketchUpdate(sp, r.update.id, r.update.patch); expect(nx.memos.find((x) => x.id === tid).table.rows[1][1] === '근린생활시설', '셀 글자 고치기(inlineText)');
+    const rt = m.sketchApplyText(sp, { tableId: tid, r: -1, c: 0 }, '면적개요'); expect(m.sketchUpdate(sp, rt.update.id, rt.update.patch).memos.find((x) => x.id === tid).table.title === '면적개요', '표 제목 고치기'); expect(m.sketchApplyText(sp, { tableId: 'zz', r: 0, c: 0 }, 'x') === null, '없는 표는 null'); }
+  { const mv = m.sketchMoveBy(sp, tid, 4, 2).memos.find((x) => x.id === tid); expect(Math.abs(mv.x - t0.x - 4) < 1e-9, '옮기기'); const pa = m.sketchPaste(sp, m.sketchSnapshot(sp, tid), 3, 3); const pm = pa.spec.memos.find((x) => x.id === pa.id); expect(pm.table.rows.length === 4 && pm.id !== tid, '복사·붙여넣기'); }
+  // 구조형
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; let E = m.emptyEdits(svg0); const r1 = m.editAddTable(E, sig, { box: [0, 0, 200, 100] }); E = r1.edits; const a1 = E.adds.find((x) => x.id === r1.id);
+  expect(a1.kind === 'table' && a1.table.rows.length === 4 && a1.size >= 8 - 1e-9 && a1.fill === '#2F6B4F', '구조형: 개요표 추가');
+  expect(m.hasEdits(E), '개요표가 있으면 수정 있음');
+  { const out = m.applyEdits(svg0, E).svg; expect(out.includes('>건축개요<') && out.includes('>규모<') && !/data-eid|data-cell/.test(out) && !/NaN|undefined/.test(out), '저장용 그림: 표 글자 있음·편집 표시 없음');
+    const iv = m.applyEdits(svg0, E, { ids: true }).svg; expect(new RegExp(`<g data-eid="${r1.id}"`).test(iv) && iv.includes('data-cell="2,0"'), '편집 화면: data-eid·셀 눌림 영역');
+    const E2 = { ...E, adds: E.adds.map((q) => (q.id === r1.id ? { ...q, table: m.tableSetCell(q.table, 0, 1, '고친 값'), size: 20 } : q)) }; expect(m.applyEdits(svg0, E2).svg.includes('>고친 값<'), '셀·크기 고치기'); }
+  { const sh = m.addShiftPatch(a1, 5, 7); expect(sh.x === Math.round((a1.x + 5) * 100) / 100 && !('tx' in sh), '옮김 조각은 x, y 만'); }
+  { const R = m.editRotateAdd(E, r1.id, 90); expect(R === E, '혼자 돌려도 변화 없음'); const R2 = m.editRotateAdd(E, r1.id, 90, [100, 50]); const q = R2.adds.find((x) => x.id === r1.id); expect(Number.isFinite(q.x) && Number.isFinite(q.y) && !('rot' in q) && (q.x !== a1.x || q.y !== a1.y), '함께 돌릴 때는 자리만 묶음 중심 둘레로 옮겨 감'); }
+  expect(!(m.editRemoveAdd(E, r1.id, sig).adds || []).length, '지우기');
+}
+// 바탕 흐리게(R6): 탈색·가장자리 흐리게
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`바탕 흐리게: ${label}`); };
+  expect(m.clampPct(-5) === 0 && m.clampPct(250) === 100 && m.clampPct('47.6') === 48 && m.clampPct(undefined) === 0 && m.clampPct('abc') === 0, '0~100 으로 맞춤');
+  expect(m.hasFx({ gray: 10 }) && m.hasFx({ edge: 5 }) && !m.hasFx({}) && !m.hasFx({ gray: 0, edge: 0 }) && !m.hasFx(null), '효과 있음 판정');
+  expect(m.CONTEXT_FX.gray === 100 && m.CONTEXT_FX.opacity === 0.35 && m.CONTEXT_FX.edge === 0, '맥락 바탕 기본값(흑백·투명도 35%)');
+  expect(m.imageFx('a1', { x: 0, y: 0, w: 100, h: 50 }).defs === '' && m.imageFx('a1', { x: 0, y: 0, w: 100, h: 50, gray: 0, edge: 0 }).attrs === '', '효과가 없으면 아무것도 더하지 않음');
+  { const g = m.imageFx('a1', { x: 10, y: 20, w: 100, h: 50, gray: 100 }); expect(g.defs.includes('<feColorMatrix type="saturate" values="0"') && g.attrs === ' filter="url(#fxg_a1)"' && !g.defs.includes('mask'), '탈색 100%: 채도 0 필터');
+    const g2 = m.imageFx('a1', { x: 0, y: 0, w: 100, h: 50, gray: 40 }); expect(g2.defs.includes('values="0.6"'), '탈색 40%: 채도 0.6');
+    const e = m.imageFx('a1', { x: 10, y: 20, w: 100, h: 50, edge: 60 }); expect(e.defs.includes('<mask id="fxm_a1"') && e.defs.includes('feGaussianBlur') && e.attrs === ' mask="url(#fxm_a1)"' && e.defs.includes('x="10"') && !e.defs.includes('feColorMatrix') && !/NaN|undefined|Infinity/.test(e.defs), '가장자리 60%: 흐린 사각형 마스크(이미지 자리 기준)');
+    const both = m.imageFx('a1', { x: 0, y: 0, w: 100, h: 50, gray: 100, edge: 100 }); expect(both.attrs.includes('filter=') && both.attrs.includes('mask='), '둘 다');
+    const tiny = m.imageFx('a b!', { x: 0, y: 0, w: 2, h: 2, edge: 100 }); expect(!/NaN|undefined|Infinity|width="-|height="-/.test(tiny.defs) && tiny.attrs.includes('fxm_ab'), '아주 작은 이미지·특수문자 id 도 안전'); }
+  // 손스케치
+  const sk = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [], lines: [], winds: [], memos: [] });
+  { let sp = sk(); const r = m.sketchAddImage(sp, { href: 'data:image/png;base64,AAAAAAAAAA', w: 200, h: 100 }); sp = r.spec; const id = r.id;
+    const plain = m.renderSketch(sp).svg; expect(plain.includes('<image') && !plain.includes('feColorMatrix') && !plain.includes('<mask'), '효과 없는 이미지는 예전과 같음');
+    sp = m.sketchUpdate(sp, id, { gray: 100, edge: 50, opacity: 0.35 }); const n = m.normalizeSketch(JSON.parse(JSON.stringify(sp))).blocks.find((b) => b.id === id); expect(n.gray === 100 && n.edge === 50 && n.opacity === 0.35, '저장·불러오기 후에도 유지');
+    const out = m.renderSketch(sp).svg; expect(out.includes('feColorMatrix') && out.includes('<mask id="fxm_') && /<image [^>]*filter="url\(#fxg_[^)]+\)"[^>]*mask="url\(#fxm_[^)]+\)"/.test(out) && out.includes('opacity="0.35"') && !/NaN|undefined/.test(out), '그림: 필터·마스크가 이미지에 걸림');
+    const bad = m.normalizeSketch({ blocks: [{ id: 'b1', kind: 'image', rect: [0, 0, 10, 10], href: 'data:image/png;base64,AAAAAAAAAA', gray: 999, edge: -3 }] }).blocks[0]; expect(bad.gray === 100 && bad.edge === 0, '범위 밖 값은 0~100 으로');
+    const iv = m.renderSketch(sp, { interactive: true, selected: id }).svg; expect(iv.includes(`data-eid="${id}"`) && iv.includes('data-handle'), '편집 화면에서도 선택·손잡이 그대로');
+    const rot = m.renderSketch(m.sketchSetAngle(sp, id, 30)).svg; expect(/<image [^>]*mask=[^>]*transform="rotate\(30/.test(rot), '돌린 이미지에도 효과가 같은 좌표에서 적용'); }
+  // 구조형
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect width="200" height="100" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; const Ea = { sig, ops: {}, adds: [{ id: 'a1', kind: 'image', href: 'data:image/png;base64,AAAA', x: 10, y: 10, w: 100, h: 60, opacity: 1, behind: true }] };
+  { const o0 = m.applyEdits(svg0, Ea).svg; expect(o0.includes('<image') && !o0.includes('feColorMatrix') && !o0.includes('<mask'), '구조형: 효과 없는 이미지는 예전과 같음');
+    const Eb = { ...Ea, adds: [{ ...Ea.adds[0], gray: 100, edge: 40, opacity: 0.35 }] }; const o1 = m.applyEdits(svg0, Eb).svg; expect(o1.includes('feColorMatrix') && o1.includes('<mask id="fxm_a1"') && /<image [^>]*filter="url\(#fxg_a1\)"[^>]*mask="url\(#fxm_a1\)"/.test(o1) && !/data-eid/.test(o1) && !/NaN|undefined/.test(o1), '구조형: 필터·마스크가 걸리고 저장용에는 편집 표시 없음');
+    expect(o1.indexOf('<mask') < o1.indexOf('<image') && o1.indexOf('<mask') < o1.indexOf('<rect x="10"'), '맨 뒤 이미지: 정의가 이미지 앞, 도형보다도 앞(배경 바로 위)');
+    const iv = m.applyEdits(svg0, Eb, { ids: true }).svg; expect(/<image [^>]*data-eid="a1"/.test(iv), '편집 화면: 이미지에 data-eid 유지');
+    const sc = m.scanSvg(m.applyEdits(svg0, Eb).svg); expect(sc.sig === sig || typeof sc.sig === 'string', '효과가 든 결과도 다시 읽힘'); }
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

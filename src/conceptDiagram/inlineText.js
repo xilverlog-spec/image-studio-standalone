@@ -1,3 +1,4 @@
+import { tableSetCell } from './table';
 // 그림 위의 글자를 클릭해 바로 고치기(2026-10-19) — 화면(DOM)과 무관한 계산만 모은다.
 // 그림에 보이는 글자를 글자 목록(getTextFields 등)의 항목과 이어 준다: 글자 내용이 같으면 같은 항목, 같은 글자가 여럿이면 화면에서 몇 번째인지로 고른다.
 export const normText = (s) => String(s ?? '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); // 강조 표시 {} 는 그림에 보이지 않으므로 뺀다
@@ -27,7 +28,7 @@ export function sketchTextTargets(norm) {
     if (w.inLabel) t.push({ value: w.inLabel, apply: { id: w.id, key: 'inLabel' } });
     if (w.outLabel) t.push({ value: w.outLabel, apply: { id: w.id, key: 'outLabel' } });
   });
-  (norm.memos || []).forEach((m) => { if (m.text) t.push({ value: m.text, apply: { id: m.id, key: 'text' } }); });
+  (norm.memos || []).forEach((m) => { if (m.text) t.push({ value: m.text, apply: { id: m.id, key: 'text' } }); if (m.callout && m.desc) t.push({ value: m.desc, multiline: true, apply: { id: m.id, key: 'desc' } }); });
   if (norm.textBlock) {
     if (norm.textBlock.title) t.push({ value: norm.textBlock.title, multiline: true, apply: { tb: 'title' } });
     (norm.textBlock.subs || []).forEach((s, i) => { if (s) t.push({ value: s, apply: { tb: 'sub', i } }); });
@@ -40,7 +41,8 @@ export function sketchTextTargets(norm) {
 // sketchTextTargets 항목의 apply 와 새 글자 v 로 바뀐 스펙 조각을 만든다. 반환: { global } 이면 전체 값 덮어쓰기 조각, { update: { id, patch } } 이면 요소 갱신
 export function sketchApplyText(norm, apply, v) {
   if (apply.global) return { global: Object.fromEntries(Object.keys(apply.global).map((k) => [k, v])) };
-  if (apply.id) return { update: { id: apply.id, patch: { [apply.key]: v } } };
+  if (apply.tableId) { const mm = (norm.memos || []).find((x) => x.id === apply.tableId && x.table); return mm ? { update: { id: mm.id, patch: { table: tableSetCell(mm.table, apply.r, apply.c, v) } } } : null; } // 개요표의 셀(제목은 r=-1)
+  if (apply.id) { const mk = apply.key === 'text' ? (norm.memos || []).find((x) => x.id === apply.id && x.badge) : null; return { update: { id: apply.id, patch: { [apply.key]: v, ...(mk ? { auto: false } : {}) } } }; } // 번호 마커의 번호를 직접 고치면 그 번호는 고정
   if (apply.tb === 'title') return { global: { textBlock: { ...norm.textBlock, title: v } } };
   if (apply.tb === 'sub') { const subs = [...(norm.textBlock.subs || [])]; subs[apply.i] = v; return { global: { textBlock: { ...norm.textBlock, subs } } }; }
   if (apply.note !== undefined) return { global: { notes: (norm.notes || []).map((x, j) => (j === apply.note ? v : x)) } };

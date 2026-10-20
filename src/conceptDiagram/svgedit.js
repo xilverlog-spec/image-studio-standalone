@@ -2,10 +2,17 @@
 // 색·위치·곡선·선 종류를 고칠 수 있게 하는 순수 함수 모음. DOM 없이 문자열로만 동작해서 점검이 쉽다.
 //
 // 고친 내용(edits)은 '요소 번호 → 바꾼 값'으로 따로 저장하고, 그림을 다시 그릴 때(예: 글자를 고쳤을 때) 같은 번호의 요소에 다시 입힌다.
-//   edits = { sig, ops: { e12: { t:[dx,dy], set:{ fill:'#fff', d:'M…', 'stroke-dasharray':'9 6' }, del:true, tag:'path' } } }
+//   edits = { sig, ops: { e12: { t:[dx,dy], r:30, rc:[cx,cy], set:{ fill:'#fff', d:'M…', 'stroke-dasharray':'9 6' }, del:true, tag:'path' } } }
+//   r = 회전 각도(°, 시계 방향 +), rc = 돌리는 중심(요소의 원래 변환을 적용한 뒤의 좌표). 그릴 때 transform = translate(t) rotate(r rc) 원래변환
 //   sig = 그림 구조(요소 종류의 순서)의 지문. 구조가 달라지면(다른 그림이 되면) 옛 수정은 적용하지 않는다.
 
 import { cropRect, fitInside, normCrop } from './imgutil';
+import { normDeg, rotPt, parseTransform, applyMat, rotRectKeep } from './rotate';
+import { badgeInk, assignNumbers, badgeFontK, BADGE_COLOR } from './marker';
+import { calloutSvg, calloutLayout, CALLOUT_COLOR } from './callout';
+import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
+import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
+import { imageFx } from './imgfx';
 
 const LEAF = new Set(['path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'text']);
 const SKIP = new Set(['defs', 'marker', 'pattern', 'clipPath', 'mask', 'symbol', 'style', 'linearGradient', 'radialGradient', 'filter', 'title', 'desc', 'foreignObject']);
@@ -122,10 +129,30 @@ export function editRemoveShape(edits, id, baseLeaf) {
 }
 
 // 내가 넣은 이미지(edits.adds): [{ id:'a1', kind:'image', href, x, y, w, h, opacity, behind }] — 그림 구조와 무관해서 구조 지문(sig)에 영향이 없다.
-const addTag = (a, interactive) => `<image href="${ATTR_ESC(a.href)}" x="${r2(a.x)}" y="${r2(a.y)}" width="${r2(a.w)}" height="${r2(a.h)}" preserveAspectRatio="none"${a.opacity < 1 ? ` opacity="${a.opacity}"` : ''}${interactive ? ` data-eid="${a.id}"` : ''}/>`;
+// 번호 마커도 같은 목록: { id, kind:'badge', shape:'circle'|'square', x, y, w, h(=지름), text:'1', fill, auto } — 가운데 숫자가 든 원·사각 하나(<g>)로 그려진다.
+const TXT_ESC = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const badgeTag = (a, interactive) => {
+  const r = a.w / 2; const cx = a.x + r; const cy = a.y + r; const t = String(a.text ?? ''); const fs = a.w * 0.56 * badgeFontK(t);
+  const shp = a.shape === 'square' ? `<rect x="${r2(a.x)}" y="${r2(a.y)}" width="${r2(a.w)}" height="${r2(a.w)}" rx="${r2(a.w * 0.1)}" fill="${a.fill || BADGE_COLOR}"/>` : `<circle cx="${r2(cx)}" cy="${r2(cy)}" r="${r2(r)}" fill="${a.fill || BADGE_COLOR}"/>`;
+  return `<g${interactive ? ` data-eid="${a.id}"` : ''}>${shp}<text x="${r2(cx)}" y="${r2(cy + fs * 0.36)}" text-anchor="middle" font-family="${FONT}" font-size="${r2(fs)}" font-weight="700" fill="${badgeInk(a.fill || BADGE_COLOR)}"${interactive ? ' pointer-events="none"' : ''}>${TXT_ESC(t)}</text></g>`;
+};
+// 리더선 라벨: { id, kind:'callout', x, y(글 상자 왼쪽 위), tx, ty(가리키는 끝점), title, desc, size, fill(색), line:'straight'|'elbow', end:'dot'|'arrow'|'none' }
+const calloutOf = (a) => ({ x: a.x, y: a.y, tx: a.tx, ty: a.ty, title: a.title, desc: a.desc, size: a.size, line: a.line, end: a.end, color: a.fill });
+const calloutTag = (a, interactive) => calloutSvg(calloutOf(a), { id: a.id, interactive, font: FONT });
+// 아이콘 칩: { id, kind:'icon', icon, shape:'rounded'|'circle'|'bare', x, y, w, h(=한 변), fill(칩 색, bare 면 아이콘 색) }
+const iconTag = (a, interactive) => {
+  const side = a.w; const hit = interactive ? `<rect x="${r2(a.x)}" y="${r2(a.y)}" width="${r2(side)}" height="${r2(side)}" fill="transparent"/>` : '';
+  return `<g${interactive ? ` data-eid="${a.id}"` : ''}>${hit}${iconChipSvg({ cx: a.x + side / 2, cy: a.y + side / 2, side, icon: ICON_NAMES.includes(a.icon) ? a.icon : 'star', color: a.fill || '#222222', shape: CHIP_SHAPES.includes(a.shape) ? a.shape : 'rounded' })}</g>`;
+};
+// 내 이미지: 탈색(gray 0~100)·가장자리 흐리게(edge 0~100)는 SVG 필터·마스크로 겹쳐 그린다(원본은 그대로)
+const imgTag = (a, interactive) => { const fx = imageFx(a.id, { x: a.x, y: a.y, w: a.w, h: a.h, gray: a.gray, edge: a.edge }); return `${fx.defs}<image href="${ATTR_ESC(a.href)}" x="${r2(a.x)}" y="${r2(a.y)}" width="${r2(a.w)}" height="${r2(a.h)}" preserveAspectRatio="none"${fx.attrs}${a.opacity < 1 ? ` opacity="${a.opacity}"` : ''}${a.rot ? ` transform="rotate(${r2(a.rot)} ${r2(a.x + a.w / 2)} ${r2(a.y + a.h / 2)})"` : ''}${interactive ? ` data-eid="${a.id}"` : ''}/>`; };
+// 개요표: { id, kind:'table', x, y(왼쪽 위), size(글자 크기), fill(제목 띠·선 색), table:{ title, cols, style, rows } }
+const tableOf = (a) => ({ x: a.x, y: a.y, size: a.size, color: a.fill, table: a.table });
+const tableTag = (a, interactive) => tableSvg(tableOf(a), { id: a.id, interactive, font: FONT });
+const addTag = (a, interactive) => a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
 function insertAdds(svg, _els, adds, interactive) {
   if (!adds || !adds.length) return svg;
-  const valid = adds.filter((a) => a && a.href && a.kind === 'image');
+  const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table'));
   if (!valid.length) return svg;
   const back = valid.filter((a) => a.behind).map((a) => addTag(a, interactive)).join('');
   const front = valid.filter((a) => !a.behind).map((a) => addTag(a, interactive)).join('');
@@ -160,7 +187,9 @@ export function applyEdits(svg0, edits, opts = {}) {
     if (op) {
       if (op.tag && el.self && op.tag !== el.tag) tag = op.tag;
       Object.entries(op.set || {}).forEach(([k, v]) => { if (v === null || v === undefined) delete attrs[k]; else attrs[k] = v; });
-      if (op.t && (op.t[0] || op.t[1])) attrs.transform = `translate(${r2(op.t[0])} ${r2(op.t[1])})${el.attrs.transform ? ` ${el.attrs.transform}` : ''}`;
+      const tStr = op.t && (op.t[0] || op.t[1]) ? `translate(${r2(op.t[0])} ${r2(op.t[1])})` : '';
+      const rStr = op.r && op.rc ? `rotate(${r2(op.r)} ${r2(op.rc[0])} ${r2(op.rc[1])})` : '';
+      if (tStr || rStr) attrs.transform = [tStr, rStr, el.attrs.transform].filter(Boolean).join(' ');
       if (op.del) attrs.display = 'none';
     }
     let extra = '';
@@ -181,7 +210,7 @@ export function applyEdits(svg0, edits, opts = {}) {
 const cloneEdits = (edits, sig) => ({ sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, ...(edits?.adds?.length ? { adds: edits.adds } : {}), ...(edits?.shapes?.length ? { shapes: edits.shapes } : {}) });
 function withOp(edits, id, fn, sig) {
   const next = cloneEdits(edits, sig); const cur = next.ops[id] ? { ...next.ops[id], set: { ...(next.ops[id].set || {}) } } : { set: {} };
-  const res = fn(cur) || cur; const empty = !res.del && !res.tag && !(res.t && (res.t[0] || res.t[1])) && !Object.keys(res.set || {}).length;
+  const res = fn(cur) || cur; const empty = !res.del && !res.tag && !res.r && !(res.t && (res.t[0] || res.t[1])) && !Object.keys(res.set || {}).length;
   if (empty) delete next.ops[id]; else next.ops[id] = res;
   return next;
 }
@@ -204,19 +233,91 @@ export function editAddImage(edits, sig, { href, w, h, box, shift = 0 }) { // sh
 // 넣은 이미지 바꾸기(새 이미지를 옛 상자 안에 비율을 지키며 가장 크게, 자르기는 풀림) / 자르기(보이는 부분이 제자리에 남게 상자가 줄어듦, crop null 이면 해제)
 export function editReplaceImage(edits, id, { href, w, h }) {
   const a = (edits?.adds || []).find((q) => q.id === id); if (!a || typeof href !== 'string' || href.length < 9) return edits;
-  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = fitInside([a.x, a.y, a.x + a.w, a.y + a.h], ar);
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = rotRectKeep([a.x, a.y, a.x + a.w, a.y + a.h], fitInside([a.x, a.y, a.x + a.w, a.y + a.h], ar), a.rot || 0);
   const { orig, crop, ...rest } = a; // eslint-disable-line no-unused-vars
   return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...rest, href, ar, x: x0, y: y0, w: r2(x1 - x0), h: r2(y1 - y0) } : q)) };
 }
 export function editCropImage(edits, id, { crop, orig, href, w, h }) {
   const a = (edits?.adds || []).find((q) => q.id === id); if (!a || typeof href !== 'string' || href.length < 9) return edits;
   const base = a.orig && a.crop ? a.orig : a.href; const oldCrop = a.orig && a.crop ? a.crop : null; const nc = normCrop(crop);
-  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = cropRect([a.x, a.y, a.x + a.w, a.y + a.h], oldCrop, nc);
+  const ar = Math.round(((w || 1) / (h || 1)) * 1000) / 1000; const [x0, y0, x1, y1] = rotRectKeep([a.x, a.y, a.x + a.w, a.y + a.h], cropRect([a.x, a.y, a.x + a.w, a.y + a.h], oldCrop, nc), a.rot || 0);
   const { orig: o0, crop: c0, ...rest } = a; // eslint-disable-line no-unused-vars
   return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...rest, href, ar, x: x0, y: y0, w: r2(x1 - x0), h: r2(y1 - y0), ...(nc ? { orig: orig || base, crop: nc } : {}) } : q)) };
 }
+// ── 회전(°, 시계 방향 +) ──
+// 요소: angle = 새 총 각도, geom = { bbox:[x,y,w,h] (브라우저 getBBox, 요소 자기 좌표), t0: 원래 transform 속성 글자 }, about = 여러 개를 함께 돌릴 때 부모 좌표의 중심(없으면 요소 자신의 가운데).
+// 돌리기 전 도형의 가운데(원래 변환을 적용한 뒤 좌표)를 중심 c 로 저장하고, 지금 보이는 가운데가 그대로(또는 about 둘레로 돌아간 자리) 남도록 이동(t)을 다시 계산한다 → 크기·모양을 고친 뒤 다시 돌려도 가운데 둘레로 돈다.
+export function editRotate(edits, id, angle, geom, sig, about) {
+  const op0 = edits?.ops?.[id] || {}; const a0 = op0.r || 0; const a1 = normDeg(angle); const t = op0.t || [0, 0];
+  const bb = geom.bbox; const c = applyMat(parseTransform(geom.t0 || ''), [bb[0] + bb[2] / 2, bb[1] + bb[3] / 2]);
+  const c0 = op0.rc || c; const r0 = rotPt(c, a0, c0); const cv = [t[0] + r0[0], t[1] + r0[1]]; // 지금 보이는 가운데(부모 좌표)
+  const cn = about ? rotPt(cv, a1 - a0, about) : cv;
+  return withOp(edits, id, (o) => {
+    if (a1) { o.r = a1; o.rc = [r2(c[0]), r2(c[1])]; } else { delete o.r; delete o.rc; }
+    const nt = [r2(cn[0] - c[0]), r2(cn[1] - c[1])]; if (nt[0] || nt[1]) o.t = nt; else delete o.t;
+    return o;
+  }, sig);
+}
+// 내 이미지: x,y,w,h 의 가운데를 중심으로 rot 만큼 그린다. 여러 개를 함께 돌릴 때는 about(그림 좌표) 둘레로 가운데가 옮겨 간다
+export function editRotateAdd(edits, id, angle, about) {
+  const a = (edits?.adds || []).find((q) => q.id === id); if (!a) return edits;
+  if (a.kind === 'table') { // 개요표는 기울지 않는다. 함께 돌릴 때는 표 가운데를 묶음 중심 둘레로 옮긴다
+    if (!about) return edits;
+    const L = tableLayout(tableOf(a)); const c = rotPt([L.x + L.w / 2, L.y + L.h / 2], normDeg(angle) - (a.rot || 0), about);
+    return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...q, x: r2(c[0] - L.w / 2), y: r2(c[1] - L.h / 2) } : q)) };
+  }
+  if (a.kind === 'callout') { // 리더선 라벨은 글이 기울지 않는다. 함께 돌릴 때는 글 상자 가운데와 끝점을 묶음 중심 둘레로 옮긴다
+    if (!about) return edits;
+    const L = calloutLayout(calloutOf(a)); const da = normDeg(angle) - (a.rot || 0); const c = rotPt([L.x + L.w / 2, L.y + L.h / 2], da, about); const t = rotPt([a.tx, a.ty], da, about);
+    return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...q, x: r2(c[0] - L.w / 2), y: r2(c[1] - L.h / 2), tx: r2(t[0]), ty: r2(t[1]) } : q)) };
+  }
+  const a0 = a.rot || 0; const a1 = normDeg(angle); const c = [a.x + a.w / 2, a.y + a.h / 2]; const cn = about ? rotPt(c, a1 - a0, about) : c;
+  const { rot, ...rest } = a; // eslint-disable-line no-unused-vars
+  if (a.kind === 'badge' || a.kind === 'icon') return about ? { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...q, x: r2(cn[0] - a.w / 2), y: r2(cn[1] - a.h / 2) } : q)) } : edits; // 번호 마커는 글자가 기울지 않는다(함께 돌릴 때 자리만 옮김)
+  return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...rest, x: r2(cn[0] - a.w / 2), y: r2(cn[1] - a.h / 2), ...(a1 ? { rot: a1 } : {}) } : q)) };
+}
+// 개요표 추가: box=[x,y,w,h](놓을 그림 영역) 왼쪽 가운데 근처에 예시(건축개요) 표. 글자 크기는 그림 크기에 맞춘다
+export function editAddTable(edits, sig, { box }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const k = next.adds.filter((a) => a.kind === 'table').length; const size = r2(Math.max(8, Math.min(box[2], box[3]) * 0.026)); const off = (k % 6) * size * 1.6;
+  next.adds.push({ id: `a${n}`, kind: 'table', x: r2(box[0] + box[2] * 0.08 + off), y: r2(box[1] + box[3] * 0.3 + off), size, fill: TABLE_COLOR, table: normalizeTable(SAMPLE_TABLE) });
+  return { edits: next, id: `a${n}` };
+}
+// 아이콘 칩 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에. 놓을 때마다 조금씩 비껴 놓는다
+export function editAddIcon(edits, sig, { box, icon = 'map-pin', shape = 'rounded' }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const k = next.adds.filter((a) => a.kind === 'icon').length; const d = Math.max(28, Math.min(box[2], box[3]) * 0.07); const off = (k % 6) * d * 0.5;
+  next.adds.push({ id: `a${n}`, kind: 'icon', icon: ICON_NAMES.includes(icon) ? icon : 'map-pin', shape: CHIP_SHAPES.includes(shape) ? shape : 'rounded', x: r2(box[0] + box[2] / 2 - d / 2 + off), y: r2(box[1] + box[3] / 2 - d / 2 + off), w: r2(d), h: r2(d), fill: '#222222' });
+  return { edits: next, id: `a${n}` };
+}
+// 리더선 라벨 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에 글 상자와 끝점. 글자 크기는 그림 크기에 맞춘다
+export function editAddCallout(edits, sig, { box }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const k = next.adds.filter((a) => a.kind === 'callout').length; const size = r2(Math.max(10, Math.min(box[2], box[3]) * 0.03)); const off = (k % 6) * size * 1.6;
+  next.adds.push({ id: `a${n}`, kind: 'callout', x: r2(box[0] + box[2] / 2 + size * 1.5 + off), y: r2(box[1] + box[3] / 2 - size * 3 + off), tx: r2(box[0] + box[2] / 2 - size * 2 + off), ty: r2(box[1] + box[3] / 2 + size * 1.5 + off), title: '제목', desc: '설명을 입력하세요', size, fill: CALLOUT_COLOR, line: 'straight', end: 'dot' });
+  return { edits: next, id: `a${n}` };
+}
+// 끌거나 옮길 때 add 의 자리 변경 조각: 리더선 라벨은 끝점도 함께(PPT 말풍선처럼 통째로). a 는 옮기기 전 값
+export const addShiftPatch = (a, dx, dy) => ({ x: r2(a.x + dx), y: r2(a.y + dy), ...(a.kind === 'callout' ? { tx: r2(a.tx + dx), ty: r2(a.ty + dy) } : {}) });
+// 번호 마커 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에 검은 원(또는 shape:'square')으로. 번호는 다음 번호가 자동으로 붙는다
+export function editAddBadge(edits, sig, { box, shape = 'circle' }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const k = next.adds.filter((a) => a.kind === 'badge').length; const d = Math.max(16, Math.min(box[2], box[3]) * 0.045); const off = (k % 6) * d * 0.9;
+  next.adds.push({ id: `a${n}`, kind: 'badge', shape: shape === 'square' ? 'square' : 'circle', x: r2(box[0] + box[2] / 2 - d / 2 + off), y: r2(box[1] + box[3] / 2 - d / 2 + off), w: r2(d), h: r2(d), text: '1', fill: BADGE_COLOR, auto: true });
+  return { edits: editRenumber(next), id: `a${n}` };
+}
+// 자동 번호 마커에 그림 순서대로 1, 2, 3… 을 다시 매긴다(직접 고친 번호는 그대로, 그 번호는 건너뜀)
+export function editRenumber(edits) {
+  const adds = edits?.adds || []; const idx = adds.map((a, i) => (a.kind === 'badge' ? i : -1)).filter((i) => i >= 0); if (!idx.length) return edits;
+  const nums = assignNumbers(idx.map((i) => ({ auto: adds[i].auto !== false, text: adds[i].text })));
+  return { ...edits, adds: adds.map((a, i) => { const j = idx.indexOf(i); return j >= 0 ? { ...a, text: nums[j] } : a; }) };
+}
 export const editUpdateAdd = (edits, id, patch) => ({ ...edits, adds: (edits?.adds || []).map((a) => (a.id === id ? { ...a, ...patch } : a)) });
-export const editRemoveAdd = (edits, id, sig) => { const n = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: (edits?.adds || []).filter((a) => a.id !== id) }; if (!n.adds.length) delete n.adds; return n; };
+export const editRemoveAdd = (edits, id, sig) => { const gone = (edits?.adds || []).find((a) => a.id === id); const n = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: (edits?.adds || []).filter((a) => a.id !== id) }; if (!n.adds.length) delete n.adds; return gone && gone.kind === 'badge' ? editRenumber(n) : n; }; // 번호 마커를 지우면 뒤 번호를 다시 맞춘다
 
 // ── 선 종류 ──
 export const DASH_PRESETS = { solid: { label: '실선', dash: null, cap: null }, dashed: { label: '파선', dash: '9 6', cap: null }, dotted: { label: '점선', dash: '1.5 6', cap: 'round' }, dashdot: { label: '일점쇄선', dash: '14 5 2 5', cap: null }, dots: { label: '굵은 점(둥근 점선)', dash: '0.1 8.5', cap: 'round' } };

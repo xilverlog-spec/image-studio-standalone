@@ -8,6 +8,8 @@ import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
+import ScopeGuide, { TypeNote } from './ScopeGuide';
+import { checkScope, catalogById, IMAGE_OTHER_NEAREST } from './conceptDiagram/scope';
 import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
 import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
 import { cancelPendingPaste, imagesFromClipboard } from './conceptDiagram/clip';
@@ -171,6 +173,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [genError, setGenError] = useState('');       // 마지막 생성/읽기 실패 사유(실패하면 이전 그림이 그대로 보이므로 화면에 계속 알린다)
   const [result, setResult] = useState(null); // { type, spec, baseImage? }
   const [subjectKind, setSubjectKind] = useState('auto');
+  const [scopeNotice, setScopeNotice] = useState(null); // 범위 밖 안내 { kind: 'text'|'image', category?, nearest?, reason? }
+  const [pendingGen, setPendingGen] = useState(false);  // 안내의 버튼으로 종류를 바꾼 뒤 바로 만들기
   const [autoKind, setAutoKind] = useState(null);     // 자동 판단이 정한 읽기 방식(손스케치·분석 축측도 …)
   const [autoInfo, setAutoInfo] = useState(null);     // 자동 판단 근거 { type, reason }
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
@@ -575,6 +579,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       try { info = normalizeSubjectType(await callAI(buildSubjectClassifyPrompt(), [subjectImage])); skCachePut(key, info); }
       catch { return null; }
     }
+    if (info.type === 'other') { setScopeNotice({ kind: 'image', reason: info.reason }); return 'other'; } // 지원하는 종류가 아니면 멈추고 가까운 방식을 권한다
     let kind = routeSubject(info.type, { hasRef: !!styleImage, text: userText });
     if (kind === 'edit' && editAvail && editAvail.available === false) { kind = 'plan'; addToast?.('info', 'AI 이미지 편집 환경이 이 서버에 없어 평면 다이어그램으로 만듭니다', '동선·구역 표시는 큰 도면에서 품질이 떨어질 수 있습니다.'); }
     setAutoKind(kind); setAutoInfo(info);
@@ -598,7 +603,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     try {
       let kind = subjectKind; let autoRouted = false;
       if (kind === 'auto') { // 종류를 고르지 않았으면 AI 가 한 번 보고 정한다(실패하면 예전 자동 읽기)
-        const k0 = await resolveAutoKind(); if (k0) { kind = k0; autoRouted = true; }
+        const k0 = await resolveAutoKind(); if (k0 === 'other') return null; if (k0) { kind = k0; autoRouted = true; }
       }
       if (kind === 'edit') { // 미리 읽을 것이 없다: '다이어그램 만들기'를 누르면 서버가 도면을 보고 지시문을 쓰고 직접 그린다
         const rd = { kind: 'edit', summary: 'AI 이미지 편집 방식입니다. 도면의 선·글자는 원본 그대로 두고 색과 동선만 얹습니다(무료, 약 3~6분).', askedText: null };
@@ -802,6 +807,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     mustRef.current = Array.isArray(must) ? must : [];
     paidStepRef.current = !!(gopts && gopts.paid === true);
     if (!canGenerate) return;
+    if (!readMode && forcedType === 'auto' && !(gopts && gopts.scopeOk)) { const sc = checkScope(userText); if (!sc.inScope) { setScopeNotice({ kind: 'text', ...sc }); return; } } // 지원하지 않는 종류를 달라는 설명이면 만들기 전에 알린다(종류를 직접 골랐으면 묻지 않는다)
+    setScopeNotice(null);
     setGenError('');
     // 소재 이미지를 '읽어서' 쓰는 경우: 아직 안 읽었으면 여기서 자동으로 읽고 이어서 만든다(미리 읽어 보는 건 선택)
     let readNow = read;
@@ -829,6 +836,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       paidStepRef.current = false;
     }
   };
+  useEffect(() => { if (pendingGen) { setPendingGen(false); generate(undefined, { scopeOk: true }); } }, [pendingGen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 분석 축측도 '유료로 매끈하게 다시 그리기': 지금 결과(글자 뺀 초안) + 내 도면 + 참고 이미지를 이미지 생성 모델에 보내 새로 그리게 하고, 그 그림을 바탕으로 쓰고 문구는 편집 가능한 글자로 얹는다 ──
   const svgToPngB64 = (svg, w, h) => new Promise((resolve, reject) => {
@@ -963,7 +971,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>1. 설명</span>
-          <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
+          <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); setScopeNotice(null); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
             placeholder={effKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
           {(effKind === 'axon' || (styleImage && subjectImage)) && (
             <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: userText.trim() ? 'var(--text-tertiary, #64748b)' : '#9a3412', background: userText.trim() ? 'transparent' : '#fff7ed', padding: userText.trim() ? 0 : '6px 8px', borderRadius: 6 }} data-testid="concept-hint">
@@ -1103,6 +1111,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             {Object.entries(DIAGRAM_TYPES).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
         </div>}
+        {!subjectImage && forcedType !== 'auto' && <TypeNote id={forcedType} />}
+        <ScopeGuide forcedType={forcedType} onPick={subjectImage ? null : (id) => setForcedType(id)} />
 
         <div onPointerDownCapture={() => { ctxRef.current = 'page'; }}>
         <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
@@ -1116,6 +1126,33 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
+          {scopeNotice && (
+            <div style={{ border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="scope-notice">
+              {scopeNotice.kind === 'text' ? (<>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>⚠️ 지원하지 않는 종류일 수 있습니다: {scopeNotice.category.label}</div>
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: '#78350F' }}>{scopeNotice.category.alt}</div>
+                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'text').length > 0 && <div style={{ fontSize: 11.5, color: '#78350F' }}>가장 가까운 종류로 만들어 볼까요?</div>}
+                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'image').map((n) => <div key={n.type} style={{ fontSize: 11, color: '#78350F' }}>이미지가 있다면: <b>{n.label}</b> — {n.why}</div>)}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'text').map((n) => (
+                    <button key={n.type} style={{ ...btn(true, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => { setForcedType(n.type); setScopeNotice(null); setPendingGen(true); }} data-testid={`scope-nearest-${n.type}`} title={n.why}>{n.label.split(' (')[0]}(으)로 만들기</button>
+                  ))}
+                  <button style={{ ...btn(false, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => { setScopeNotice(null); generate(undefined, { scopeOk: true }); }} data-testid="scope-proceed">그대로 진행</button>
+                  <button style={{ ...btn(false, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => setScopeNotice(null)} data-testid="scope-close">설명 고치기</button>
+                </div>
+              </>) : (<>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>⚠️ 이 이미지는 지원하는 종류로 판단되지 않았습니다{scopeNotice.reason ? ` (${scopeNotice.reason})` : ''}</div>
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: '#78350F' }}>평면도·배치도·건물 사진·손스케치·입체 스케치가 아니면 결과가 기대와 다를 수 있습니다. 표·조직도·문서 스캔은 이 탭에서 만들지 않습니다(“만들 수 있는 것 · 없는 것” 참고). 가장 가까운 방식으로 진행하려면 고르세요.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {IMAGE_OTHER_NEAREST.map((n) => (
+                    <button key={n.kind} style={{ ...btn(n.kind === 'freeform', false), padding: '5px 9px', fontSize: 11.5 }} title={n.why} data-testid={`scope-image-${n.kind}`}
+                      onClick={() => { setSubjectKind(n.kind); setRead(null); setAutoKind(null); setAutoInfo(null); setScopeNotice(null); setPendingGen(true); }}>{SUBJECT_KINDS[n.kind].split(' (')[0].split('(')[0]}(으)로 진행</button>
+                  ))}
+                  <button style={{ ...btn(false, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => setScopeNotice(null)} data-testid="scope-close">닫기</button>
+                </div>
+              </>)}
+            </div>
+          )}
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
