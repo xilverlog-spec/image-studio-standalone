@@ -83,3 +83,6 @@ vite.ah.config.mjs
 cd_h.html
 src/__cdMain.jsx
 vite.cd.config.mjs
+
+# 2026-10-20 사내 참고 자료(설계공모 작품 PDF 300MB+): 외부(GitHub) 업로드 금지, 100MB 제한 초과. 자동 백업(git add -A + push)에 들어가지 않게 제외
+참고삽도/
