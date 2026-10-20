@@ -40,6 +40,8 @@ export const PAGE_LAYOUTS = [
   { id: 'T3', label: '위 큰 칸 + 아래 띠 3칸', cells: BAND(3, 0.62) },
   { id: 'T4', label: '위 큰 칸 + 아래 띠 4칸', cells: BAND(4, 0.66) },
   { id: 'T5', label: '위 큰 칸 + 아래 띠 5칸', cells: BAND(5, 0.7) },
+  { id: '3x3', label: '3×3 (9칸)', cells: GRID(3, 3) },
+  { id: 'W4', label: '위 4칸 + 아래 와이드 칸', cells: [...[0, 1, 2, 3].map((i) => [i / 4, 0, (i + 1) / 4, 0.34]), [0, 0.34, 1, 1]] },
   { id: 'L4', label: '왼쪽 세로 4칸 + 오른쪽 큰 칸', cells: [...[0, 1, 2, 3].map((i) => [0, i / 4, 0.2, (i + 1) / 4]), [0.2, 0, 1, 1]] },
 ];
 // 'g4x3' 같은 이름은 가로 4 × 세로 3 균등 격자(직접 지정, 최대 6×6)
@@ -319,7 +321,7 @@ export function scopeIds(svg, prefix) {
 }
 
 export function composePage(page, items, opts = {}) {
-  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null } = opts;
+  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', corner = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null } = opts;
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(accent || '') ? accent : '#F28C28';
   const W = Number(page.w); const H = Number(page.h);
   if (!(W > 20 && H > 20)) throw new Error('용지 크기가 너무 작습니다(가로·세로 20mm 이상).');
@@ -350,11 +352,19 @@ export function composePage(page, items, opts = {}) {
     return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, lineW(plain, fs)), svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${inner}</text>` };
   };
   let y = mg.t; const textW = W - mg.l - mg.r;
+  // 오른쪽 위 도면 라벨: ' / ' 로 나눈 첫 줄은 굵게, 나머지 줄은 작은 회색(예: '종단면도 / SCALE : 1/400'). 제목·구분 라벨이 이 폭만큼 비켜 간다
+  const cornerLines = String(corner || '').split(/\s+\/\s+/).map((q) => q.trim()).filter(Boolean).slice(0, 3);
+  let headW = textW;
+  if (cornerLines.length) {
+    const cp = [pt.label, pt.small, pt.small]; let cy = mg.t; let cw = 0;
+    cornerLines.forEach((txt, i) => { const fs = cp[i] * PT_MM; const w = Math.min(textW * 0.4, lineW(txt, fs)); cw = Math.max(cw, w); const base = cy + fs * 0.95; head.push(`<text x="${(W - mg.r).toFixed(2)}" y="${base.toFixed(2)}" text-anchor="end" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${i === 0 ? 800 : 500}" fill="${i === 0 ? '#1f242b' : '#6b7178'}">${esc(txt)}</text>`); cy = base + fs * 0.45; });
+    headW = Math.max(textW * 0.3, textW - cw - Math.min(W, H) * 0.03);
+  }
   const slots = {}; // 제목·소제목이 놓인(또는 놓일) 자리 — 미리보기 위에서 눌러 바로 고칠 수 있게 위치를 알려 준다. rect: [x, y, w, h] mm, has: 지금 글자가 있는지
-  if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', textW, '구분 라벨'); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
-  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', textW, '제목', true); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
+  if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', headW, '구분 라벨'); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
+  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', headW, '제목', true); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
   else slots.title = { rect: [mg.l, 0, textW, Math.max(4, mg.t)], has: false, text: '' };
-  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', textW, '소제목', true); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
+  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', headW, '소제목', true); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
   else if (title) slots.subtitle = { rect: [mg.l, y, textW, Math.max(4, Math.min(W, H) * 0.02 + 1)], has: false, text: '' };
   const box = { x: mg.l, y: y + (title || subtitle ? Math.min(W, H) * 0.02 : 0), w: W - mg.l - mg.r, h: 0 };
   box.h = H - box.y - mg.b;

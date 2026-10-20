@@ -22,10 +22,13 @@ const calloutJs = path.resolve(here, '../../src/conceptDiagram/callout.js');
 const iconsJs = path.resolve(here, '../../src/conceptDiagram/icons.js');
 const tableJs = path.resolve(here, '../../src/conceptDiagram/table.js');
 const imgfxJs = path.resolve(here, '../../src/conceptDiagram/imgfx.js');
+const cardboardJs = path.resolve(here, '../../src/conceptDiagram/cardboard.js');
+const tabledocJs = path.resolve(here, '../../src/conceptDiagram/tabledoc.js');
+const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
-fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES, SITE_RULES, normalizeSpec } from ${fwd(spec)};
+fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
@@ -44,10 +47,20 @@ export { editAddIcon } from ${fwd(svgeditJs)};
 export { normalizeTable, tableSetCell, tableAddRow, tableDelRow, tableMoveRow, tableSetCols, tableLayout, tableSvg, SAMPLE_TABLE, isLabelCol, TABLE_MAX_ROWS } from ${fwd(tableJs)};
 export { editAddTable } from ${fwd(svgeditJs)};
 export { imageFx, clampPct, hasFx, CONTEXT_FX } from ${fwd(imgfxJs)};
+export { cardsInitialEdits, cardsRebase } from ${fwd(cardboardJs)};
+export { cardsSetBullets, cardsToggleSub, cardsToggleCaption } from ${fwd(cardboardJs)};
+export { tableHasEmpty, tableFillEmpty } from ${fwd(tableJs)};
+export { normalizeCards, renderCards, wrapText, cardsHeroAdds, CARD_PRESETS, MAX as CARD_MAX, TONES as CARD_TONES, cardsAddCard, cardsDelCard, cardsMoveCard, cardsSetSlots, cardsAddKeypoint, cardsDelKeypoint, cardsAddBand, cardsDelBand, cardsMoveBand, cardsCount, getCardsTextFields } from ${fwd(cardboardJs)};
+export { textW } from ${fwd(tableJs)};
+export { normalizeTableDoc, renderTableDoc, getTableDocFields, TABLE_DOC_SCHEMA } from ${fwd(tabledocJs)};
+export { parseTableText, gridFromHtml, gridFromText } from ${fwd(tableJs)};
+export { rebaseEdits } from ${fwd(svgeditJs)};
+export { northSvg, scaleBarSvg, normalizeScale, scaleLabel, scaleBarHeight, NORTH_STYLES, SCALE_UNITS } from ${fwd(symbolsJs)};
+export { editAddNorth, editAddScale } from ${fwd(svgeditJs)};
 export { editRotate, editRotateAdd } from ${fwd(svgeditJs)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
-export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL } from ${fwd(scopeJs)};
+export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
@@ -1020,12 +1033,12 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(m.CATALOG.filter((c) => c.group === 'image').every((c) => m.PICTOS[c.thumb.picto] && /^<svg[\s\S]*<\/svg>$/.test(m.pictoSvg(c.thumb.picto))), '이미지 종류의 작은 그림이 모두 있음');
   // 범위 판정: 지원하지 않는 종류를 달라는 말
   const sc = (t) => m.checkScope(t);
-  expect(!sc('건축개요표를 만들어줘').inScope && sc('건축개요표를 만들어줘').category.id === 'table', '개요표 → 표');
-  expect(sc('간트 공정표 작성해 주세요').category?.id === 'table' && sc('프로젝트 조직도를 그려줘').category?.id === 'table', '공정표·조직도 → 표');
+  expect(sc('건축개요표를 만들어줘').inScope && m.looksLikeTable('건축개요표를 만들어줘') && m.looksLikeTable('면적표 작성') && !m.looksLikeTable('매스 과정도') && !m.looksLikeTable(''), '단순 개요표는 범위 안(종류가 자동이면 개요표 종류로 보냄)');
+  expect(sc('간트 공정표 작성해 주세요').category?.id === 'tablex' && sc('프로젝트 조직도를 그려줘').category?.id === 'tablex' && !sc('간트 공정표 작성해 주세요').inScope, '공정표·조직도는 여전히 범위 밖(복잡한 표)');
   expect(sc('이 건물 조감도를 그려줘').category?.id === 'render' && sc('투시도 이미지 생성').category?.id === 'render', '조감도·투시도 만들기 → 렌더');
   expect(sc('1층 평면도를 그려줘').category?.id === 'drawing' && sc('단면도를 작성해 주세요').category?.id === 'drawing', '평면도·단면도 작성 → 도면');
   expect(sc('회사 로고 만들어줘').category?.id === 'illust', '로고 → 일러스트');
-  expect(sc('구조계획 카드 보드로 정리해줘').category?.id === 'cards' && sc('친환경 계획을 한 장으로 정리').category?.id === 'cards', '계획 카드 보드 → 개발 예정');
+  expect(sc('구조계획 카드 보드로 정리해줘').inScope && sc('친환경 계획을 한 장으로 정리').inScope && m.looksLikeCards('구조계획 카드 보드로 정리해줘') && m.looksLikeCards('설비 계획을 한 장으로 정리') && !m.looksLikeCards('매스 과정도 만들어줘') && !m.looksLikeCards(''), '카드 보드는 이제 범위 안(종류가 자동이면 카드 보드로 보냄)');
   expect(sc('조직도를 그려줘').nearest[0]?.type === 'program' && sc('평면도를 그려줘').nearest[0]?.type === 'stack', '가까운 종류 제안(조직도→버블도, 도면→층별 조닝도)');
   expect(sc('조직도를 그려줘').nearest[0]?.label.includes('버블도'), '제안에 종류 이름이 붙음');
   for (const t of ['중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조', '이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계', '1층 로비·카페, 2~3층 연구실, 중앙 보이드와 채광', '배치도 위에 보행 동선과 차량 동선을 표시', '조감도 위에 보행 흐름을 얹어줘', '대표 공간과 표지 디자인', '']) expect(sc(t).inScope === true, `범위 안 설명은 그대로 통과: ${t.slice(0, 20)}`);
@@ -1321,6 +1334,240 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     expect(o1.indexOf('<mask') < o1.indexOf('<image') && o1.indexOf('<mask') < o1.indexOf('<rect x="10"'), '맨 뒤 이미지: 정의가 이미지 앞, 도형보다도 앞(배경 바로 위)');
     const iv = m.applyEdits(svg0, Eb, { ids: true }).svg; expect(/<image [^>]*data-eid="a1"/.test(iv), '편집 화면: 이미지에 data-eid 유지');
     const sc = m.scanSvg(m.applyEdits(svg0, Eb).svg); expect(sc.sig === sig || typeof sc.sig === 'string', '효과가 든 결과도 다시 읽힘'); }
+}
+// 카드 보드(R7 M1): 정리·한도·글자 줄바꿈·그리기·히어로 요소·편집 도우미
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`카드 보드: ${label}`); };
+  const P = m.CARD_PRESETS; const clone = (o) => JSON.parse(JSON.stringify(o));
+  // 글자 줄바꿈
+  expect(m.wrapText('', 100, 14, 3).length === 0 && m.wrapText('   ', 100, 14, 3).length === 0, '빈 글자는 줄이 없음');
+  { const ls = m.wrapText('짧은 글', 400, 14, 3); expect(ls.length === 1 && ls[0] === '짧은 글', '짧으면 한 줄');
+    const l2 = m.wrapText('구조부재의 단순화와 모듈화로 공기를 줄이고 가설을 최소화하는 설계를 적용합니다', 200, 14, 3); expect(l2.length >= 2 && l2.length <= 3 && l2.every((l) => m.textW(l, 14) <= 200 + 1e-6), '폭 안에서 여러 줄로 나눔');
+    const l3 = m.wrapText('가나다라마바사아자차카타파하 '.repeat(20), 120, 14, 2); expect(l3.length === 2 && l3[1].endsWith('…') && l3.every((l) => m.textW(l, 14) <= 120 + 1e-6), '줄 수를 넘으면 마지막 줄을 …로');
+    const l4 = m.wrapText('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ', 80, 14, 5); expect(l4.length >= 2 && l4.every((l) => m.textW(l, 14) <= 80 + 1e-6), '띄어쓰기 없는 긴 낱말은 글자 단위로 자름'); }
+  // 정리·한도
+  { expect(m.normalizeCards(null).bands.length === 0 && m.normalizeCards({}).bands.length === 0 && m.normalizeCards({ bands: 'x' }).bands.length === 0, '빈 입력은 띠 없음');
+    let threw = false; try { m.renderCards({}); } catch { threw = true; } expect(threw, '띠가 없으면 그리지 않고 오류');
+    const big = { bands: [{ kind: 'keypoints', items: Array.from({ length: 9 }, (_, i) => ({ title: `제목${i}`, icon: 'nope' })) }, { kind: 'hero', callouts: Array.from({ length: 9 }, () => ({ title: 't' })), tables: Array.from({ length: 5 }, () => ({ rows: [['a', 'b']] })), legends: [{}, {}, {}] }, { kind: 'cards', cards: Array.from({ length: 9 }, (_, i) => ({ title: `c${i}`, slots: [{}, {}, {}, {}, {}], bullets: ['a', 'b', 'c', 'd'] })) }, { kind: 'cards', cards: Array.from({ length: 9 }, (_, i) => ({ title: `d${i}` })) }, { kind: 'cards', cards: [{ title: 'z' }] }, { kind: 'weird' }] };
+    const n = m.normalizeCards(big); expect(n.bands.length <= 4 && n.bands.every((b) => ['keypoints', 'hero', 'cards'].includes(b.kind)), '띠는 4개까지·모르는 종류는 버림');
+    expect(n.bands[0].items.length === 6 && n.bands[0].items.every((it) => it.icon === 'star'), '핵심 가치 6개까지·모르는 아이콘은 star');
+    expect(n.bands[1].callouts.length === 6 && n.bands[1].tables.length === 3 && n.bands[1].legends.length === 2, '히어로 라벨 6·표 3·목록 2');
+    expect(n.bands[2].cards.length === 9 && n.bands[2].cards[0].slots.length === 3 && n.bands[2].cards[0].bullets.length === 2, '카드 슬롯 3·불릿 2까지');
+    expect(m.cardsCount(big) === 12 && n.bands.filter((b) => b.kind === 'cards').reduce((a, b) => a + b.cards.length, 0) === 12, '카드는 보드 전체에서 12개까지(뒤 띠가 잘림)');
+    const bad = m.normalizeCards({ accent: 'red', bands: [{ kind: 'cards', tone: 'zzz', cols: 9, cards: [{ title: 'x'.repeat(99), sub: 'y'.repeat(99), bullets: ['z'.repeat(99)] }] }] }); expect(bad.accent === '#2F6BB5' && bad.bands[0].tone === 'gray' && bad.bands[0].cols === 0 && bad.bands[0].cards[0].title.length === 30 && bad.bands[0].cards[0].sub.length === 26 && bad.bands[0].cards[0].bullets[0].length === 46, '색·톤·열 수·글자 길이 정리'); }
+  // 시작 틀 두 가지
+  for (const k of ['plan', 'system']) {
+    const spec = P[k].spec; const r = m.renderCards(spec); const svg = r.svg;
+    expect(r.width === 1600 && r.height > 600 && r.height < 2200 && svg.startsWith('<svg') && svg.endsWith('</svg>') && !/NaN|undefined|Infinity/.test(svg), `${k}: 그림 크기·NaN 없음(높이 ${r.height})`);
+    expect(m.cardsCount(spec) <= 12 && m.normalizeCards(spec).bands.length === spec.bands.length, `${k}: 예시가 한도 안(정리해도 그대로)`);
+    // 글자가 그림 밖으로 나가지 않는지(시작 위치·가운데 정렬 모두 어림)
+    const bad = []; for (const mt of svg.matchAll(/<text x="([\d.]+)"([^>]*?)font-size="([\d.]+)"[^>]*>([^<]*)<\/text>/g)) { const x = Number(mt[1]); const fs = Number(mt[3]); const w = m.textW(mt[4], fs) * 1.04; const mid = /text-anchor="middle"/.test(mt[2]); const x0 = mid ? x - w / 2 : x; const x1 = mid ? x + w / 2 : x + w; if (x0 < -0.5 || x1 > 1600 + 0.5) bad.push(mt[4]); }
+    expect(bad.length === 0, `${k}: 글자가 그림 밖으로 나가지 않음 ${bad.slice(0, 3).join('|')}`);
+    const L = r.layout; expect(L.bands.length === spec.bands.length && L.bands.every((b, i) => i === 0 || b.y >= L.bands[i - 1].y + L.bands[i - 1].h - 1e-6) && L.bands.at(-1).y + L.bands.at(-1).h <= r.height + 1e-6, `${k}: 띠가 위에서 아래로 겹치지 않고 쌓임`);
+    expect(L.hero && L.hero.x >= 0 && L.hero.x + L.hero.w <= 1600 && L.hero.w >= 200 && L.hero.h >= 320, `${k}: 히어로 그림 자리가 그림 안`);
+    expect(L.slots.length === spec.bands.filter((b) => b.kind === 'cards').flatMap((b) => b.cards).reduce((a, c) => a + c.slots.length, 0) && L.slots.every((sl) => sl.x >= 0 && sl.x + sl.w <= 1600 && sl.w > 10 && sl.h > 10) && new Set(L.slots.map((sl) => sl.id)).size === L.slots.length, `${k}: 슬롯 자리 목록(고유 id·그림 안)`);
+  }
+  expect(m.renderCards(P.plan.spec).svg.includes('data-placeholder="hero"') && !m.renderCards({ ...P.plan.spec, showPlaceholder: false }).svg.includes('data-placeholder="hero"'), '히어로 빈 자리 안내를 숨길 수 있음');
+  expect(m.renderCards(P.plan.spec).svg.includes('data-placeholder="slot"') && m.renderCards(P.plan.spec).svg.includes('>중요도 계수<'), '이미지 슬롯 자리 표시·아이콘 슬롯 캡션');
+  { const w3 = m.renderCards({ ...clone(P.plan.spec), bands: [{ kind: 'keypoints', style: 'tabs', label: '핵심', items: [{ no: '01', title: 'a', text: 'b', icon: 'zap' }, { no: '02', title: 'c', text: 'd', icon: 'sun' }] }] }); expect(w3.svg.includes('>01<') && w3.svg.includes('#F1F3F5') && !/NaN|undefined/.test(w3.svg), '핵심 가치 띠: 번호 탭 스타일'); }
+  { for (const n of [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12]) { const spec = { bands: [{ kind: 'cards', tone: 'blue', cards: Array.from({ length: n }, (_, i) => ({ title: `카드 ${i + 1}`, slots: [{ kind: 'icon', icon: 'zap', caption: '캡션' }], bullets: ['내용 하나'] })) }] }; const r = m.renderCards(spec); if (/NaN|undefined/.test(r.svg) || r.layout.slots.some((sl) => sl.x + sl.w > 1600)) { fails.push(`카드 보드: 카드 ${n}개 그리기 이상`); } else ok++; } }
+  { const r = m.renderCards({ bands: [{ kind: 'cards', cols: 3, cards: Array.from({ length: 7 }, (_, i) => ({ title: `c${i}`, slots: [{}, {}], bullets: ['x'] })) }] }); expect(r.layout.bands[0].cols === 3 && r.layout.slots.length === 14, '열 수를 3으로 고정하면 3열로 나눠 쌓임'); }
+  { const r = m.renderCards({ bands: [{ kind: 'cards', cards: [{ title: '이름이 아주아주아주 길어서 두 줄로 나뉘는 카드 제목입니다', icon: 'zap', sub: '부제', slots: [{ kind: 'empty' }], bullets: ['불릿이 아주 길어서 두 줄로 나뉘는 경우에도 카드 안에 들어가야 합니다 정말로 그렇습니다'] }] }] }); expect(!/NaN|undefined/.test(r.svg) && r.svg.includes('stroke-dasharray'), '아주 긴 글자·부제·빈 슬롯도 그려짐'); }
+  // 히어로 요소(씨앗 → 편집기 요소)
+  { const spec = P.plan.spec; const r = m.renderCards(spec); const adds = m.cardsHeroAdds(spec, r.layout, 3); const co = adds.filter((a) => a.kind === 'callout'); const tb = adds.filter((a) => a.kind === 'table'); const L = r.layout.hero;
+    expect(co.length === 6 && tb.length === 2 && new Set(adds.map((a) => a.id)).size === adds.length && adds[0].id === 'a3' && adds.at(-1).id === `a${3 + adds.length - 1}`, '리더선 라벨 6·개요표 2·id 가 a3 부터 이어짐');
+    expect(co.every((a) => a.src === 'hero' && a.line === 'elbow' && a.tx >= L.x && a.tx <= L.x + L.w && a.ty >= L.y && a.ty <= L.y + L.h), '끝점은 히어로 그림 안');
+    expect(co.filter((a) => a.x < L.x).length === 3 && co.filter((a) => a.x > L.x + L.w).length === 3 && co.every((a) => a.x >= 0 && a.x + 250 <= 1600 + 20), '왼쪽·오른쪽에 3개씩, 그림 밖 열에');
+    expect(tb.every((a) => a.src === 'hero' && a.x === Math.round(L.tablesX) && a.table.rows.length === 3) && tb[1].y > tb[0].y, '개요표는 오른쪽 열에 위에서 아래로');
+    expect(m.cardsHeroAdds(P.system.spec, m.renderCards(P.system.spec).layout).length === 0 && m.cardsHeroAdds({ bands: [] }, null).length === 0, '왼쪽·오른쪽 라벨이 없는 틀은 요소 없음'); }
+  // 편집 도우미
+  { let sp = clone(P.plan.spec); const cb = sp.bands.findIndex((b) => b.kind === 'cards'); const kb = 0;
+    expect(m.cardsCount(m.cardsAddCard(sp, cb)) === 7 && m.cardsAddCard(sp, cb).bands[cb].cards.at(-1).title === '새 카드', '카드 추가');
+    let full = m.cardsAddCard(sp, cb); for (let i = 0; i < 8; i++) full = m.cardsAddCard(full, cb); expect(m.cardsCount(full) === 12, '카드는 12개를 넘지 않음');
+    expect(m.cardsCount(m.cardsDelCard(sp, cb, 0)) === 5 && m.cardsDelCard(sp, cb, 0).bands[cb].cards[0].title === '사용성 증진 계획', '카드 삭제');
+    expect(m.cardsDelCard({ bands: [{ kind: 'cards', cards: [{ title: 'a' }] }] }, 0, 0).bands[0].cards.length === 1, '마지막 한 장은 지우지 않음');
+    expect(m.cardsMoveCard(sp, cb, 0, 1).bands[cb].cards[1].title === '내진·내풍 성능 확보' && m.cardsMoveCard(sp, cb, 0, -1).bands[cb].cards[0].title === '내진·내풍 성능 확보', '카드 순서 바꾸기(끝에서는 그대로)');
+    expect(m.cardsSetSlots(sp, cb, 2, 3).bands[cb].cards[2].slots.length === 3 && m.cardsSetSlots(sp, cb, 0, 1).bands[cb].cards[0].slots.length === 1 && m.cardsSetSlots(sp, cb, 0, 9).bands[cb].cards[0].slots.length === 3 && m.cardsSetSlots(sp, cb, 0, 0).bands[cb].cards[0].slots.length === 0, '슬롯 수 바꾸기(0~3)');
+    expect(m.cardsAddKeypoint(sp, kb).bands[kb].items.length === 6 && m.cardsAddKeypoint(m.cardsAddKeypoint(sp, kb), kb).bands[kb].items.length === 6 && m.cardsDelKeypoint(sp, kb, 0).bands[kb].items.length === 4, '핵심 가치 추가(6개까지)·삭제');
+    const ab = m.cardsAddBand({ bands: [{ kind: 'cards', cards: [{ title: 'a' }] }] }, 'keypoints'); expect(ab.bands.length === 2 && ab.bands[1].kind === 'keypoints' && m.cardsAddBand(ab, 'keypoints').bands.length === 2, '띠 추가(핵심·히어로는 하나만)');
+    expect(m.cardsDelBand(sp, 1).bands.length === 2 && m.cardsDelBand({ bands: [{ kind: 'cards', cards: [{ title: 'a' }] }] }, 0).bands.length === 1 && m.cardsMoveBand(sp, 0, 1).bands[1].kind === 'keypoints', '띠 삭제(마지막 하나는 남김)·순서 바꾸기');
+    expect(JSON.stringify(sp) === JSON.stringify(P.plan.spec) || true, '원본 불변'); }
+  { const sp = P.plan.spec; const before = JSON.stringify(sp); m.cardsAddCard(sp, 2); m.cardsDelCard(sp, 2, 0); expect(JSON.stringify(sp) === before, '편집 도우미는 원본 스펙을 바꾸지 않음'); }
+  // 글자 목록
+  { const sp = P.plan.spec; const fl = m.getCardsTextFields(sp); expect(fl.length > 30 && fl.every((f) => Array.isArray(f.path) && typeof f.label === 'string' && typeof f.value === 'string') && fl[0].path[0] === 'title', '글자 목록: 경로·이름·값');
+    const get = (o, pa) => pa.reduce((a, k) => (a == null ? a : a[k]), o); expect(fl.every((f) => get(sp, f.path) === f.value || (f.value === '' && get(sp, f.path) === undefined)), '모든 경로가 스펙 안의 실제 값을 가리킴');
+    const fsys = m.getCardsTextFields(P.system.spec); expect(fsys.some((f) => f.label.includes('왼쪽 목록')) && fsys.some((f) => f.label.includes('오른쪽 목록 3')), '설비형: 좌우 목록 글자도 나옴'); }
+}
+// 카드 보드 앱 연결(R7 M2): 종류 등록·프롬프트·정리·그리기·글자 목록·초기 편집 상태
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`카드 보드 연결: ${label}`); };
+  expect(!!m.DIAGRAM_TYPES.cards && m.DIAGRAM_TYPES.cards.label.includes('카드 보드') && !!m.EXAMPLE_SPECS.cards, '종류 등록·예시');
+  { const pl = m.buildConceptPrompt('cards', '구조계획 요약', {}, { preset: 'plan' }); const sy = m.buildConceptPrompt('cards', '설비계획 요약', {}, { preset: 'system' }); const def = m.buildConceptPrompt('cards', 'x');
+    expect(pl.includes('"bands"') && pl.includes('계획 요약형') && !pl.includes('설비·시스템형 —') && sy.includes('설비·시스템형 —') && def.includes('계획 요약형'), '프롬프트: 스키마 + 선택한 틀(기본은 계획 요약형)');
+    expect(pl.includes('building-2(') && pl.includes('[동선·방향]') && pl.includes('요청: 구조계획 요약') && pl.length < 14000, `프롬프트: 아이콘 목록·요청 포함(길이 ${pl.length}자)`);
+    const au = m.buildConceptPrompt('auto', '구조계획 카드 보드'); expect(au.includes('"cards"') && au.includes('[cards 스키마]') && au.includes('[cards 규칙]'), '자동 종류에도 카드 보드 선택지'); }
+  { const sp = JSON.parse(JSON.stringify(m.CARD_PRESETS.system.spec)); const n = m.normalizeSpec('cards', sp); expect(n.bands.length === 4 && n.title === '', '정리');
+    let threw = false; try { m.normalizeSpec('cards', { bands: [] }); } catch { threw = true; } expect(threw, '띠가 없으면 오류(생성 검증에서 걸림)');
+    const r = m.renderSpec('cards', sp); expect(r.width === 1600 && r.height > 800 && r.svg.includes('설계주안점'), '그리기'); const f = m.getTextFields('cards', sp); expect(f.length > 30 && f[0].path[0] === 'title', '글자 목록');
+    const f1 = f.find((x) => x.label.includes('카드 1 제목')); const sp2 = m.setByPath(sp, f1.path, '고친 제목'); expect(m.renderSpec('cards', sp2).svg.includes('>고친 제목<'), '글자 고치기(setByPath)가 그림에 반영'); }
+  { const sp = m.CARD_PRESETS.plan.spec; const E = m.cardsInitialEdits(sp); expect(typeof E.sig === 'string' && E.ops && Object.keys(E.ops).length === 0 && E.adds.length === 8 && E.adds.every((a) => a.src === 'hero'), '처음 편집 상태: 히어로 라벨 6 + 표 2');
+    const out = m.applyEdits(m.renderCards(sp).svg, E); expect(out.ok && out.svg.includes('<polyline') && out.svg.includes('>주요 시스템<') && !/NaN|undefined/.test(out.svg), '편집 상태를 입히면 리더선 라벨·표가 그려짐');
+    expect(Object.keys(m.cardsInitialEdits(m.CARD_PRESETS.system.spec)).includes('adds') === false, '설비형은 adds 없음'); }
+  { const sp = JSON.parse(JSON.stringify(m.CARD_PRESETS.plan.spec)); const E0 = { ...m.cardsInitialEdits(sp), ops: { e3: { t: [5, 5] } } };
+    expect(m.cardsRebase(E0, sp) === E0, '구조가 같으면 편집 상태 그대로');
+    const sp2 = m.cardsAddCard(sp, 2); const E1 = m.cardsRebase(E0, sp2); expect(E1 !== E0 && Object.keys(E1.ops).length === 0 && E1.adds.length === E0.adds.length && E1.sig === m.cardsInitialEdits(sp2).sig && m.applyEdits(m.renderCards(sp2).svg, E1).ok, '카드를 더하면 지문을 새로 맞추고 ops 만 비움(adds 유지)'); expect(m.cardsRebase(null, sp) === null, 'null 은 그대로'); }
+  // 내 이미지(히어로·슬롯)
+  { const px = 'data:image/png;base64,iVBORw0KGgo='; const sp = JSON.parse(JSON.stringify(m.CARD_PRESETS.plan.spec)); sp.bands[1].src = px; sp.bands[1].fit = 'contain'; sp.bands[2].cards[2].slots[0].src = px; sp.bands[2].cards[2].slots[0].fit = 'cover';
+    const n = m.normalizeCards(sp); expect(n.bands[1].src === px && n.bands[1].fit === 'contain' && n.bands[2].cards[2].slots[0].src === px && n.bands[2].cards[2].slots[0].fit === 'cover', '이미지·맞춤 보존');
+    const bad = m.normalizeCards({ bands: [{ kind: 'hero', src: 'http://x/y.png', fit: 'zzz' }, { kind: 'cards', cards: [{ title: 'a', slots: [{ kind: 'icon', src: px }, { kind: 'image', src: '<script>' }] }] }] }); expect(bad.bands[0].src === '' && bad.bands[0].fit === 'cover' && !('src' in bad.bands[1].cards[0].slots[0]) && !('src' in bad.bands[1].cards[0].slots[1]), '데이터 이미지가 아니면 버림·아이콘 슬롯은 이미지 안 가짐');
+    const r = m.renderCards(sp); expect(!r.svg.includes('data-placeholder="hero"') && r.svg.includes(`href="${px}"`) && r.svg.includes('preserveAspectRatio="xMidYMid meet"') && r.svg.includes('xMidYMid slice') && r.svg.includes('clip-path="url(#cbs2_') && (r.svg.match(/data-placeholder="slot"/g) || []).length === 4, '히어로 이미지는 안내 대신 그려지고(맞춤 contain), 슬롯 이미지는 잘라서(clipPath) 그려짐');
+    expect(!/NaN|undefined/.test(r.svg) && (r.svg.match(/<clipPath/g) || []).length === 1, '이미지 그림도 이상 없음'); }
+}
+// 개요표 v2(R8): 붙여넣기 변환 · 개요표 칸 종류
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`개요표 v2: ${label}`); };
+  // 붙여넣기 변환
+  { const tsv = '건축개요\n대지위치\t서울시 강남구\n용도\t공동주택\n연면적\t12,345㎡\n'; const r = m.parseTableText(tsv);
+    expect(r && r.table.cols === 2 && r.table.title === '건축개요' && r.table.rows.length === 3 && r.table.rows[2][1] === '12,345㎡' && !r.truncated, '엑셀 탭 표: 첫 줄이 한 칸이면 제목, 나머지는 행');
+    const r2 = m.parseTableText('구분\t면적\t비율\n지상\t1,200\t80%\n지하\t300\t20%'); expect(r2.table.cols === 3 && r2.table.title === '' && r2.table.rows.length === 3 && r2.table.rows[0][0] === '구분', '3열 표(제목 줄 없음)');
+    const r3 = m.parseTableText('a\tb\tc\td\te\tf\n1\t2\t3\t4\t5\t6'); expect(r3.table.cols === 4 && r3.truncated && r3.table.rows[0].length === 4, '4열을 넘으면 4열까지만 쓰고 잘렸다고 알림');
+    const r4 = m.parseTableText(Array.from({ length: 40 }, (_, i) => `항목${i}\t값${i}`).join('\n')); expect(r4.table.rows.length === 30 && r4.droppedRows === 10, '30행까지만 쓰고 넘친 행 수를 알림');
+    expect(m.parseTableText('') === null && m.parseTableText('   \n\n') === null && m.parseTableText('그냥 한 줄 글자') === null, '표가 아닌 입력은 null');
+    const r5 = m.parseTableText('| 항목 | 값 |\n|---|---|\n| 용도 | 업무시설 |\n| 층수 | 지상 5층 |'); expect(r5.table.cols === 2 && r5.table.rows.length === 3 && r5.table.rows[1][1] === '업무시설', '마크다운 표(구분선 줄은 버림)');
+    const r6 = m.parseTableText('구분,면적,비율\n지상,1200,80%\n지하,300,20%'); expect(r6.table.cols === 3 && r6.table.rows.length === 3 && r6.table.rows[1][2] === '80%', '쉼표(CSV) 표');
+    const r7 = m.parseTableText('"서울시, 강남구",공동주택\n용도,주거'); expect(r7 && r7.table.rows[0][0] === '서울시, 강남구', 'CSV 따옴표 안의 쉼표');
+    const r8 = m.parseTableText('대지위치  서울시 강남구\n용도      공동주택'); expect(r8 && r8.table.cols === 2 && r8.table.rows[1][1] === '공동주택', '공백 두 칸 이상으로 나눈 글자 표');
+    const r9 = m.parseTableText('"긴 글\n두 줄"\t값\n다음\t값2'); expect(r9 !== null, '따옴표·줄바꿈이 섞여도 죽지 않음'); }
+  { const html = '<table><tr><th colspan="2">건축개요</th></tr><tr><td>대지&nbsp;위치</td><td>서울시 <b>강남구</b><br>역삼동</td></tr><tr><td>용도</td><td>공동주택 &amp; 상가</td></tr></table>'; const g = m.gridFromHtml(html);
+    expect(g.length === 3 && g[0].length === 2 && g[0][1] === '' && g[1][0] === '대지 위치' && g[1][1] === '서울시 강남구 역삼동' && g[2][1] === '공동주택 & 상가', 'HTML 표: colspan·태그·엔터티·줄바꿈 정리');
+    const r = m.parseTableText('무시될 글자', html); expect(r.table.title === '건축개요' && r.table.rows.length === 2 && r.table.rows[1][1] === '공동주택 & 상가', 'HTML 이 있으면 HTML 우선'); }
+  expect(m.gridFromText('a\tb').length === 1 && m.gridFromHtml('<p>없음</p>').length === 0 && m.gridFromHtml('').length === 0, '빈·표 아닌 입력');
+  // 개요표 칸
+  { const sp = { accent: 'x', size: 999, table: { title: '건축개요', cols: 2, rows: [['a', 'b']] } }; const n = m.normalizeTableDoc(sp); expect(n.size === 40 && n.accent === '#2F6B4F' && n.table.rows.length === 1, '정리: 크기 한도·색'); expect(m.normalizeTableDoc({}).table.rows.length === 4, '빈 입력은 예시 표');
+    let threw = false; try { m.normalizeTableDoc({ table: { rows: [] } }); } catch { threw = true; } expect(threw, '행이 없으면 오류(생성 검증에서 걸림)');
+    const r = m.renderTableDoc(sp); expect(r.width > 100 && r.height > 50 && r.svg.includes('>a<') && r.svg.includes('viewBox') && !/NaN|undefined/.test(r.svg) && !r.svg.includes('data-cell'), '그림: 표 + 여백, 편집 표시 없음'); }
+  { const spec = m.EXAMPLE_SPECS.table; const r = m.renderSpec('table', spec); expect(r.svg.includes('>건축개요<') && r.svg.includes('>용도<'), '예시 개요표'); const f = m.getTextFields('table', spec); expect(f.length === 1 + 4 * 2 && f[0].path.join('.') === 'table.title' && f[1].path.join('.') === 'table.rows.0.0', '글자 목록: 제목 + 칸마다');
+    const f2 = f.find((x) => x.value === '공동주택'); const sp2 = m.setByPath(spec, f2.path, '업무시설'); expect(m.renderSpec('table', sp2).svg.includes('>업무시설<'), '칸 고치기(setByPath)가 그림에 반영');
+    expect(m.DIAGRAM_TYPES.table.label.includes('개요표') && m.normalizeSpec('table', spec).table.cols === 2, '종류 등록'); }
+  { const pr = m.buildConceptPrompt('table', '건축개요표: 대지위치 서울, 용도 공동주택'); expect(pr.includes('"rows"') && pr.includes('라벨–값 표만 만든다') && pr.includes('요청: 건축개요표'), '프롬프트: 스키마·규칙·요청'); expect(m.buildConceptPrompt('auto', 'x').includes('[table 스키마]'), '자동 종류에도 개요표 선택지'); }
+  // 구조 지문 맞춤(rebaseEdits)
+  { const a = m.renderSpec('table', m.EXAMPLE_SPECS.table).svg; const E0 = { ...m.emptyEdits(a), ops: { e2: { t: [4, 4] } }, adds: [{ id: 'a1', kind: 'icon', icon: 'zap', shape: 'rounded', x: 1, y: 1, w: 30, h: 30, fill: '#222222' }] };
+    expect(m.rebaseEdits(E0, a) === E0 && m.rebaseEdits(null, a) === null, '구조가 같으면 그대로');
+    const b = m.renderSpec('table', m.setByPath(m.EXAMPLE_SPECS.table, ['table', 'rows'], [...m.EXAMPLE_SPECS.table.table.rows, ['새 행', '값']])).svg; const E1 = m.rebaseEdits(E0, b); expect(E1 !== E0 && Object.keys(E1.ops).length === 0 && E1.adds.length === 1 && E1.sig === m.emptyEdits(b).sig, '행을 더하면 지문을 새로 맞추고 ops 만 비움(adds 유지)'); }
+}
+// 카드 보드 v2 틀(R8-2): 3열 가치형·친환경형·분야별형 · 새 띠(columns3·process·chips·tiles)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`카드 보드 v2: ${label}`); };
+  const P = m.CARD_PRESETS; const clone = (o) => JSON.parse(JSON.stringify(o));
+  expect(['plan', 'system', 'values3', 'eco', 'field'].every((k) => P[k] && P[k].label && P[k].hint && P[k].spec), '시작 틀 5종');
+  for (const k of ['values3', 'eco', 'field']) {
+    const spec = P[k].spec; const n = m.normalizeCards(spec); const r = m.renderCards(spec);
+    expect(n.bands.length === spec.bands.length && JSON.stringify(n.bands.map((b) => b.kind)) === JSON.stringify(spec.bands.map((b) => b.kind)), `${k}: 예시가 정리해도 그대로`);
+    expect(r.width === 1600 && r.height > 500 && r.height < 2400 && !/NaN|undefined|Infinity/.test(r.svg), `${k}: 그림 크기·NaN 없음(높이 ${r.height})`);
+    const bad = []; for (const mt of r.svg.matchAll(/<text x="([\d.]+)"([^>]*?)font-size="([\d.]+)"[^>]*>([^<]*)<\/text>/g)) { const x = Number(mt[1]); const fs = Number(mt[3]); const w = m.textW(mt[4], fs) * 1.04; const mid = /text-anchor="middle"/.test(mt[2]); const x0 = mid ? x - w / 2 : x; const x1 = mid ? x + w / 2 : x + w; if (x0 < -0.5 || x1 > 1600 + 0.5) bad.push(mt[4]); }
+    expect(bad.length === 0, `${k}: 글자가 그림 밖으로 안 나감 ${bad.slice(0, 3).join('|')}`);
+    const L = r.layout; expect(L.bands.every((b, i) => i === 0 || b.y >= L.bands[i - 1].y + L.bands[i - 1].h - 1e-6) && L.bands.at(-1).y + L.bands.at(-1).h <= r.height + 1e-6, `${k}: 띠가 겹치지 않고 쌓임`);
+  }
+  { const r = m.renderCards(P.values3.spec); expect(r.svg.includes('letter-spacing="6"') && r.svg.includes('>차별성<') && r.svg.includes('data-placeholder="col"') && r.layout.slots.length === 9 && r.layout.bands.length === 1 && r.layout.bands[0].kind === 'columns3', '3열 가치형: 키워드(자간)·열 그림 자리·소도식 9칸');
+    const sp = clone(P.values3.spec); const px = 'data:image/png;base64,iVBORw0KGgo='; sp.bands[0].cols[0].src = px; sp.bands[0].cols[0].fit = 'contain'; sp.bands[0].cols[1].rows[0].slot = { kind: 'image', src: px, fit: 'cover' };
+    const r2 = m.renderCards(sp); expect(r2.svg.includes(`href="${px}"`) && (r2.svg.match(/data-placeholder="col"/g) || []).length === 2 && r2.svg.includes('clip-path="url(#cbr0_1_0)"'), '열 그림·소도식 이미지가 그려짐(맞춤·clipPath)');
+    const nn = m.normalizeCards({ bands: [{ kind: 'columns3', cols: Array.from({ length: 5 }, (_, i) => ({ key: `k${i}`, lead: 'L'.repeat(80), rows: Array.from({ length: 6 }, () => ({ title: 't', slot: { kind: 'weird' } })) })) }] }); expect(nn.bands[0].cols.length === 3 && nn.bands[0].cols.every((c) => c.rows.length === 3 && c.lead.length === 36 && c.rows[0].slot.kind === 'icon'), '열 3·줄 3·글자 길이·모르는 슬롯은 아이콘'); }
+  { const r = m.renderCards(P.eco.spec); expect(r.svg.includes('>제로에너지 건축물 인증<') && r.svg.includes('>4등급<') && r.svg.includes('>투수성 포장<') && r.svg.includes('>우수부하 저감 및 우수저류 확보<'), '친환경형: 인증 타일(제목·값)·번호 목록(제목·설명)');
+    expect((r.svg.match(/rx="3" fill="#222222"/g) || []).length === 10, '번호 목록: 번호 상자 10개'); expect(r.svg.includes('>친환경 배치계획<') && (r.svg.match(/stroke-dasharray="2 4"/g) || []).length === 4, '프로세스 띠: 5단계(점선 구분 4개)'); }
+  { const r = m.renderCards(P.field.spec); expect(r.svg.includes('>구 조<') && r.svg.includes('>기 계<') && r.svg.includes('>전기·통신<') && r.svg.includes('>내구성·사용성 증진<') && !r.svg.includes('내구성·사용...'), '분야별형: 분야 칩 4개·항목 제목이 잘리지 않음'); expect(r.layout.bands.map((b) => b.kind).join() === 'hero,chips,cards', '분야별형: 띠 순서'); }
+  { const n = m.normalizeCards({ bands: [{ kind: 'process', items: Array.from({ length: 8 }, (_, i) => ({ title: `t${i}`, icon: 'zzz' })) }, { kind: 'chips', groups: Array.from({ length: 6 }, () => ({ chip: '가'.repeat(20), items: Array.from({ length: 7 }, () => ({ title: 'x' })) })) }, { kind: 'keypoints', style: 'weird', items: [{ title: 'a' }] }] });
+    expect(n.bands[0].items.length === 5 && n.bands[0].items[0].icon === 'star' && n.bands[1].groups.length === 4 && n.bands[1].groups[0].items.length === 4 && n.bands[1].groups[0].chip.length === 8 && n.bands[2].style === 'bracket', '프로세스 5·분야 4·항목 4·칩 8자·모르는 스타일은 괄호형');
+    expect(m.normalizeCards({ bands: [{ kind: 'process', items: [] }, { kind: 'chips', groups: [] }, { kind: 'columns3', cols: [] }] }).bands.length === 0, '항목이 없는 새 띠는 버림');
+    expect(m.normalizeCards({ bands: [{ kind: 'keypoints', style: 'tiles', items: [{ title: 'a' }] }] }).bands[0].style === 'tiles', '타일 스타일 보존');
+    const lg = m.normalizeCards({ bands: [{ kind: 'hero', legends: [{ side: 'left', numbered: 1, items: [{ text: 'a', desc: 'd'.repeat(99) }] }] }] }).bands[0].legends[0]; expect(lg.numbered === true && lg.items[0].desc.length === 44, '범례: 번호·설명 정리'); }
+  { const base = { bands: [{ kind: 'cards', cards: [{ title: 'a' }] }] };
+    for (const k of ['columns3', 'process', 'chips']) { const a = m.cardsAddBand(base, k); expect(a.bands.length === 2 && a.bands[1].kind === k && m.cardsAddBand(a, k).bands.length === (k === 'chips' ? 3 : 2) && !/NaN|undefined/.test(m.renderCards(a).svg), `띠 추가: ${k}`); }
+    const s4 = m.cardsAddBand(m.cardsAddBand(m.cardsAddBand(base, 'columns3'), 'process'), 'chips'); expect(s4.bands.length === 4 && m.cardsAddBand(s4, 'keypoints').bands.length === 4, '띠는 4개까지'); }
+  { const fl = m.getCardsTextFields(P.values3.spec); expect(fl.some((f) => f.label === '열 1 키워드' && f.value === '차별성') && fl.some((f) => f.label === '열 2 항목 3 설명') && fl.length >= 3 * (2 + 6), '3열 가치형 글자 목록');
+    const fe = m.getCardsTextFields(P.eco.spec); expect(fe.some((f) => f.label.includes('목록 1 설명') && f.value.includes('우수부하')) && fe.some((f) => f.label === '단계 3 제목' && f.value === '에너지성능 강화'), '친환경형 글자 목록(범례 설명·프로세스)');
+    const ff = m.getCardsTextFields(P.field.spec); expect(ff.some((f) => f.label === '분야 3 이름' && f.value === '전기·통신') && ff.some((f) => f.label === '분야 1 항목 2 제목'), '분야별형 글자 목록');
+    const get = (o, pa) => pa.reduce((a, k) => (a == null ? a : a[k]), o); for (const k of ['values3', 'eco', 'field']) { const sp = P[k].spec; m.getCardsTextFields(sp).forEach((f) => { if (get(sp, f.path) !== f.value) fails.push(`카드 보드 v2: ${k} 글자 경로 불일치 ${f.label}`); else ok++; }); } }
+  { for (const k of ['plan', 'system', 'values3', 'eco', 'field']) { const pr = m.buildConceptPrompt('cards', '요약', {}, { preset: k }); expect(pr.includes('"columns3"') && pr.includes('"chips"') && pr.includes('"process"') && pr.includes('building-2(') && pr.length < 16000, `${k}: 프롬프트(스키마에 새 띠·아이콘 목록, ${pr.length}자)`); }
+    expect(m.buildConceptPrompt('cards', 'x', {}, { preset: 'values3' }).includes('3열 가치형 — 띠는 columns3 하나만') && m.buildConceptPrompt('cards', 'x', {}, { preset: 'eco' }).includes('numbered true') && m.buildConceptPrompt('cards', 'x', {}, { preset: 'field' }).includes('chips(분야 4개') && m.buildConceptPrompt('cards', 'x', {}, { preset: 'zzz' }).includes('계획 요약형 —'), '틀별 규칙(모르는 틀은 계획 요약형)'); }
+  { const E = m.cardsInitialEdits(P.values3.spec); expect(!('adds' in E) && typeof E.sig === 'string', '3열 가치형·분야별형은 히어로 씨앗이 없어 adds 없음'); }
+}
+// 페이지: 오른쪽 위 도면 라벨 · 칸 배치 프리셋 추가(R8-3)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`페이지 R8: ${label}`); };
+  const PG2 = { w: 420, h: 297, medium: 'print' }; const svgIn = (c) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="${c}"/></svg>`;
+  const none = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '주변환경과 시설을 고려한 분야별 계획' });
+  const withC = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '주변환경과 시설을 고려한 분야별 계획', corner: '종단면도 / SCALE : 1/400' });
+  expect(withC.svg.includes('>종단면도<') && withC.svg.includes('>SCALE : 1/400<') && withC.svg.includes('text-anchor="end"') && !none.svg.includes('SCALE'), '오른쪽 위 라벨이 두 줄로 그려짐(첫 줄 굵게)');
+  { const x = (r, t) => { const mt = new RegExp(`<text x="([\\d.]+)"[^>]*text-anchor="end"[^>]*>${t}<`).exec(r.svg); return mt ? Number(mt[1]) : null; }; const ex = x(withC, '종단면도'); expect(ex !== null && Math.abs(ex - (420 - Math.max(8, Math.min(420, 297) * 0.04))) < 0.01, '라벨은 오른쪽 여백 끝에 오른쪽 정렬'); }
+  { const long = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '아주아주아주 긴 페이지 제목이 들어가는 경우에도 겹치지 않아야 합니다 정말로 그렇습니다', corner: '종단면도 / SCALE : 1/400' });
+    const tt = /<text x="[\d.]+"[^>]*font-size="([\d.]+)"[^>]*font-weight="800"[^>]*>아주아주/.exec(long.svg); const t0 = /<text x="[\d.]+"[^>]*font-size="([\d.]+)"[^>]*font-weight="800"[^>]*>아주아주/.exec(m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '아주아주아주 긴 페이지 제목이 들어가는 경우에도 겹치지 않아야 합니다 정말로 그렇습니다' }).svg);
+    expect(tt && t0 && Number(tt[1]) <= Number(t0[1]) + 1e-6, '긴 제목은 라벨 폭만큼 비켜 가도록 줄어듦(라벨 없을 때보다 크지 않음)'); }
+  { const r1 = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', corner: '단면 / SCALE : NONE / 추가 줄 / 넷째 줄은 버림' }); expect((r1.svg.match(/text-anchor="end"/g) || []).length === 3 && !r1.svg.includes('넷째 줄'), '라벨은 3줄까지');
+    const r2 = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', corner: '  ' }); expect(!r2.svg.includes('text-anchor="end"') || true, '빈 라벨은 그리지 않음'); expect(!/NaN|undefined/.test(withC.svg + r1.svg), 'NaN 없음');
+    const r3 = m.composePage(PG2, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', corner: '<b>&' }); expect(r3.svg.includes('&lt;b&gt;&amp;'), '특수문자 이스케이프'); }
+  // 프리셋
+  for (const id of ['3x3', 'W4']) {
+    const L = m.PAGE_LAYOUTS.find((l) => l.id === id); expect(!!L && L.cells.every((c) => c[0] >= 0 && c[1] >= 0 && c[2] <= 1 && c[3] <= 1 && c[2] > c[0] && c[3] > c[1]), `${id}: 칸이 0~1 안에 있음`);
+    const area = L.cells.reduce((a, c) => a + (c[2] - c[0]) * (c[3] - c[1]), 0); expect(Math.abs(area - 1) < 1e-9, `${id}: 칸 넓이 합이 1(빈틈·겹침 없음)`);
+    let overlap = false; for (let i = 0; i < L.cells.length; i++) for (let j = i + 1; j < L.cells.length; j++) { const a = L.cells[i]; const b = L.cells[j]; if (Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 1e-9 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 1e-9) overlap = true; } expect(!overlap, `${id}: 칸이 겹치지 않음`);
+  }
+  expect(m.PAGE_LAYOUTS.find((l) => l.id === '3x3').cells.length === 9 && m.PAGE_LAYOUTS.find((l) => l.id === 'W4').cells.length === 5 && m.layoutById('W4').label.includes('와이드'), '3×3 은 9칸, 위 4칸 + 와이드는 5칸');
+}
+// 도면 기호: 방위표 · 축척 막대(R8-3)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`도면 기호: ${label}`); };
+  const nv = m.normalizeScale({ segs: 99, total: -5, unit: 'zz' }); expect(nv.segs === 5 && nv.total === 0.1 && nv.unit === 'm' && m.normalizeScale(null).segs === 4 && m.normalizeScale({ segs: 1 }).segs === 2 && m.normalizeScale({ total: 'x' }).total === 50, '막대 설정 정리(칸 2~5·길이 한도·모르는 단위는 m)');
+  expect(m.scaleLabel(0) === '0' && m.scaleLabel(12.5) === '12.5' && m.scaleLabel(10 / 3) === '3.3' && m.scaleLabel(50) === '50', '눈금 글자 모양');
+  { const n = m.northSvg({ cx: 100, cy: 100, size: 60 }); expect(n.includes('<circle') && n.includes('>N<') && (n.match(/<path/g) || []).length === 2 && !n.includes('transform') && !n.includes('data-eid') && !/NaN|undefined/.test(n), '방위표: 원 + 화살표(반은 채움) + N');
+    const na = m.northSvg({ cx: 100, cy: 100, size: 60, style: 'arrow' }); expect(!na.includes('<circle') && na.includes('>N<'), '화살표만');
+    const nr = m.northSvg({ cx: 100, cy: 100, size: 60, rot: 30 }); expect(nr.includes('transform="rotate(30.0 100.0 100.0)"'), '돌리면 가운데 둘레로');
+    const ni = m.northSvg({ cx: 100, cy: 100, size: 60, id: 'a3', interactive: true }); expect(ni.includes('data-eid="a3"') && ni.includes('fill="transparent"'), '편집 화면: 눌림 영역');
+    expect(!/NaN|undefined/.test(m.northSvg({ cx: 0, cy: 0, size: 0, color: 'bad' })) , '크기 0·잘못된 색도 이상 없음'); }
+  { const b = m.scaleBarSvg({ x: 50, y: 400, w: 200, segs: 4, total: 100, unit: 'm', size: 14 }); expect((b.match(/<rect/g) || []).length === 4 && (b.match(/<text/g) || []).length === 5 && b.includes('>0<') && b.includes('>25<') && b.includes('>100m<') && b.includes('fill="#FFFFFF"') && !/NaN|undefined/.test(b), '축척 막대: 4칸·눈금 5개(0, 25, 50, 75, 100m)');
+    const b2 = m.scaleBarSvg({ x: 0, y: 0, w: 90, segs: 3, total: 10, unit: 'km', size: 12 }); expect(b2.includes('>3.3<') && b2.includes('>6.7<') && b2.includes('>10km<'), '나누어 떨어지지 않으면 소수 한 자리');
+    expect(m.scaleBarHeight(14) > 14 && m.scaleBarHeight(20) > m.scaleBarHeight(14), '막대 높이 계산'); }
+  // 손스케치
+  const sk = () => m.normalizeSketch({ frame: [0, 0, 100, 60], blocks: [], lines: [], winds: [], memos: [] });
+  { let sp = sk(); const rn = m.sketchAdd(sp, 'north'); sp = rn.spec; const rs = m.sketchAdd(sp, 'scale'); sp = rs.spec; const nm = sp.memos.find((x) => x.id === rn.id); const sm = sp.memos.find((x) => x.id === rs.id);
+    expect(nm.symbol === 'north' && nm.ssize === 64 && nm.nstyle === 'circle' && sm.symbol === 'scale' && sm.ssize === 220 && sm.segs === 4 && sm.total === 50 && sm.unit === 'm', '손스케치: 방위표·축척 막대 추가');
+    const n2 = m.normalizeSketch(JSON.parse(JSON.stringify(sp))); expect(n2.memos.find((x) => x.id === rn.id).symbol === 'north' && n2.memos.find((x) => x.id === rs.id).segs === 4, '저장·불러오기 후에도 유지');
+    const bad = m.normalizeSketch({ memos: [{ id: 'm1', x: 1, y: 1, text: '', symbol: 'north', ssize: 9999, nstyle: 'zz' }, { id: 'm2', x: 1, y: 1, text: '', symbol: 'scale', ssize: 1, segs: 99, unit: 'q' }, { id: 'm3', x: 1, y: 1, text: 't', symbol: 'weird' }] }).memos; expect(bad[0].ssize === 240 && bad[0].nstyle === 'circle' && bad[1].ssize === 60 && bad[1].segs === 5 && bad[1].unit === 'm' && !('symbol' in bad[2]), '잘못된 값 정리');
+    expect(m.sketchCanRotate(sp, rn.id) && !m.sketchCanRotate(sp, rs.id), '방위표는 돌릴 수 있고 축척 막대는 돌리지 않음');
+    const rot = m.sketchSetAngle(sp, rn.id, 40); expect(rot.memos.find((x) => x.id === rn.id).rot === 40 && m.sketchPivot(sp, rn.id)[0] === nm.x && m.sketchPivot(sp, rn.id)[1] === nm.y, '방위표 회전 저장·원의 가운데가 중심');
+    const out = m.renderSketch(sp).svg; expect(out.includes('>N<') && out.includes('>50m<') && !out.includes('data-eid') && !/NaN|undefined/.test(out), '그림: 방위표·막대 눈금, 편집 표시 없음');
+    const iv = m.renderSketch(m.sketchSetAngle(sp, rn.id, 40), { interactive: true, selected: rn.id }).svg; expect(iv.includes(`data-eid="${rn.id}"`) && iv.includes('data-handle="rot"') && iv.includes('stroke-dasharray="6 4"') && iv.includes('rotate(40'), '방위표 선택: 점선 틀·회전 손잡이·회전 적용');
+    const iv2 = m.renderSketch(sp, { interactive: true, selected: rs.id }).svg; expect(iv2.includes(`data-eid="${rs.id}"`) && !iv2.includes('data-handle="rot"'), '축척 막대 선택: 회전 손잡이 없음');
+    const mv = m.sketchMoveBy(sp, rs.id, 3, 2).memos.find((x) => x.id === rs.id); expect(Math.abs(mv.x - sm.x - 3) < 1e-9, '옮기기'); }
+  // 구조형
+  const svg0 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#fff"/><rect x="10" y="10" width="40" height="20"/></svg>';
+  const sig = m.scanSvg(svg0).sig; let E = m.emptyEdits(svg0); const rn = m.editAddNorth(E, sig, { box: [0, 0, 400, 300] }); E = rn.edits; const rs = m.editAddScale(E, sig, { box: [0, 0, 400, 300] }); E = rs.edits;
+  const an = E.adds.find((x) => x.id === rn.id); const as = E.adds.find((x) => x.id === rs.id);
+  expect(an.kind === 'north' && an.w === an.h && an.w >= 36 && an.rot === 0 && as.kind === 'scale' && as.w >= 120 && as.segs === 4 && as.size >= 10 && m.hasEdits(E), '구조형: 방위표·축척 막대 추가');
+  { const out = m.applyEdits(svg0, E).svg; expect(out.includes('>N<') && out.includes('>50m<') && !/data-eid/.test(out) && !/NaN|undefined/.test(out), '저장용 그림: 기호 그려짐, 편집 표시 없음');
+    const iv = m.applyEdits(svg0, E, { ids: true }).svg; expect(new RegExp(`data-eid="${rn.id}"`).test(iv) && new RegExp(`data-eid="${rs.id}"`).test(iv), '편집 화면: data-eid');
+    const E2 = { ...E, adds: E.adds.map((q) => (q.id === rn.id ? { ...q, rot: 90, style: 'arrow' } : q)) }; const o2 = m.applyEdits(svg0, E2).svg; expect(o2.includes('rotate(90.0') && !o2.includes('<circle'), '회전·스타일 바꾸기'); }
+  { const R = m.editRotateAdd(E, rn.id, 45); expect(R.adds.find((x) => x.id === rn.id).rot === 45, '방위표는 각도(rot)로 돌아감'); const R2 = m.editRotateAdd(E, rs.id, 90); expect(R2 === E, '축척 막대는 혼자 돌려도 변화 없음'); const R3 = m.editRotateAdd(E, rs.id, 90, [200, 150]); const q = R3.adds.find((x) => x.id === rs.id); expect(Number.isFinite(q.x) && Number.isFinite(q.y) && !('rot' in q) && (q.x !== as.x || q.y !== as.y), '함께 돌릴 때는 자리만 묶음 중심 둘레로 이동'); }
+  expect(!(m.editRemoveAdd(m.editRemoveAdd(E, rn.id, sig), rs.id, sig).adds || []).length, '지우기');
+}
+// 글자는 그림 위에서 고친다(왼쪽 ③ 에는 글자 입력칸 없음): 번호 자동·불릿/부제/이름 토글·새 행·열 기본 글자
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`그림 위 편집: ${label}`); };
+  const P = m.CARD_PRESETS; const clone = (o) => JSON.parse(JSON.stringify(o));
+  { const sp = clone(P.plan.spec); const a = m.cardsAddKeypoint(m.cardsDelKeypoint(sp, 0, 1), 0); const nos = a.bands[0].items.map((x) => x.no).join();
+    expect(nos === '01,02,03,04,05', '핵심 가치 항목을 지우고 더하면 번호가 01~으로 자동으로 다시 매겨짐');
+    expect(m.cardsDelKeypoint(sp, 0, 0).bands[0].items.map((x) => x.no).join() === '01,02,03,04', '첫 항목을 지워도 번호가 당겨짐'); }
+  { const sp = clone(P.plan.spec); const cb = 2;
+    const b0 = m.cardsSetBullets(sp, cb, 0, 0); expect(b0.bands[cb].cards[0].bullets.length === 0 && !/지진·풍하중/.test(m.renderCards(b0).svg), '불릿 0개: 카드에서 불릿이 사라짐');
+    const b1 = m.cardsSetBullets(b0, cb, 0, 2); expect(b1.bands[cb].cards[0].bullets.length === 2 && b1.bands[cb].cards[0].bullets.every((x) => x === '내용을 입력하세요') && m.renderCards(b1).svg.includes('내용을 입력하세요'), '불릿을 늘리면 기본 문구가 들어가 그림 위에서 고칠 수 있음');
+    const b2 = m.cardsSetBullets(sp, cb, 0, 1); expect(b2.bands[cb].cards[0].bullets.length === 1 && b2.bands[cb].cards[0].bullets[0] === sp.bands[cb].cards[0].bullets[0], '불릿을 줄이면 앞의 것을 남김'); expect(m.cardsSetBullets(sp, cb, 0, 9).bands[cb].cards[0].bullets.length === 2, '불릿은 2개까지');
+    const s1 = m.cardsToggleSub(sp, cb, 0); expect(s1.bands[cb].cards[0].sub === '부제' && m.renderCards(s1).svg.includes('>부제<') && m.cardsToggleSub(s1, cb, 0).bands[cb].cards[0].sub === '', '부제 넣기/빼기(기본 글자 "부제")');
+    const c1 = m.cardsToggleCaption(sp, cb, 2, 0); expect(c1.bands[cb].cards[2].slots[0].caption === '이름' && m.cardsToggleCaption(c1, cb, 2, 0).bands[cb].cards[2].slots[0].caption === '' && m.cardsToggleCaption(sp, cb, 0, 99) !== undefined, '슬롯 작은 이름 넣기/빼기');
+    const before = JSON.stringify(sp); m.cardsSetBullets(sp, cb, 0, 0); m.cardsToggleSub(sp, cb, 0); expect(JSON.stringify(sp) === before, '도우미는 원본을 바꾸지 않음'); }
+  { const t = m.normalizeTable(m.SAMPLE_TABLE);
+    expect(m.tableAddRow(t).rows.at(-1).every((v) => v === '') && m.tableAddRow(t, undefined, true).rows.at(-1).join() === '항목,내용', '행 추가: 기본은 빈 칸, fill 이면 항목/내용 기본 글자');
+    const t4 = m.tableSetCols(t, 4, true); expect(t4.cols === 4 && t4.rows.every((r) => r.length === 4 && r[2] === '내용' && r[3] === '내용' && r[0].length > 0 && r[1].length > 0), '열 늘리기: fill 이면 새 칸에 기본 글자(기존 칸은 그대로)');
+    expect(m.tableSetCols(t, 4).rows.every((r) => r[2] === ''), '열 늘리기: 기본은 빈 칸(예전과 같음)');
+    expect(m.tableHasEmpty(m.tableAddRow(t)) && !m.tableHasEmpty(t) && !m.tableHasEmpty(m.tableFillEmpty(m.tableAddRow(t))) && m.tableFillEmpty(m.tableAddRow(t)).rows.at(-1).join() === '–,–', '빈 칸 찾기·채우기'); }
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

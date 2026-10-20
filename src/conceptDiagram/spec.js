@@ -5,15 +5,22 @@ import { ICON_LABEL, ICON_GROUPS, resolveIcon } from './icons';
 import { renderProgram, normalizeProgram } from './program';
 import { renderStack, normalizeStack } from './stack';
 import { renderSketch, normalizeSketch, getSketchTextFields } from './sketch';
+import { CARD_PRESETS, normalizeCards, renderCards, getCardsTextFields } from './cardboard';
+import { normalizeTableDoc, renderTableDoc, getTableDocFields, TABLE_DOC_SCHEMA, TABLE_DOC_RULES } from './tabledoc';
+import { SAMPLE_TABLE } from './table';
 
 export const DIAGRAM_TYPES = {
   site: { label: '배치 개념도 (흐름·정원·순환)', hint: '배치도 위에 흐름선, 해칭 구역, 아이콘 칩을 얹는 개념도' },
   massing: { label: '매스 과정도 (아이소 단계)', hint: 'EXTRUSION / SUBTRACTION / ADDITION 식으로 매스를 단계별로 보여주는 도식' },
   program: { label: '프로그램 버블도 (공간 구성·관계)', hint: '공간(프로그램)을 원으로, 면적·중요도를 크기로, 성격이 같은 것을 같은 색 묶음으로 그리고 연결 관계를 선으로 잇는 도식' },
+  table: { label: '개요표 (라벨–값 표)', hint: '건축개요·면적표 같은 2~4열 표 하나로 칸을 채운다. 엑셀·한글에서 복사한 표를 붙여넣어도 된다(병합 셀·계산은 없음)' },
+  cards: { label: '카드 보드 (기술·상품 계획 요약)', hint: '핵심 가치 띠 + 큰 그림 자리(좌우 설명·표·아이콘 목록) + 카드 격자(최대 12개)로 된 사내 도집 형식의 계획 요약 보드. 그림은 내 이미지를 넣는다' },
   stack: { label: '층별 조닝도 (단면 스택)', hint: '건물을 단면처럼 층 띠로 쌓고 층마다 프로그램 칸, 보이드·코어·채광/바람/조망, 공공성 변화 화살표를 얹는 도식' },
 };
 
 export const EXAMPLE_SPECS = {
+  cards: CARD_PRESETS.plan.spec,
+  table: { title: '', accent: '#2F6B4F', size: 18, table: SAMPLE_TABLE },
   site: {
     title: '',
     panels: [
@@ -173,11 +180,45 @@ const IMAGE_RULE = `참고 이미지가 첨부되어 있다. 이미지를 먼저
 const ASIS_RULE = `첨부 이미지(조감도·배치도·항공사진 등)는 그림의 바탕으로 그대로 쓰인다. 프로그램이 모든 패널에 이 이미지를 깔고 그 위에 흐름선·구역·아이콘 칩을 얹는다.
 이미지를 보고 건물·도로·광장·녹지가 실제로 어느 쪽에 있는지 파악한 뒤, 9개 앵커(n=이미지 위쪽, s=아래쪽, e=오른쪽, w=왼쪽, center=가운데 …)를 그 위치에 맞춰 고른다. 이미지에 실제로 없는 곳에 표시를 두지 않는다. 한 패널에는 개념 하나만 얹고, 패널마다 다른 개념을 보여준다. siteShape 는 "rect" 로 한다.`;
 
-const SCHEMAS = { site: SITE_SCHEMA, massing: MASSING_SCHEMA, program: PROGRAM_SCHEMA, stack: STACK_SCHEMA };
-const RULES = { site: SITE_RULES, massing: MASSING_RULES, program: PROGRAM_RULES, stack: STACK_RULES };
+const CARDS_SCHEMA = `{
+  "title": "",                       // 비워 둔다(제목은 페이지 머리가 쓴다)
+  "accent": "#2F6BB5",               // 강조색(아이콘 칩)
+  "bands": [                         // 위에서 아래로 쌓는 띠. 틀에 정해진 순서를 지킨다(최대 4개)
+    { "kind": "keypoints", "style": "bracket|tabs|tiles", "label": "설계주안점",   // tiles(인증 타일형)은 title=타일 제목, text=값(예: 4등급), 최대 6개
+      "items": [ {"no":"01", "title":"시공성", "text":"한두 줄 설명(60자 이내)", "icon":"hard-hat"} ] },          // 3~6개
+    { "kind": "hero", "imageNote": "구조 아이소 그림",
+      "callouts": [ {"side":"left|right", "title":"라벨 제목(20자 이내)", "text":"설명(60자 이내)"} ],          // 큰 그림 좌우에 붙는 설명 4~6개(왼쪽·오른쪽에 반씩). 설비형은 빈 배열
+      "tables":   [ {"title":"주요 시스템", "cols":2, "style":"label", "rows":[["라벨","값"]]} ],               // 오른쪽 개요표 0~2개(행 3~6개). 설비형은 빈 배열
+      "legends":  [ {"side":"left|right", "title":"기계 / 소방 설비", "numbered":false, "items":[ {"icon":"fan", "text":"자동제어", "desc":"번호 목록일 때만 쓰는 한 줄 설명(44자)"} ]} ] },  // 아이콘 목록 0~2개(항목 최대 10개, 글 22자 이내). numbered 면 번호가 붙는다. 계획 요약형은 빈 배열
+    { "kind": "columns3",            // 3열 가치형: 열마다 [작은 문구 + 큰 키워드] + 큰 그림 + 소도식·제목·설명 줄(3줄)
+      "cols": [ {"lead":"작은 문구(36자 이내)", "key":"키워드(10자 이내)", "rows":[ {"title":"제목(26자)", "text":"설명(76자)", "slot":{"kind":"icon|image", "icon":"sparkles"}} ]} ] },   // 열 3개
+    { "kind": "process", "items": [ {"icon":"map", "title":"단계 제목(16자)", "text":"설명(44자)"} ] },                                             // 프로세스 띠 3~5개
+    { "kind": "chips", "groups": [ {"chip":"구 조", "items":[ {"icon":"layers", "title":"항목(16자)", "text":"한 줄(30자)"} ]} ] },              // 분야 칩 띠: 분야 2~4개, 분야마다 항목 1~4개
+    { "kind": "cards", "tone": "gray", "label": "띠 제목(없으면 빈 문자열)",
+      "cards": [ {"title":"카드 제목(30자 이내)", "icon":"", "sub":"", "slots":[ {"kind":"icon|image", "icon":"zap", "caption":"작은 이름(16자 이내)"} ], "bullets":["불릿 한 줄(46자 이내)"]} ] }  // 카드는 모든 띠를 합쳐 최대 12개
+  ]
+}`;
+
+const CARDS_RULES_BASE = `- 좌표·크기를 정하지 않는다. 글은 간결한 명사형 한국어로 쓰고 숫자·인증·법규 같은 사실은 요청에 없으면 지어내지 않는다(일반적인 설계 방향만 쓴다).
+- 한도: 핵심 가치 6개, 히어로 라벨 6개, 개요표 2개, 아이콘 목록 항목 10개, 3열 가치형 열 3개·열당 3줄, 프로세스 5단계, 분야 칩 4개, 카드 12개(전체 합), 카드당 슬롯 3개·불릿 2개. 글자 수 한도를 넘기지 않는다.
+- icon 은 반드시 아래 목록의 이름 중 하나만 쓴다(뜻이 가장 가까운 것). 슬롯 kind 는 도식·사진이 들어갈 자리면 "image", 아이콘 타일이면 "icon".
+- 한 카드는 한 가지 주제만 담는다. 같은 띠의 카드 제목은 길이를 비슷하게 맞춘다.`;
+const CARDS_PRESET_RULES = {
+  plan: '계획 요약형 — keypoints(5개) → hero(callouts 4~6개를 왼쪽·오른쪽에 반씩, tables 1~2개, legends 는 빈 배열) → cards 한 띠(6개, 각 카드 slots 1~3개).',
+  system: '설비·시스템형 — keypoints(6개) → hero(callouts·tables 는 빈 배열, legends 는 왼쪽 1개·오른쪽 1개, 각 항목 8~10개) → cards 두 띠(각 6개, 각 카드 slots 는 kind "image" 하나, 두 띠 모두 label 을 쓴다).',
+  values3: '3열 가치형 — 띠는 columns3 하나만 쓴다. cols 3개(각 열: lead 작은 문구 + key 큰 키워드(예: 차별성·분양성·경제성) + rows 3개). 각 row 의 slot 은 그림이 필요하면 kind "image", 아니면 "icon".',
+  eco: '친환경·에너지형 — keypoints(style "tiles", 인증·성능 지표 5개: title 은 지표 이름, text 는 값) → hero(legends 하나: side "left", numbered true, 항목 8~10개에 desc 한 줄 설명, callouts·tables 는 빈 배열) → process(3~5단계) → cards 한 띠(4개, 각 slots 는 kind "image" 하나, 카드 icon 을 쓴다).',
+  field: '분야별 계획형 — hero(callouts·tables·legends 모두 빈 배열, imageNote 만) → chips(분야 4개: 예 구조·기계·전기·통신·소방, 분야마다 항목 2~3개) → cards 한 띠(3개: 분야별 계획, 각 slots 는 kind "image" 하나, bullets 1~2개).',
+};
+const cardsRules = (preset) => `${CARDS_RULES_BASE}
+- 틀: ${CARDS_PRESET_RULES[preset] || CARDS_PRESET_RULES.plan}
+- 아이콘 목록: ${ICON_GROUPS.map((g) => `[${g.label}] ${g.names.map((n) => `${n}(${ICON_LABEL[n]})`).join(', ')}`).join(' / ')}.`;
+
+const SCHEMAS = { site: SITE_SCHEMA, massing: MASSING_SCHEMA, program: PROGRAM_SCHEMA, stack: STACK_SCHEMA, cards: CARDS_SCHEMA, table: TABLE_DOC_SCHEMA };
+const RULES = { site: SITE_RULES, massing: MASSING_RULES, program: PROGRAM_RULES, stack: STACK_RULES, cards: cardsRules('plan'), table: TABLE_DOC_RULES };
 
 // type: 'auto' | 'site' | 'massing' | 'program' | 'stack'. auto 면 AI가 내용을 보고 종류까지 고르고, 응답 최상위에 "type" 을 넣게 한다.
-export function buildConceptPrompt(type, userText, imgs = {}) {
+export function buildConceptPrompt(type, userText, imgs = {}, extra = {}) {
   const head = `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 요청을 보고 다이어그램의 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).
 좌표를 픽셀로 계산하지 말고 아래 스키마의 값만 채운다. 실제 그리기는 프로그램이 한다.`;
   const hasAny = !!(imgs.asis || imgs.style);
@@ -193,7 +234,9 @@ export function buildConceptPrompt(type, userText, imgs = {}) {
 - "massing": 건물 매스를 단계별로 더하고 덜어내며 형태가 만들어지는 과정을 보여주는 아이소메트릭 매스 과정도
 - "program": 공간(프로그램)의 구성과 서로의 관계를 원(크기=면적/중요도)과 연결선으로 보여주는 프로그램 버블도
 - "stack": 건물을 단면처럼 층별로 쌓아 층마다 어떤 프로그램이 들어가는지, 보이드·코어·채광 등을 보여주는 층별 조닝도
-선택한 종류의 스키마 값을 채우고, JSON 최상위에 "type":"site", "massing", "program", "stack" 중 하나를 반드시 포함한다.
+- "cards": 한 분야(구조·설비·에너지 등)의 계획을 핵심 가치 띠 + 큰 그림 자리 + 카드 격자로 요약하는 계획 요약 보드(카드 보드)
+- "table": 건축개요·면적표처럼 라벨–값으로 된 2~4열 표 하나(개요표)
+선택한 종류의 스키마 값을 채우고, JSON 최상위에 "type":"site", "massing", "program", "stack", "cards", "table" 중 하나를 반드시 포함한다.
 
 [site 스키마]
 ${SITE_SCHEMA}
@@ -217,7 +260,19 @@ ${PROGRAM_RULES}
 ${STACK_SCHEMA}
 
 [stack 규칙]
-${STACK_RULES}${image}
+${STACK_RULES}
+
+[cards 스키마]
+${CARDS_SCHEMA}
+
+[cards 규칙]
+${cardsRules(extra.preset)}
+
+[table 스키마]
+${TABLE_DOC_SCHEMA}
+
+[table 규칙]
+${TABLE_DOC_RULES}${image}
 
 요청: ${userText || '(텍스트 없음 — 참고 이미지와 같은 구성으로 만든다)'}`;
   }
@@ -227,7 +282,7 @@ ${STACK_RULES}${image}
 ${SCHEMAS[type] || SITE_SCHEMA}
 
 규칙:
-${RULES[type] || SITE_RULES}${image}
+${type === 'cards' ? cardsRules(extra.preset) : (RULES[type] || SITE_RULES)}${image}
 
 요청: ${userText || '(텍스트 없음 — 참고 이미지와 같은 구성으로 만든다)'}`;
 }
@@ -248,6 +303,8 @@ export function normalizeSpec(type, spec) {
   if (type === 'sketch') return normalizeSketch(spec);
   if (type === 'program') return normalizeProgram(spec);
   if (type === 'stack') return normalizeStack(spec);
+  if (type === 'table') return normalizeTableDoc(spec);
+  if (type === 'cards') { const n = normalizeCards(spec); if (!n.bands.length) throw new Error('bands 가 비어 있습니다.'); return n; }
   if (!Array.isArray(spec.panels) || !spec.panels.length) throw new Error('panels 가 비어 있습니다.');
   const baseIds = new Set(((spec.siteBase && spec.siteBase.shapes) || []).map((s) => String(s.id)));
   const fixAnchor = (a) => {
@@ -277,6 +334,8 @@ export function renderSpec(type, spec, opts) {
   if (type === 'sketch') return renderSketch(n);
   if (type === 'program') return renderProgram(n);
   if (type === 'stack') return renderStack(n);
+  if (type === 'cards') return renderCards(n);
+  if (type === 'table') return renderTableDoc(n);
   return type === 'massing' ? renderMassing(n) : renderSiteConcept(n, opts);
 }
 
@@ -285,6 +344,8 @@ export function getTextFields(type, spec) {
   const out = [];
   if (!spec) return out;
   if (type === 'sketch') return getSketchTextFields(spec);
+  if (type === 'cards') return getCardsTextFields(spec);
+  if (type === 'table') return getTableDocFields(spec);
   if (spec.title !== undefined) out.push({ path: ['title'], label: '전체 제목', value: spec.title || '' });
   if (type === 'massing') {
     (spec.steps || []).forEach((s, i) => out.push({ path: ['steps', i, 'label'], label: `단계 ${i + 1} 이름`, value: s.label || '' }));

@@ -6,7 +6,8 @@ import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
 import ImageCropDialog from './ImageCropDialog';
 import ZoomView from './ZoomView';
-import { editRotate, editRotateAdd, editAddBadge, editRenumber, editAddCallout, editAddIcon, editAddTable, addShiftPatch } from './conceptDiagram/svgedit';
+import { editRotate, editRotateAdd, editAddBadge, editRenumber, editAddCallout, editAddIcon, editAddTable, editAddNorth, editAddScale, addShiftPatch } from './conceptDiagram/svgedit';
+import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { tableSetCell } from './conceptDiagram/table';
 import TableEditor from './TableEditor';
 import { CONTEXT_FX } from './conceptDiagram/imgfx';
@@ -149,7 +150,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     }
     const coAdd = (E.adds || []).find((a) => a.id === sel && a.kind === 'callout');
     if (coAdd) o.pts.push({ h: 'tip:0', p: rel(toClient(el, coAdd.tx, coAdd.ty)) }); // 리더선 라벨: 끝점(가리키는 곳) 손잡이
-    if (!isBg(sel) && !(E.adds || []).some((a) => a.id === sel && (a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table'))) { try { const bb = el.getBBox(); const cc = rel(toClient(el, bb.x + bb.width / 2, bb.y + bb.height / 2)); o.rotC = cc; o.rot = [cc[0], o.box[1] - 30]; } catch { /* 숨긴 요소 등은 회전 손잡이 없이 */ } } // 돌리는 중심 = 도형 가운데(돌아가 있어도 보이는 가운데)
+    if (!isBg(sel) && !(E.adds || []).some((a) => a.id === sel && (a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'scale'))) { try { const bb = el.getBBox(); const na = (E.adds || []).find((a) => a.id === sel && a.kind === 'north'); /* 방위표는 원의 가운데 둘레로 돈다 */ const cc = na ? rel(toClient(el, na.x + na.w / 2, na.y + na.h / 2)) : rel(toClient(el, bb.x + bb.width / 2, bb.y + bb.height / 2)); o.rotC = cc; o.rot = [cc[0], o.box[1] - 30]; } catch { /* 숨긴 요소 등은 회전 손잡이 없이 */ } } // 돌리는 중심 = 도형 가운데(돌아가 있어도 보이는 가운데)
     setOv(o);
   }, [view.svg, sel, multi, node, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const h = hostRef.current; if (!h || typeof ResizeObserver === 'undefined') return undefined; const ro = new ResizeObserver(() => setTick((n) => n + 1)); ro.observe(h); return () => ro.disconnect(); }, []);
@@ -425,6 +426,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
     const r = editAddBadge(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
   };
+  const addSymbol = (kind) => { // 방위표·축척 막대를 그림 안에 넣고 바로 고른다
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = (kind === 'north' ? editAddNorth : editAddScale)(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
+  };
   const addTable = () => { // 개요표(예시 내용이 든 건축개요 표)를 그림 왼쪽 가운데 근처에 넣고 바로 고른다
     const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
     const r = editAddTable(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
@@ -618,6 +623,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <button style={smallBtn(false)} onClick={addCallout} data-testid="sv-add-callout" title="굵은 제목 + 설명 + 끝점이 있는 안내선">＋ 리더선</button>
             <button style={smallBtn(false)} onClick={addIcon} data-testid="sv-add-icon" title="색 칩 안의 아이콘(건물·설비·에너지·안전·주거·동선 등 100여 개 중에서 고름)">＋ 아이콘</button>
             <button style={smallBtn(false)} onClick={addTable} data-testid="sv-add-table" title="건축개요·면적표 같은 라벨–값 표(2~4열)">＋ 표</button>
+            <button style={smallBtn(false)} onClick={() => addSymbol('north')} data-testid="sv-add-north" title="방위표(N 화살표) — 돌려서 북쪽을 맞춥니다">＋ 방위표</button>
+            <button style={smallBtn(false)} onClick={() => addSymbol('scale')} data-testid="sv-add-scale" title="축척 막대(0 … 50m)">＋ 축척 막대</button>
             {onAddImageClick && <button style={smallBtn(false)} onClick={onAddImageClick} data-testid="sv-add-image">＋ 이미지</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -761,7 +768,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <input type="range" min="6" max="80" step="1" value={Math.min(80, Math.max(6, myAdd.size))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:size`)} data-testid="sv-tb-size" />
             </label>
             <div style={lab}>색(제목 띠·선)<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
-            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>열 너비는 글자 길이에 맞춰 저절로 정해집니다. 표를 끌어 옮기고, 칸·제목은 더블클릭으로도 고칩니다(Enter 확정). 병합 셀·계산은 지원하지 않습니다.</span>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>열 너비는 글자 길이에 맞춰 저절로 정해집니다. 표를 끌어 옮기고, 칸·제목은 더블클릭으로도 고칩니다(Enter 확정).</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-table-delete">삭제</button>
@@ -769,7 +776,50 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           </div>
         )}
 
-        {sel && multi.length < 2 && myAdd && myAdd.kind !== 'badge' && myAdd.kind !== 'callout' && myAdd.kind !== 'icon' && myAdd.kind !== 'table' && (
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'north' && (
+          <div style={sec} data-testid="sv-north-props">
+            <span style={title}>선택: 방위표 ({sel})</span>
+            <div style={lab}>모양
+              <div style={{ display: 'flex', gap: 6 }}>{Object.entries(NORTH_STYLE_LABEL).map(([v, tt]) => <button key={v} style={{ ...smallBtn((myAdd.style || 'circle') === v), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { style: v }))} data-testid={`sv-north-${v}`}>{tt}</button>)}</div>
+            </div>
+            <label style={lab}>크기(지름) {r2(myAdd.w)}
+              <input type="range" min="20" max="400" step="1" value={Math.min(400, Math.max(20, myAdd.w))} onChange={(e) => { const w = Number(e.target.value); const cx = myAdd.x + myAdd.w / 2; const cy = myAdd.y + myAdd.h / 2; commit(editUpdateAdd(Eref.current, sel, { w, h: w, x: r2(cx - w / 2), y: r2(cy - w / 2) }), `${sel}:size`); }} data-testid="sv-north-size" />
+            </label>
+            <div style={lab}>색<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            {rotPanel(true)}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-north-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'scale' && (
+          <div style={sec} data-testid="sv-scale-props">
+            <span style={title}>선택: 축척 막대 ({sel})</span>
+            <label style={lab}>막대 길이 {r2(myAdd.w)}
+              <input type="range" min="40" max="1600" step="2" value={Math.min(1600, Math.max(40, myAdd.w))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { w: Number(e.target.value) }), `${sel}:len`)} data-testid="sv-scale-len" />
+            </label>
+            <div style={lab}>칸 수
+              <div style={{ display: 'flex', gap: 6 }}>{[2, 3, 4, 5].map((n) => <button key={n} style={{ ...smallBtn(myAdd.segs === n), flex: 1 }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { segs: n }))} data-testid={`sv-scale-segs-${n}`}>{n}</button>)}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 6 }}>
+              <label style={lab}>막대 전체가 나타내는 길이<input type="number" style={input} min="0.1" step="1" value={myAdd.total} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) commit(editUpdateAdd(Eref.current, sel, { total: v }), `${sel}:total`); }} data-testid="sv-scale-total" /></label>
+              <label style={lab}>단위<select style={input} value={myAdd.unit} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { unit: e.target.value }))} data-testid="sv-scale-unit">{SCALE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label>
+            </div>
+            <label style={lab}>글자 크기 {r2(myAdd.size || 14)}
+              <input type="range" min="6" max="80" step="1" value={Math.min(80, Math.max(6, myAdd.size || 14))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:font`)} data-testid="sv-scale-font" />
+            </label>
+            <div style={lab}>색<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>그림 위 막대 길이와 그 길이가 나타내는 실제 길이를 맞춰 쓰세요.</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-scale-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind !== 'badge' && myAdd.kind !== 'callout' && myAdd.kind !== 'icon' && myAdd.kind !== 'table' && myAdd.kind !== 'north' && myAdd.kind !== 'scale' && (
           <div style={sec} data-testid="sv-img-props">
             <span style={title}>선택: 내 이미지 ({sel})</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>끌어서 옮기고, 모서리 네모 점을 끌어 크기를 바꿉니다(원본 비율 유지, Shift: 자유롭게).</p>

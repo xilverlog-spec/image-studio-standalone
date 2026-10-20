@@ -17,6 +17,7 @@ import { CALLOUT_LINES, CALLOUT_ENDS, calloutSvg, calloutLayout } from './callou
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx, clampPct } from './imgfx';
+import { northSvg, scaleBarSvg, scaleBarHeight, normalizeScale, NORTH_STYLES, SYMBOL_COLOR } from './symbols';
 
 const FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif";
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -544,7 +545,7 @@ export function normalizeSketch(raw) {
     via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
-  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}) }));
+  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) }));
   // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
   const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: String(z.band).slice(0, 12) } : {}) }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
@@ -877,6 +878,17 @@ export function renderSketch(raw, opts = {}) {
       if (selected === m.id) sel.push(`<rect x="${(x - r - 5).toFixed(1)}" y="${(y - r - 5).toFixed(1)}" width="${(2 * r + 10).toFixed(1)}" height="${(2 * r + 10).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="${m.badge === 'square' ? 4 : r + 5}"/>`);
       return;
     }
+    if (m.symbol === 'north') { // 방위표: 가운데 (x, y), 지름 ssize. 선택하면 점선 틀과 회전 손잡이
+      const S = m.ssize; const MT = m.rot ? ` transform="rotate(${m.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+      o.push(northSvg({ cx: x, cy: y, size: S, color: m.color, rot: m.rot || 0, style: m.nstyle, id: m.id, interactive }));
+      if (selected === m.id) { sel.push(wrapG(MT, `<rect x="${(x - S / 2 - 6).toFixed(1)}" y="${(y - S / 2 - S * 0.45 - 6).toFixed(1)}" width="${(S + 12).toFixed(1)}" height="${(S * 1.45 + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`)); if (interactive) handles.push(wrapG(MT, rotHandle(m.id, x, y - S / 2 - S * 0.45 - 34, y - S / 2 - S * 0.45 - 6))); }
+      return;
+    }
+    if (m.symbol === 'scale') { // 축척 막대: (x, y) 막대 왼쪽 위, 길이 ssize, 글자 크기 size
+      const hh = scaleBarHeight(m.size); o.push(scaleBarSvg({ x, y, w: m.ssize, segs: m.segs, total: m.total, unit: m.unit, size: m.size, color: m.color, id: m.id, interactive }));
+      if (selected === m.id) sel.push(`<rect x="${(x - m.size - 6).toFixed(1)}" y="${(y - m.size * 0.3 - 6).toFixed(1)}" width="${(m.ssize + m.size * 2 + 12).toFixed(1)}" height="${(hh + m.size * 0.5 + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`);
+      return;
+    }
     if (m.table) { // 개요표: (x, y) = 표 왼쪽 위, 글자 크기 = size, 색 = 제목 띠·선 색. 셀을 더블클릭해 고친다
       const tc = { x, y, size: m.size, color: m.color, table: m.table };
       o.push(tableSvg(tc, { id: m.id, interactive, font: FONT }));
@@ -1008,6 +1020,10 @@ export function sketchAdd(spec, kind, opt) {
   if (kind === 'wind') { const id = nextId('w', 'winds'); const pts = Array.from({ length: 5 }, (_, i) => [cx - w * 0.2 + (w * 0.4 * i) / 4, cy - h * 0.12 + Math.sin((i / 4) * Math.PI * 2) * h * 0.03]); return { spec: { ...spec, winds: [...spec.winds, { id, pts, smooth: true, head: 'end', dash: 'solid', width: 4.5, color: '#1E88C8', form: 'ribbon', shape: 's', bend: 0.65, amp: 0.45, inLabel: '', outLabel: '' }] }, id }; }
   if (kind === 'line') { const id = nextId('p', 'lines'); return { spec: { ...spec, lines: [...spec.lines, { id, pts: [[cx - w * 0.15, cy + h * 0.15], [cx + w * 0.15, cy + h * 0.15]], dash: 'solid', width: 2, color: '' }] }, id }; }
   if (kind === 'memo') { const id = nextId('m', 'memos'); return { spec: { ...spec, memos: [...spec.memos, { id, x: cx, y: cy + h * 0.3, text: '메모', size: 14, color: '#222222' }] }, id }; }
+  if (kind === 'north' || kind === 'scale') { // 도면 기호: 방위표(오른쪽 위 근처) / 축척 막대(왼쪽 아래 근처)
+    const id = nextId('m', 'memos'); const k = spec.memos.filter((m) => m.symbol === kind).length; const off = (k % 6) * Math.max(h, w) * 0.03;
+    return { spec: { ...spec, memos: [...spec.memos, kind === 'north' ? { id, x: x1 - w * 0.08 - off, y: y0 + h * 0.2 + off, text: '', size: 14, color: SYMBOL_COLOR, symbol: 'north', ssize: 64, nstyle: 'circle' } : { id, x: x0 + w * 0.06 + off, y: y1 - h * 0.1 - off, text: '', size: 14, color: SYMBOL_COLOR, symbol: 'scale', ssize: 220, ...normalizeScale({}) }] }, id };
+  }
   if (kind === 'table') { // 개요표: 예시 내용(건축개요)이 들어간 표. 놓을 때마다 조금씩 비껴 놓는다
     const id = nextId('m', 'memos'); const k = spec.memos.filter((m) => m.table).length; const off = (k % 6) * Math.max(h, w) * 0.03;
     return { spec: { ...spec, memos: [...spec.memos, { id, x: cx - w * 0.12 + off, y: cy - h * 0.2 + off, text: '', size: 14, color: TABLE_COLOR, table: normalizeTable(SAMPLE_TABLE) }] }, id };
@@ -1070,7 +1086,7 @@ export function sketchMoveBy(spec, id, dx, dy) {
 }
 // ── 회전(°, 시계 방향 +) ──
 // 도형·글자는 rot 값을 저장하고 그릴 때 돌린다. 선·화살표는 점을 직접 돌려 저장한다(그래서 '각도'는 시작→끝 방향).
-export function sketchCanRotate(spec, id) { const f = sketchFind(spec, id); return !!f && !(f.list === 'memos' && (f.el.icon === 'sun' || f.el.badge || f.el.callout || f.el.chip || f.el.table)); }
+export function sketchCanRotate(spec, id) { const f = sketchFind(spec, id); return !!f && !(f.list === 'memos' && (f.el.icon === 'sun' || f.el.badge || f.el.callout || f.el.chip || f.el.table || f.el.symbol === 'scale')); }
 // 리더선 라벨의 끝점(가리키는 곳)만 옮긴다
 export function sketchSetTip(spec, id, pt) { const f = sketchFind(spec, id); if (!f || !f.el.callout) return spec; return sketchUpdate(spec, id, { tx: pt[0], ty: pt[1] }); }
 export function sketchRotation(spec, id) {
@@ -1083,7 +1099,7 @@ export function sketchRotation(spec, id) {
 export function sketchPivot(spec, id) {
   const f = sketchFind(spec, id); if (!f) return [0, 0]; const e = f.el;
   if (f.list === 'blocks') return rectCenter(e.rect);
-  if (f.list === 'memos') return [e.x, e.y - (e.size * 0.32) / sketchView(spec).K];
+  if (f.list === 'memos') return e.symbol === 'north' ? [e.x, e.y] : [e.x, e.y - (e.size * 0.32) / sketchView(spec).K]; // 방위표는 원의 가운데 둘레로 돈다
   const b = bbox(e.pts); return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
 }
 export function sketchSetAngle(spec, id, deg) {

@@ -53,6 +53,7 @@ import ZoomView from './ZoomView';
 import IconPicker from './IconPicker';
 import TableEditor from './TableEditor';
 import { CONTEXT_FX } from './conceptDiagram/imgfx';
+import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { ICON_LABEL } from './conceptDiagram/icons';
 import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip } from './conceptDiagram/sketch';
 import { snapDeg } from './conceptDiagram/rotate';
@@ -270,7 +271,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const setRect = (i, v) => { const r = [...sel.el.rect]; r[i] = v; set({ rect: r }, 'rect'); };
 
   const title = { fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' };
-  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : '글자 메모' }[kind];
+  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
 
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
@@ -316,6 +317,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             <button style={smallBtn(false)} onClick={() => add('callout')} data-testid="add-callout" title="굵은 제목 + 설명 + 끝점이 있는 안내선">＋ 리더선</button>
             <button style={smallBtn(false)} onClick={() => add('icon')} data-testid="add-icon" title="색 칩 안의 아이콘(건물·설비·에너지·안전·주거·동선 등 100여 개 중에서 고름)">＋ 아이콘</button>
             <button style={smallBtn(false)} onClick={() => add('table')} data-testid="add-table" title="건축개요·면적표 같은 라벨–값 표(2~4열)">＋ 표</button>
+            <button style={smallBtn(false)} onClick={() => add('north')} data-testid="add-north" title="방위표(N 화살표) — 돌려서 북쪽을 맞춥니다">＋ 방위표</button>
+            <button style={smallBtn(false)} onClick={() => add('scale')} data-testid="add-scale" title="축척 막대(0 … 50m)">＋ 축척 막대</button>
             {CLIP && <button style={smallBtn(false)} onClick={() => pasteClip()} title="Ctrl+V">붙여넣기</button>}
           </div>
         </div>
@@ -560,9 +563,36 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} data-testid="tb-size" />
               </label>
               <div style={lab}>색(제목 띠·선)<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
-              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>열 너비는 글자 길이에 맞춰 저절로 정해집니다. 표를 끌어 옮기고, 칸·제목은 더블클릭으로도 고칩니다(Enter 확정). 병합 셀·계산은 지원하지 않습니다.</span>
+              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>열 너비는 글자 길이에 맞춰 저절로 정해집니다. 표를 끌어 옮기고, 칸·제목은 더블클릭으로도 고칩니다(Enter 확정).</span>
             </>)}
-            {kind === 'memo' && !sel.el.badge && !sel.el.callout && !sel.el.chip && !sel.el.table && (<>
+            {kind === 'memo' && sel.el.symbol === 'north' && (<>
+              <div style={lab}>모양
+                <div style={{ display: 'flex', gap: 6 }}>{Object.entries(NORTH_STYLE_LABEL).map(([v, t]) => <button key={v} style={{ ...smallBtn((sel.el.nstyle || 'circle') === v), flex: 1 }} onClick={() => set({ nstyle: v })} data-testid={`north-${v}`}>{t}</button>)}</div>
+              </div>
+              <label style={lab}>크기(지름) {sel.el.ssize}
+                <input type="range" min="30" max="240" step="2" value={sel.el.ssize} onChange={(e) => set({ ssize: Number(e.target.value) }, 'ssize')} data-testid="north-size" />
+              </label>
+              <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
+              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>아래 <b>회전</b>의 각도나 위쪽 동그라미 손잡이로 북쪽 방향에 맞춥니다.</span>
+            </>)}
+            {kind === 'memo' && sel.el.symbol === 'scale' && (<>
+              <label style={lab}>막대 길이 {sel.el.ssize}
+                <input type="range" min="60" max="900" step="5" value={sel.el.ssize} onChange={(e) => set({ ssize: Number(e.target.value) }, 'ssize')} data-testid="scale-len" />
+              </label>
+              <div style={lab}>칸 수
+                <div style={{ display: 'flex', gap: 6 }}>{[2, 3, 4, 5].map((n) => <button key={n} style={{ ...smallBtn(sel.el.segs === n), flex: 1 }} onClick={() => set({ segs: n })} data-testid={`scale-segs-${n}`}>{n}</button>)}</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 6 }}>
+                <Num label="막대 전체가 나타내는 길이" value={sel.el.total} step={1} onChange={(v) => set({ total: Math.max(0.1, v) }, 'total')} testid="scale-total" />
+                <label style={lab}>단위<select style={input} value={sel.el.unit} onChange={(e) => set({ unit: e.target.value })} data-testid="scale-unit">{SCALE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label>
+              </div>
+              <label style={lab}>글자 크기 {sel.el.size}
+                <input type="range" min="8" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} data-testid="scale-font" />
+              </label>
+              <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
+              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>막대 길이(화면 위 길이)와 그 길이가 나타내는 실제 길이를 맞춰 쓰세요(예: 막대 220 = 50m).</span>
+            </>)}
+            {kind === 'memo' && !sel.el.badge && !sel.el.callout && !sel.el.chip && !sel.el.table && !sel.el.symbol && (<>
               <label style={lab}>글자<input style={input} value={sel.el.text} onChange={(e) => set({ text: e.target.value }, 'text')} /></label>
               <label style={lab}>크기 {sel.el.size}{ptInfo ? ` · 약 ${Math.round(sel.el.size * ptInfo.ppu * 10) / 10}pt` : ''}
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} />

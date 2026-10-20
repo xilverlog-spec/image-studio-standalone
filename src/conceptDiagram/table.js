@@ -27,10 +27,16 @@ export function normalizeTable(t) {
 
 // 편집 도우미(모두 새 표를 돌려준다)
 export const tableSetCell = (t, r, c, v) => { const n = normalizeTable(t); if (r < 0) return { ...n, title: String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_TITLE) }; if (!n.rows[r] || c < 0 || c >= n.cols) return n; return { ...n, rows: n.rows.map((row, i) => (i === r ? row.map((x, j) => (j === c ? String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_CELL) : x)) : row)) }; };
-export const tableAddRow = (t, at) => { const n = normalizeTable(t); if (n.rows.length >= TABLE_MAX_ROWS) return n; const row = Array.from({ length: n.cols }, () => ''); const i = at === undefined ? n.rows.length : Math.min(n.rows.length, Math.max(0, at)); return { ...n, rows: [...n.rows.slice(0, i), row, ...n.rows.slice(i)] }; };
+export const tableAddRow = (t, at, fill = false) => { const n = normalizeTable(t); if (n.rows.length >= TABLE_MAX_ROWS) return n; const row = Array.from({ length: n.cols }, (_, ci) => (fill ? (ci === 0 ? '항목' : '내용') : '')); const i = at === undefined ? n.rows.length : Math.min(n.rows.length, Math.max(0, at)); return { ...n, rows: [...n.rows.slice(0, i), row, ...n.rows.slice(i)] }; }; // fill: 그림 위에서 바로 고칠 수 있게 기본 글자를 채운다
 export const tableDelRow = (t, i) => { const n = normalizeTable(t); return n.rows.length <= 1 || i < 0 || i >= n.rows.length ? n : { ...n, rows: n.rows.filter((_, k) => k !== i) }; };
 export const tableMoveRow = (t, i, d) => { const n = normalizeTable(t); const j = i + d; if (i < 0 || j < 0 || i >= n.rows.length || j >= n.rows.length) return n; const rows = [...n.rows]; [rows[i], rows[j]] = [rows[j], rows[i]]; return { ...n, rows }; };
-export const tableSetCols = (t, cols) => normalizeTable({ ...t, cols }); // 줄이면 오른쪽 열이 잘리고 늘리면 빈 열이 생긴다
+export const tableSetCols = (t, cols, fill = false) => { // 줄이면 오른쪽 열이 잘리고 늘리면 빈 열이 생긴다(fill 이면 새 칸에 기본 글자)
+  const before = normalizeTable(t); const n = normalizeTable({ ...t, cols });
+  return fill ? { ...n, rows: n.rows.map((r) => r.map((v, ci) => (ci >= before.cols && v === '' ? '내용' : v))) } : n;
+};
+// 빈 칸을 찾아 채운다(그림 위에서 눌러 고치려면 글자가 있어야 한다)
+export const tableHasEmpty = (t) => normalizeTable(t).rows.some((r) => r.some((v) => v === ''));
+export const tableFillEmpty = (t, ch = '–') => { const n = normalizeTable(t); return { ...n, rows: n.rows.map((r) => r.map((v) => (v === '' ? ch : v))) }; };
 
 // 색을 흰색과 섞어 연하게(줄무늬 바탕)
 const tint = (hex, k) => { const m = /^#([0-9a-fA-F]{6})$/.exec(hex || ''); if (!m) return '#F2F2F2'; const n = parseInt(m[1], 16); const mix = (v) => Math.round(v + (255 - v) * k); return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => mix(v).toString(16).padStart(2, '0')).join('')}`; };
@@ -76,4 +82,38 @@ export function tableSvg(c, { id = '', interactive = false, font = "'Malgun Goth
     L.rows.forEach((row) => row.cells.forEach((cell) => o.push(`<rect data-cell="${cell.r},${cell.c}" x="${f1(cell.x)}" y="${f1(row.y)}" width="${f1(cell.w)}" height="${f1(row.h)}" fill="transparent"/>`)));
   }
   return `<g${interactive && id ? ` data-eid="${esc(id)}" style="cursor:move"` : ''}>${o.join('')}</g>`;
+}
+
+// ── 엑셀·한글·웹 표 붙여넣기 변환(v2) ──
+const decodeEnt = (s) => String(s).replace(/&nbsp;/gi, ' ').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/&amp;/gi, '&');
+const cellText = (s) => decodeEnt(String(s).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+// HTML 표(엑셀·한글·웹에서 복사하면 text/html 에 <table> 이 들어 있다) → 칸 격자. colspan 은 빈 칸으로 채운다
+export function gridFromHtml(html) {
+  const grid = []; const m = String(html).match(/<tr[\s>][\s\S]*?<\/tr>/gi) || [];
+  m.forEach((tr) => {
+    const row = []; (tr.match(/<t[dh][\s>][\s\S]*?<\/t[dh]>/gi) || []).forEach((td) => { const span = Math.min(8, Math.max(1, Number((/colspan\s*=\s*["']?(\d+)/i.exec(td) || [])[1]) || 1)); row.push(cellText(td)); for (let k = 1; k < span; k++) row.push(''); });
+    if (row.length) grid.push(row);
+  });
+  return grid;
+}
+// 글자 표 → 칸 격자: 탭(엑셀·한글) > 마크다운 `| a | b |` > 쉼표(CSV) > 공백 두 칸 이상 순서로 알아본다
+export function gridFromText(text) {
+  const lines = String(text ?? '').replace(/\r/g, '').split('\n').filter((l) => l.trim() !== ''); if (!lines.length) return [];
+  const md = lines.filter((l) => /^\s*\|.*\|\s*$/.test(l)); if (md.length >= 1 && md.length === lines.length) return lines.filter((l) => !/^\s*\|?[\s:|-]+\|?\s*$/.test(l)).map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
+  if (lines.some((l) => l.includes('\t'))) return lines.map((l) => l.split('\t').map((c) => c.replace(/^"(.*)"$/, '$1').replace(/\s+/g, ' ').trim()));
+  if (lines.every((l) => l.includes(',')) && lines.length >= 2) return lines.map((l) => (l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || []).map((c) => c.replace(/,$/, '').replace(/^"(.*)"$/, '$1').replace(/""/g, '"').trim()).filter((c, i, a) => i < a.length - (a.length && a[a.length - 1] === '' ? 1 : 0)));
+  return lines.map((l) => l.trim().split(/\s{2,}/).map((c) => c.trim()));
+}
+// 붙여넣은 내용(text, html) → { table, truncated(4열을 넘어 잘림), droppedRows(30행을 넘어 잘림), title(첫 줄이 한 칸짜리면 제목으로) } 또는 null(표로 읽을 수 없음)
+export function parseTableText(text, html = '') {
+  let grid = html && /<table[\s>]/i.test(html) ? gridFromHtml(html) : [];
+  if (!grid.length) grid = gridFromText(text);
+  grid = grid.map((r) => r.map((c) => String(c ?? '').slice(0, TABLE_MAX_CELL))).filter((r) => r.some((c) => c !== ''));
+  if (!grid.length) return null;
+  let title = '';
+  if (grid.length >= 2 && grid[0].filter((c) => c !== '').length === 1 && grid.slice(1).some((r) => r.filter((c) => c !== '').length >= 2)) { title = grid[0].find((c) => c !== '') || ''; grid = grid.slice(1); } // 첫 줄이 한 칸짜리면 표 제목
+  const widest = Math.max(...grid.map((r) => r.length)); const cols = Math.min(4, Math.max(2, widest));
+  if (widest < 2 && grid.length < 2) return null; // 한 칸짜리 글자는 표가 아니다
+  const dropped = Math.max(0, grid.length - TABLE_MAX_ROWS);
+  return { table: normalizeTable({ title, cols, rows: grid }), truncated: widest > 4, droppedRows: dropped, title };
 }

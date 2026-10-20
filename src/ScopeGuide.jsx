@@ -5,7 +5,7 @@ import { CATALOG, STATUS_LABEL, catalogById, pictoSvg } from './conceptDiagram/s
 // 다이어그램 종류 안내: 종류마다 예시 썸네일 + '만들 수 있는 것 / 없는 것 / 넣어야 하는 입력'. 지원하지 않는 종류와 대신 쓸 방법도 함께 보여 준다.
 const dataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 const BADGE = { ok: { bg: '#DCFCE7', fg: '#166534' }, plan: { bg: '#FEF3C7', fg: '#92400E' }, no: { bg: '#FEE2E2', fg: '#991B1B' } };
-const GROUPS = [['text', '설명만으로 만들기'], ['image', '이미지를 올려서 만들기 (자동 판단)'], ['out', '지원하지 않는 것']];
+const GROUPS = [['text', '설명만으로 만들기'], ['image', '이미지를 올려서 만들기 (자동 판단)']]; // '지원하지 않는 것'은 목록에 싣지 않는다(2026-10-20 사용자 의견). 그런 설명을 쓰면 만들기 전에 알리는 안내(scope.js)는 그대로
 
 // 카탈로그 항목의 썸네일 주소(생성 종류는 실제 예시를 그려 보여 준다. 그릴 수 없으면 빈 칸)
 export function useThumbs() {
@@ -73,7 +73,7 @@ export default function ScopeGuide({ forcedType, onPick }) {
             </div>
           </div>
         ))}
-        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>이미지를 올리면 AI가 종류를 판단해 위 방식 중 하나로 보냅니다. 설명에 “표·조감도·도면 작성”처럼 지원하지 않는 것을 적으면 만들기 전에 알려 드립니다.</span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>이미지를 올리면 AI가 종류를 판단해 위 방식 중 하나로 보냅니다. </span>
       </div>
     </details>
   );

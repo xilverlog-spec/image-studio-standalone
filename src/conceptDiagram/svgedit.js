@@ -13,6 +13,7 @@ import { calloutSvg, calloutLayout, CALLOUT_COLOR } from './callout';
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx } from './imgfx';
+import { northSvg, scaleBarSvg, normalizeScale, scaleBarHeight, NORTH_STYLES, SYMBOL_COLOR } from './symbols';
 
 const LEAF = new Set(['path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'text']);
 const SKIP = new Set(['defs', 'marker', 'pattern', 'clipPath', 'mask', 'symbol', 'style', 'linearGradient', 'radialGradient', 'filter', 'title', 'desc', 'foreignObject']);
@@ -49,6 +50,12 @@ export function scanSvg(svg) {
 }
 
 export const emptyEdits = (svg) => ({ sig: scanSvg(svg).sig, ops: {} });
+// 그림 구조가 바뀐 뒤(폼 수정 등): 구조 지문을 새 그림에 맞추고, 맞지 않게 된 손 수정(ops)만 비운다(내 이미지·리더선·표(adds)와 내가 그린 도형(shapes)은 그대로)
+export function rebaseEdits(edits, svg) {
+  if (!edits) return edits;
+  const sig = scanSvg(svg).sig; if (edits.sig === sig) return edits;
+  return { ...edits, sig, ops: {} };
+}
 export const hasEdits = (edits) => !!edits && (Object.keys(edits.ops || {}).length > 0 || (edits.adds || []).length > 0 || (edits.shapes || []).length > 0);
 
 // ── 내가 새로 그린 도형·글자·화살표(edits.shapes) ──
@@ -149,10 +156,13 @@ const imgTag = (a, interactive) => { const fx = imageFx(a.id, { x: a.x, y: a.y, 
 // 개요표: { id, kind:'table', x, y(왼쪽 위), size(글자 크기), fill(제목 띠·선 색), table:{ title, cols, style, rows } }
 const tableOf = (a) => ({ x: a.x, y: a.y, size: a.size, color: a.fill, table: a.table });
 const tableTag = (a, interactive) => tableSvg(tableOf(a), { id: a.id, interactive, font: FONT });
-const addTag = (a, interactive) => a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
+// 도면 기호: 방위표 { id, kind:'north', style, x, y, w(원 지름), h(=w), rot, fill } · 축척 막대 { id, kind:'scale', x, y(왼쪽 위), w(막대 길이), segs, total, unit, size(글자), fill }
+const northTag = (a, interactive) => northSvg({ cx: a.x + a.w / 2, cy: a.y + a.w / 2, size: a.w, color: a.fill, rot: a.rot || 0, style: NORTH_STYLES.includes(a.style) ? a.style : 'circle', id: a.id, interactive });
+const scaleTag = (a, interactive) => scaleBarSvg({ x: a.x, y: a.y, w: a.w, segs: a.segs, total: a.total, unit: a.unit, size: a.size || 14, color: a.fill, id: a.id, interactive });
+const addTag = (a, interactive) => a.kind === 'north' ? northTag(a, interactive) : a.kind === 'scale' ? scaleTag(a, interactive) : a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
 function insertAdds(svg, _els, adds, interactive) {
   if (!adds || !adds.length) return svg;
-  const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table'));
+  const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'north' || a.kind === 'scale'));
   if (!valid.length) return svg;
   const back = valid.filter((a) => a.behind).map((a) => addTag(a, interactive)).join('');
   const front = valid.filter((a) => !a.behind).map((a) => addTag(a, interactive)).join('');
@@ -261,6 +271,11 @@ export function editRotate(edits, id, angle, geom, sig, about) {
 // 내 이미지: x,y,w,h 의 가운데를 중심으로 rot 만큼 그린다. 여러 개를 함께 돌릴 때는 about(그림 좌표) 둘레로 가운데가 옮겨 간다
 export function editRotateAdd(edits, id, angle, about) {
   const a = (edits?.adds || []).find((q) => q.id === id); if (!a) return edits;
+  if (a.kind === 'scale') { // 축척 막대는 기울지 않는다. 함께 돌릴 때는 막대 가운데를 묶음 중심 둘레로 옮긴다
+    if (!about) return edits;
+    const hh = scaleBarHeight(a.size || 14); const c = rotPt([a.x + a.w / 2, a.y + hh / 2], normDeg(angle) - (a.rot || 0), about);
+    return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...q, x: r2(c[0] - a.w / 2), y: r2(c[1] - hh / 2) } : q)) };
+  }
   if (a.kind === 'table') { // 개요표는 기울지 않는다. 함께 돌릴 때는 표 가운데를 묶음 중심 둘레로 옮긴다
     if (!about) return edits;
     const L = tableLayout(tableOf(a)); const c = rotPt([L.x + L.w / 2, L.y + L.h / 2], normDeg(angle) - (a.rot || 0), about);
@@ -282,6 +297,21 @@ export function editAddTable(edits, sig, { box }) {
   let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
   const k = next.adds.filter((a) => a.kind === 'table').length; const size = r2(Math.max(8, Math.min(box[2], box[3]) * 0.026)); const off = (k % 6) * size * 1.6;
   next.adds.push({ id: `a${n}`, kind: 'table', x: r2(box[0] + box[2] * 0.08 + off), y: r2(box[1] + box[3] * 0.3 + off), size, fill: TABLE_COLOR, table: normalizeTable(SAMPLE_TABLE) });
+  return { edits: next, id: `a${n}` };
+}
+// 방위표·축척 막대 추가: box=[x,y,w,h](놓을 그림 영역) 오른쪽 아래 근처에. 크기는 그림 크기에 맞춘다
+export function editAddNorth(edits, sig, { box, style = 'circle' }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const d = r2(Math.max(36, Math.min(box[2], box[3]) * 0.09));
+  next.adds.push({ id: `a${n}`, kind: 'north', style: NORTH_STYLES.includes(style) ? style : 'circle', x: r2(box[0] + box[2] * 0.88 - d / 2), y: r2(box[1] + box[3] * 0.12 + d * 0.4), w: d, h: d, rot: 0, fill: SYMBOL_COLOR });
+  return { edits: next, id: `a${n}` };
+}
+export function editAddScale(edits, sig, { box }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const size = r2(Math.max(10, Math.min(box[2], box[3]) * 0.022)); const w = r2(Math.max(120, box[2] * 0.22)); const sc = normalizeScale({});
+  next.adds.push({ id: `a${n}`, kind: 'scale', x: r2(box[0] + box[2] * 0.06), y: r2(box[1] + box[3] * 0.9 - scaleBarHeight(size)), w, segs: sc.segs, total: sc.total, unit: sc.unit, size, fill: SYMBOL_COLOR });
   return { edits: next, id: `a${n}` };
 }
 // 아이콘 칩 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에. 놓을 때마다 조금씩 비껴 놓는다

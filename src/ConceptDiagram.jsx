@@ -9,7 +9,11 @@ import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagr
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
 import ScopeGuide, { TypeNote } from './ScopeGuide';
-import { checkScope, catalogById, IMAGE_OTHER_NEAREST } from './conceptDiagram/scope';
+import { checkScope, catalogById, IMAGE_OTHER_NEAREST, looksLikeCards, looksLikeTable } from './conceptDiagram/scope';
+import TableEditor from './TableEditor';
+import { normalizeTableDoc } from './conceptDiagram/tabledoc';
+import CardBoardForm from './CardBoardForm';
+import { CARD_PRESETS, normalizeCards, cardsInitialEdits, cardsRebase, cardsHeroAdds, renderCards } from './conceptDiagram/cardboard';
 import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
 import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
 import { cancelPendingPaste, imagesFromClipboard } from './conceptDiagram/clip';
@@ -29,7 +33,7 @@ const skCachePut = (k, v) => {
 };
 import SketchEditor from './SketchEditor';
 import SvgEditor from './SvgEditor';
-import { applyEdits, hasEdits, scanSvg, editAddImage } from './conceptDiagram/svgedit';
+import { applyEdits, hasEdits, scanSvg, editAddImage, emptyEdits, rebaseEdits } from './conceptDiagram/svgedit';
 import { mergeRegionWinds, mergeRegionZones } from './conceptDiagram/regionMerge';
 
 // 다이어그램 만들기 — 입력은 두 가지뿐: (1) 텍스트만, (2) 참고 이미지 + 텍스트.
@@ -167,6 +171,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [subjectUse, setSubjectUse] = useState('read'); // 'read' = 형태를 읽어서 다시 그림 / 'asis' = 이미지를 그대로 바탕에 깔기
   const [styleImage, setStyleImage] = useState(null); // 스타일 참고 이미지: 이런 느낌·구성으로
   const [forcedType, setForcedType] = useState('auto');
+  const [cardsPreset, setCardsPreset] = useState('plan'); // 카드 보드 시작 틀(plan 계획 요약형 / system 설비·시스템형)
   const [model, setModel] = useState(AI_MODELS[0].id);
   const [busy, setBusy] = useState(false);
   const [staleText, setStaleText] = useState(false); // 소재 이미지를 바꿨는데 설명이 이전 그림에 쓴 것 그대로일 때
@@ -249,6 +254,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 편집을 크게: ① 편집 집중(편집기가 전체 폭, 페이지는 위쪽 띠) ② 설정 패널 접기 ③ 나란히 보기의 분할선(편집기 몫). 모두 이 브라우저에 기억한다
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } };
   const [focusEdit, setFocusEdit] = useState(() => lsGet('cd_focus_edit', '0') === '1');
+  const [leftTab, setLeftTab] = useState(() => { try { const v = localStorage.getItem('cd_left_tab'); return ['make', 'page', 'edit'].includes(v) ? v : 'make'; } catch { return 'make'; } }); // 왼쪽 패널 단계 탭(① 만들기 ② 페이지 ③ 내용 수정)
+  useEffect(() => { try { localStorage.setItem('cd_left_tab', leftTab); } catch { /* 저장 없이 진행 */ } }, [leftTab]);
   const [leftHidden, setLeftHidden] = useState(() => lsGet('cd_left_hidden', '0') === '1');
   const [splitR, setSplitR] = useState(() => { const v = Number(lsGet('cd_split_r', '')); return v >= 0.3 && v <= 0.85 ? v : SPLIT_DEFAULT; });
   useEffect(() => { try { localStorage.setItem('cd_focus_edit', focusEdit ? '1' : '0'); localStorage.setItem('cd_left_hidden', leftHidden ? '1' : '0'); localStorage.setItem('cd_split_r', String(Math.round(splitR * 1000) / 1000)); } catch { /* 저장 없이 진행 */ } }, [focusEdit, leftHidden, splitR]);
@@ -259,12 +266,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   }, []);
   const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
-    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
-    try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '', kicker: '', pageNo: '', cellMeta: {} }; } catch { return d; } // 구분 라벨·쪽번호·칸 설명은 제목처럼 기억하지 않는다(프로젝트명·라벨 접두어·강조색은 기억)
+    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', corner: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
+    try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '', kicker: '', corner: '', pageNo: '', cellMeta: {} }; } catch { return d; } // 구분 라벨·쪽번호·칸 설명은 제목처럼 기억하지 않는다(프로젝트명·라벨 접두어·강조색은 기억)
   });
   const [cells, setCells] = useState({});     // 칸 번호 → 그 칸의 결과 { type, spec, ... }
   const [selCell, setSelCell] = useState('c1');
-  useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '', kicker: '', pageNo: '', cellMeta: {} } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
+  useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '', kicker: '', corner: '', pageNo: '', cellMeta: {} } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
   const refreshPaid = () => {
     apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
@@ -416,7 +423,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const ids = cellIds(pg.layoutId, pg.custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
       const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId: pg.layoutId, custom: pg.custom, gap: Number(pg.gap) || 0, measure: domMeasure,
-        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };
@@ -512,6 +519,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const setLayout = (patch) => { pushHistory(); setPg((p) => ({ ...p, ...patch })); };
   const onCellMeta = (patch) => { pushHistory('meta'); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), ...patch } } })); }; // 고른 칸의 라벨·설명(label: null 이면 자동 번호로 되돌림)
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
+  const showEditTab = !!result && (result.type === 'cards' || result.type === 'table'); // ③ 구성 수정은 카드·표처럼 구조를 고칠 결과가 있을 때만 — 글자는 그림 위에서 더블클릭으로 고친다
+  useEffect(() => { if (!showEditTab) setLeftTab((t) => (t === 'edit' ? 'make' : t)); }, [showEditTab]);
+  useEffect(() => { if (result && (result.type === 'cards' || result.type === 'table')) setLeftTab((t) => (t === 'make' ? 'edit' : t)); }, [result?.ver]); // eslint-disable-line react-hooks/exhaustive-deps — 카드 보드·개요표는 만든 다음이 폼 수정이다(① 에서 만들었을 때만 자동으로 넘어간다)
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
   const readMode = !!subjectImage && subjectUse === 'read';
@@ -751,14 +761,47 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     return { type: 'layout', spec: { title: parsed.title || '', shapes: read.shapes, panels: Array.isArray(parsed.panels) ? parsed.panels : [] } };
   };
 
+  // ── 카드 보드: 시작 틀 불러오기·폼 수정·이미지 넣기·히어로 라벨 다시 놓기 ──
+  const loadCardsPreset = (id) => { const spec = JSON.parse(JSON.stringify(CARD_PRESETS[id].spec)); setResult({ type: 'cards', spec, edits: cardsInitialEdits(spec), ver: Date.now() }); addToast?.('success', `${CARD_PRESETS[id].label.split(' (')[0]} 예시를 불러왔습니다`, '내용을 폼과 그림 위 더블클릭으로 고치고, 히어로·카드의 이미지 칸에는 내 이미지를 넣을 수 있습니다'); };
+  const loadTableExample = () => { const spec = JSON.parse(JSON.stringify(EXAMPLE_SPECS.table)); setResult({ type: 'table', spec, ver: Date.now() }); addToast?.('success', '예시 개요표를 불러왔습니다', "'표 내용 수정'에서 행·열·스타일을 고치고, 엑셀·한글 표는 그 안의 '붙여넣기' 칸에 붙여넣으세요"); };
+  const tableDocEdit = (patch, key) => { // 개요표 칸 폼 수정(표 내용 patch.table 또는 크기·색): 행이 늘면 그림 구조가 달라지므로 손 수정 위치(ops)만 비운다
+    const now = Date.now();
+    if (!(key && key === lastSvgEdit.current.key && now - lastSvgEdit.current.at < 1000)) { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result?.ver, spec: result?.spec, edits: result?.edits }]; h.future = []; }
+    lastSvgEdit.current = { key, at: now };
+    setResult((r) => { const spec = { ...r.spec, ...patch }; let edits = r.edits; try { edits = rebaseEdits(r.edits, renderSpec('table', spec).svg); } catch { /* 그릴 수 없는 값이면 그대로 */ } return { ...r, spec, edits, isReadPreview: false }; });
+  };
+  const cardsEdit = (spec, key) => { // 폼에서 스펙을 고침: 구조가 바뀌면 손으로 옮긴 도형 위치만 비우고(adds 는 유지), 같은 칸을 1초 안에 계속 고치면 되돌리기를 한 번으로 묶는다
+    const now = Date.now();
+    if (!(key && key === lastSvgEdit.current.key && now - lastSvgEdit.current.at < 1000)) { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result?.ver, spec: result?.spec, edits: result?.edits }]; h.future = []; }
+    lastSvgEdit.current = { key, at: now };
+    setResult((r) => ({ ...r, spec, edits: cardsRebase(r.edits, spec), isReadPreview: false }));
+  };
+  const cardsImage = async (path, file) => {
+    try {
+      const im = await readImageFile(file, imgQ); const cur = result?.spec; if (!cur) return;
+      cardsEdit(setByPath(normalizeCards(cur, { keepEmpty: true }), [...path, 'src'], im.url), '');
+      addToast?.('success', '이미지를 넣었습니다', `${im.w}×${im.h}px · 약 ${im.kb.toLocaleString()}KB — 맞춤(꽉 채우기/전체 보이기)은 폼에서 고릅니다`);
+    } catch (e) { addToast?.('error', '이미지를 넣지 못했습니다', e.message); }
+  };
+  const cardsResetHero = () => { // 히어로 라벨·표를 처음 자리에 다시 놓는다(이전에 놓았던 것만 바꾸고 내 이미지 등은 그대로)
+    if (!result?.spec) return; const spec = normalizeCards(result.spec); const r = renderCards(spec);
+    const keep = (result.edits?.adds || []).filter((a) => a.src !== 'hero'); let n = 1; const used = new Set(keep.map((a) => a.id)); while (used.has(`a${n}`)) n += 1;
+    const fresh = cardsHeroAdds(spec, r.layout, n); const base = result.edits || emptyEdits(r.svg);
+    const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = [];
+    setResult((rs) => ({ ...rs, edits: { ...base, sig: emptyEdits(r.svg).sig, adds: [...keep, ...fresh] }, isReadPreview: false }));
+  };
+
   // 소재 이미지 없음(글/스타일 참고만) 또는 이미지 그대로 바탕
   const generateFromText = async () => {
-    const type0 = asisMode ? 'site' : forcedType;
+    const type0 = asisMode ? 'site' : (forcedType === 'auto' && looksLikeCards(userText) ? 'cards' : forcedType === 'auto' && looksLikeTable(userText) ? 'table' : forcedType);
     const images = [...(subjectImage && asisMode ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
-    const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, style: !!styleImage }), images);
-    const guessed = parsed.steps ? 'massing' : parsed.floors ? 'stack' : parsed.nodes ? 'program' : 'site';
-    const type = asisMode ? 'site' : forcedType !== 'auto' ? forcedType : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
+    const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, style: !!styleImage }, { preset: cardsPreset }), images);
+    const guessed = parsed.bands ? 'cards' : parsed.table ? 'table' : parsed.steps ? 'massing' : parsed.floors ? 'stack' : parsed.nodes ? 'program' : 'site';
+    const type = asisMode ? 'site' : type0 !== 'auto' ? type0 : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
     const { type: _drop, ...spec } = parsed;
+    if (type === 'table') return { type, spec: normalizeTableDoc({ ...spec, title: '' }) }; // 개요표 칸: 제목은 페이지 머리가 쓴다
+    if (type === 'cards') { const sp = normalizeCards({ ...spec, title: '' }); // 제목은 페이지 머리가 쓴다(고치려면 폼의 '보드 제목')
+      return { type, spec: sp, edits: cardsInitialEdits(sp) }; } // 히어로 좌우 설명·개요표는 편집기 요소(끌어 고칠 수 있는 리더선 라벨·표)로 놓는다
     return { type, spec, ...(asisMode ? { baseImage: subjectImage } : {}) };
   };
 
@@ -960,15 +1003,21 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       )}
       <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: leftHidden ? 'none' : 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }} data-testid="left-panel">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)' }}>다이어그램 만들기</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)' }} title="설명만 써도 되고, 소재 이미지(내 건물·도면)와 스타일 참고 이미지(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.">다이어그램 만들기</div>
             <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setLeftHidden(true)} title="이 설정 패널을 접어 오른쪽 편집 화면을 넓힙니다(접어도 내용은 그대로이고, 왼쪽 ▶ 로 다시 펼칩니다)" data-testid="left-close">◀ 접기</button>
           </div>
-          <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
-            설명만 써도 되고, <b>소재 이미지</b>(내 건물·도면)와 <b>스타일 참고 이미지</b>(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.
-          </p>
+          <div style={{ display: 'flex', gap: 4 }} role="tablist" data-testid="left-tabs">
+            {[['make', '① 만들기'], ['page', '② 페이지'], ...(showEditTab ? [['edit', '③ 구성 수정']] : [])].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={leftTab === id} onClick={() => setLeftTab(id)} data-testid={`left-tab-${id}`}
+                style={{ flex: 1, padding: '6px 4px', fontSize: 12, fontWeight: 800, cursor: 'pointer', borderRadius: 7, border: leftTab === id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: leftTab === id ? 'rgba(51,51,153,0.14)' : 'rgba(255,255,255,0.7)', color: leftTab === id ? 'var(--accent-cyan)' : 'var(--text-secondary)', position: 'relative' }}>
+                {label}{id === 'edit' && result && leftTab !== 'edit' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#F28C28' }} /> : null}{id === 'page' && pageOn && leftTab !== 'page' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#2E7D32' }} /> : null}
+              </button>
+            ))}
+          </div>
         </div>
 
+        <div style={{ display: leftTab === 'make' ? 'contents' : 'none' }} data-tab="make">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={slotTitle}>1. 설명</span>
           <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); setScopeNotice(null); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
@@ -987,8 +1036,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </div>
         )}
 
+        <div style={{ display: 'grid', gridTemplateColumns: subjectImage || styleImage ? '1fr' : '1fr 1fr', gap: 8, alignItems: 'start' }} data-testid="image-slots">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={slotTitle}>2. 소재 이미지 (선택) — 이 이미지를 다이어그램으로</span>
+          <span style={slotTitle} title="내 건물·평면·배치도를 올리면 그 이미지를 다이어그램으로 만듭니다">2. 소재 이미지 (선택)</span>
           {subjectImage ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <img src={subjectImage} alt="소재 이미지" style={thumb} />
@@ -1081,14 +1131,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           ) : (
             <button style={dropBtn} onClick={() => subjectFileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickSubject(e.dataTransfer.files?.[0]); }}>
-              🏢 내 건물·평면·배치도 올리기
+              🏢 건물·도면 올리기
             </button>
           )}
           <input ref={subjectFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSubject(e.target.files?.[0]); e.target.value = ''; }} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={slotTitle}>3. 스타일 참고 이미지 (선택) — 이런 느낌으로</span>
+          <span style={slotTitle} title="이미지의 칸 구성과 요소를 보고 비슷한 방식으로 표현합니다. 소재 이미지가 있으면 내용·형태는 소재를 따르고 표현 방식만 참고합니다">3. 스타일 참고 (선택)</span>
           {styleImage ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <img src={styleImage} alt="스타일 참고 이미지" style={thumb} />
@@ -1097,11 +1147,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           ) : (
             <button style={dropBtn} onClick={() => styleFileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickStyle(e.dataTransfer.files?.[0]); }}>
-              🖼️ 비슷한 느낌의 이미지 올리기
+              🖼️ 비슷한 느낌 올리기
             </button>
           )}
           <input ref={styleFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickStyle(e.target.files?.[0]); e.target.value = ''; }} />
-          <p style={slotNote}>이미지의 칸 구성과 요소를 보고 비슷한 방식으로 표현합니다. 소재 이미지가 있으면 내용·형태는 소재를 따르고, 표현 방식만 참고합니다.</p>
+        </div>
+
         </div>
 
         {!subjectImage && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1112,20 +1163,24 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </select>
         </div>}
         {!subjectImage && forcedType !== 'auto' && <TypeNote id={forcedType} />}
+        {!subjectImage && forcedType === 'table' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} data-testid="table-start-row">
+            <button style={btn(false, busy)} disabled={busy} onClick={loadTableExample} data-testid="table-load-example">예시 표로 시작</button>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.45, flex: 1, minWidth: 160 }}>엑셀·한글 표는 만든 뒤 "표 내용 수정"의 붙여넣기 칸에 붙여넣으세요.</span>
+          </div>
+        )}
+        {!subjectImage && forcedType === 'cards' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} data-testid="cards-preset-row">
+            <span style={{ ...slotTitle, whiteSpace: 'nowrap' }}>시작 틀</span>
+            <select value={cardsPreset} onChange={(e) => setCardsPreset(e.target.value)} style={{ ...inputBase, flex: 1, minWidth: 140 }} data-testid="cards-preset">
+              {Object.entries(CARD_PRESETS).map(([id, pr]) => <option key={id} value={id}>{pr.label}</option>)}
+            </select>
+            <button style={btn(false, busy)} disabled={busy} onClick={() => loadCardsPreset(cardsPreset)} title={CARD_PRESETS[cardsPreset].hint} data-testid="cards-load-example">예시 내용으로 시작</button>
+          </div>
+        )}
         <ScopeGuide forcedType={forcedType} onPick={subjectImage ? null : (id) => setForcedType(id)} />
 
-        <div onPointerDownCapture={() => { ctxRef.current = 'page'; }}>
-        <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
-          selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
-          onMoveContent={moveCellContent} selMeta={pg.cellMeta?.[selCell] || {}} autoLabel={autoCellLabels(getCells(pg.layoutId, pg.custom), pg.labelPrefix)[selCell] || ''} onCellMeta={onCellMeta} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
-        </div>
-        {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <select value={model} onChange={(e) => setModel(e.target.value)} style={inputBase} title="AI 모델">
-            {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-          <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           {scopeNotice && (
             <div style={{ border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="scope-notice">
               {scopeNotice.kind === 'text' ? (<>
@@ -1153,6 +1208,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               </>)}
             </div>
           )}
+          <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
           </button>
@@ -1184,6 +1240,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               )}
             </div>
           )}
+          <details data-testid="advanced-make">
+            <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>고급 설정 (AI 모델)</summary>
+            <div style={{ marginTop: 6 }}>
+              <select value={model} onChange={(e) => setModel(e.target.value)} style={inputBase} title="AI 모델">
+                {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </div>
+          </details>
         </div>
 
         {coverage.length > 0 && (
@@ -1207,19 +1271,43 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           </div>
         )}
 
-        {result && result.type !== 'sketch' && fields.length > 0 && (
-          <details>
-            <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>글자 수정 (AI 재호출 없이 즉시 반영)</summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-              {fields.map((f) => (
-                <label key={f.path.join('.')} style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>
-                  {f.label}
-                  <input style={inputBase} value={f.value} onChange={(e) => setResult({ ...result, spec: setByPath(result.spec, f.path, e.target.value) })} />
-                </label>
-              ))}
+        </div>
+
+        <div style={{ display: leftTab === 'page' ? 'contents' : 'none' }} data-tab="page">
+        <div onPointerDownCapture={() => { ctxRef.current = 'page'; }}>
+        <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
+          selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
+          onMoveContent={moveCellContent} selMeta={pg.cellMeta?.[selCell] || {}} autoLabel={autoCellLabels(getCells(pg.layoutId, pg.custom), pg.labelPrefix)[selCell] || ''} onCellMeta={onCellMeta} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
+        </div>
+        {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
+
+        </div>
+
+        <div style={{ display: leftTab === 'edit' ? 'contents' : 'none' }} data-tab="edit">
+        {result && result.type === 'table' && (() => { const td = normalizeTableDoc(result.spec); return (
+          <details data-testid="table-form-details">
+            <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>표 구성 (행·열·스타일·엑셀 붙여넣기)</summary>
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5, background: 'rgba(242,140,40,0.1)', border: '1px solid #FCD9A8', borderRadius: 6, padding: '6px 8px' }} data-testid="td-hint">✏️ <b>표 안의 글자는 오른쪽 그림에서 더블클릭</b>해서 바로 고칩니다. 여기서는 행·열·스타일을 바꾸거나 엑셀 표를 붙여넣습니다.</div>
+              <TableEditor table={td.table} onChange={(tb, key) => tableDocEdit({ table: tb }, key)} testid="td" compact />
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>글자 크기 {td.size}
+                <input type="range" min="10" max="40" step="1" value={td.size} onChange={(e) => tableDocEdit({ size: Number(e.target.value) }, 'size')} data-testid="td-size" />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>색(제목 띠·선)
+                <input type="color" value={td.accent} onChange={(e) => tableDocEdit({ accent: e.target.value }, 'accent')} style={{ width: 38, height: 26, padding: 0, border: '1px solid var(--border-color)', borderRadius: 5, background: '#fff' }} data-testid="td-accent" />
+              </label>
             </div>
           </details>
+        ); })()}
+
+        {result && result.type === 'cards' && (
+          <details data-testid="cards-form-details">
+            <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>카드 보드 구성 (띠·카드·아이콘·이미지)</summary>
+            <div style={{ marginTop: 8 }}><CardBoardForm spec={result.spec} onChange={cardsEdit} onImage={cardsImage} onResetHero={cardsResetHero} disabled={busy} /></div>
+          </details>
         )}
+
+        </div>
       </div>
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
