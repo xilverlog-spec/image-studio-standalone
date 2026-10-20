@@ -517,10 +517,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       <div style={{ width: 380, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'var(--bg)' }}>
         {easy ? (
           <>
-            <div ref={topRef} style={card}>
-              <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 이지 모드</div>
-              <p style={hint}>모델링 이미지를 올리고 원하는 모습을 글로 적으면 바로 실사 조감도로 만들어 줍니다. 건물 형태는 최대한 그대로 유지합니다. 참고할 사진이 있으면 함께 첨부하고, 글에 "이미지 2에서는 재질을 참고해서"처럼 적어 주세요.</p>
-            </div>
+            <div ref={topRef} /> {/* 생성 뒤 맨 위로 스크롤하는 자리(안내 문구는 뺐다) */}
             {easyImageBlock}
             <div style={card}>
               <span style={label}>2. 만들고 싶은 모습 (한글 가능)</span>

@@ -6,7 +6,7 @@ import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
 import ImageCropDialog from './ImageCropDialog';
 import ZoomView from './ZoomView';
-import { editRotate, editRotateAdd, editAddBadge, editRenumber, editAddCallout, editAddIcon, editAddTable, editAddNorth, editAddScale, addShiftPatch } from './conceptDiagram/svgedit';
+import { editRotate, editRotateAdd, editAddBadge, editRenumber, editAddCallout, editAddDim, editAddIcon, editAddTable, editAddNorth, editAddScale, addShiftPatch } from './conceptDiagram/svgedit';
 import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { tableSetCell } from './conceptDiagram/table';
 import TableEditor from './TableEditor';
@@ -149,9 +149,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     } else if (tag === 'ellipse') {
       o.pts.push({ h: 'o:rx', p: rel(toClient(el, num(el.getAttribute('cx')) + num(el.getAttribute('rx')), num(el.getAttribute('cy')))) }, { h: 'o:ry', p: rel(toClient(el, num(el.getAttribute('cx')), num(el.getAttribute('cy')) + num(el.getAttribute('ry')))) });
     }
-    const coAdd = (E.adds || []).find((a) => a.id === sel && a.kind === 'callout');
-    if (coAdd) o.pts.push({ h: 'tip:0', p: rel(toClient(el, coAdd.tx, coAdd.ty)) }); // 리더선 라벨: 끝점(가리키는 곳) 손잡이
-    if (!isBg(sel) && !(E.adds || []).some((a) => a.id === sel && (a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'scale'))) { try { const bb = el.getBBox(); const na = (E.adds || []).find((a) => a.id === sel && a.kind === 'north'); /* 방위표는 원의 가운데 둘레로 돈다 */ const cc = na ? rel(toClient(el, na.x + na.w / 2, na.y + na.h / 2)) : rel(toClient(el, bb.x + bb.width / 2, bb.y + bb.height / 2)); o.rotC = cc; o.rot = [cc[0], o.box[1] - 30]; } catch { /* 숨긴 요소 등은 회전 손잡이 없이 */ } } // 돌리는 중심 = 도형 가운데(돌아가 있어도 보이는 가운데)
+    const coAdd = (E.adds || []).find((a) => a.id === sel && (a.kind === 'callout' || a.kind === 'dim'));
+    if (coAdd) o.pts.push({ h: 'tip:0', p: rel(toClient(el, coAdd.tx, coAdd.ty)) }); // 리더선 라벨: 끝점(가리키는 곳) 손잡이 · 치수선: 둘째 끝점
+    if (coAdd && coAdd.kind === 'dim') o.pts.push({ h: 'dp:0', p: rel(toClient(el, coAdd.x, coAdd.y)) }); // 치수선: 첫 끝점
+    if (!isBg(sel) && !(E.adds || []).some((a) => a.id === sel && (a.kind === 'badge' || a.kind === 'callout' || a.kind === 'dim' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'scale'))) { try { const bb = el.getBBox(); const na = (E.adds || []).find((a) => a.id === sel && a.kind === 'north'); /* 방위표는 원의 가운데 둘레로 돈다 */ const cc = na ? rel(toClient(el, na.x + na.w / 2, na.y + na.h / 2)) : rel(toClient(el, bb.x + bb.width / 2, bb.y + bb.height / 2)); o.rotC = cc; o.rot = [cc[0], o.box[1] - 30]; } catch { /* 숨긴 요소 등은 회전 손잡이 없이 */ } } // 돌리는 중심 = 도형 가운데(돌아가 있어도 보이는 가운데)
     setOv(o);
   }, [view.svg, sel, multi, node, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const h = hostRef.current; if (!h || typeof ResizeObserver === 'undefined') return undefined; const ro = new ResizeObserver(() => setTick((n) => n + 1)); ro.observe(h); return () => ro.disconnect(); }, []);
@@ -331,7 +332,11 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       commit(editMoveTo(d.base, d.id, d.t0[0] + dx, d.t0[1] + dy, sig), `drag:${d.id}`); return;
     }
     const p = through(d.inv, e.clientX, e.clientY); const dv = [p[0] - d.start[0], p[1] - d.start[1]];
-    if (d.kind === 'tip') { commit(editUpdateAdd(d.base, d.id, { tx: r2(p[0]), ty: r2(p[1]) }), d.key); return; } // 리더선 라벨의 끝점
+    if (d.kind === 'tip' || d.kind === 'dp') { // 리더선 라벨의 끝점 · 치수선의 두 끝점(Shift: 다른 끝점과 가로 또는 세로로 맞춤)
+      const a0 = (d.base.adds || []).find((a) => a.id === d.id); let q = p;
+      if (a0 && a0.kind === 'dim' && e.shiftKey) { const o = d.kind === 'tip' ? [a0.x, a0.y] : [a0.tx, a0.ty]; q = Math.abs(p[0] - o[0]) >= Math.abs(p[1] - o[1]) ? [p[0], o[1]] : [o[0], p[1]]; }
+      commit(editUpdateAdd(d.base, d.id, d.kind === 'tip' ? { tx: r2(q[0]), ty: r2(q[1]) } : { x: r2(q[0]), y: r2(q[1]) }), d.key); return;
+    }
     let set = null;
     if (d.tag === 'path') {
       const i = Number(d.arg);
@@ -381,6 +386,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const b = bodyRef.current; const t = textAtPoint(b, e.clientX, e.clientY); if (!t) return;
     const gE = t.closest?.('[data-eid]'); const bd = gE ? (Eref.current.adds || []).find((a) => a.id === gE.getAttribute('data-eid') && a.kind === 'badge') : null;
     if (bd) { e.preventDefault(); e.stopPropagation(); setEd({ field: { value: bd.text }, target: t, addId: bd.id }); return; } // 번호 마커의 숫자
+    const dm = gE ? (Eref.current.adds || []).find((a) => a.id === gE.getAttribute('data-eid') && a.kind === 'dim') : null;
+    if (dm) { e.preventDefault(); e.stopPropagation(); setEd({ field: { value: dm.text }, target: t, addId: dm.id, addKey: 'text' }); return; } // 치수선의 치수 글자
     const co = gE ? (Eref.current.adds || []).find((a) => a.id === gE.getAttribute('data-eid') && a.kind === 'callout') : null;
     if (co) { e.preventDefault(); e.stopPropagation(); const isDesc = normText(t.textContent) !== normText(co.title); setEd({ field: { value: isDesc ? co.desc : co.title, multiline: isDesc }, target: t, addId: co.id, addKey: isDesc ? 'desc' : 'title' }); return; } // 리더선 라벨의 제목·설명
     const mine = shapeOf(t.getAttribute('data-eid')); // 내가 그린 글자: 그 자리에서 고친다(그림의 글자 목록과 상관없음)
@@ -479,6 +486,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const addIcon = () => { // 아이콘 칩을 그림 한가운데 근처에 넣고 바로 고른다(아이콘은 속성에서 바꾼다)
     const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
     const r = editAddIcon(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
+  };
+  const addDim = () => { // 치수선(두 지점 사이 거리를 적는 선)을 그림 아래쪽 가운데에 넣고 바로 고른다
+    const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
+    const r = editAddDim(Eref.current, sigRef.current, { box }); commit(r.edits); setSel(r.id); setMulti([]); setNode(-1);
   };
   const addCallout = () => { // 리더선 라벨(제목+설명+끝점 있는 안내선)을 그림 한가운데 근처에 넣고 바로 고른다
     const vb = (svg.match(/viewBox="([\d.\-\s]+)"/) || [])[1]?.trim().split(/\s+/).map(Number); const box = vb && vb.length === 4 ? vb : [0, 0, 1000, 700];
@@ -677,6 +688,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <button style={smallBtn(false)} onClick={() => addShape('ellipse')} data-testid="sv-add-ellipse">＋ 원</button>
             <button style={smallBtn(false)} onClick={() => addShape('arrow')} data-testid="sv-add-arrow">＋ 화살표</button>
             <button style={smallBtn(false)} onClick={addMarker} data-testid="sv-add-marker" title="검은 원 안의 흰 숫자(번호는 자동으로 1, 2, 3…)">＋ 번호</button>
+            <button style={smallBtn(false)} onClick={addDim} data-testid="sv-add-dim" title="두 지점 사이의 거리를 적는 선(예: 12,000 · 30m). 양 끝을 끌어 맞추고 글자는 더블클릭해서 고칩니다">＋ 치수선</button>
             <button style={smallBtn(false)} onClick={addCallout} data-testid="sv-add-callout" title="굵은 제목 + 설명 + 끝점이 있는 안내선">＋ 리더선</button>
             <button style={smallBtn(false)} onClick={addIcon} data-testid="sv-add-icon" title="색 칩 안의 아이콘(건물·설비·에너지·안전·주거·동선 등 100여 개 중에서 고름)">＋ 아이콘</button>
             <button style={smallBtn(false)} onClick={addTable} data-testid="sv-add-table" title="건축개요·면적표 같은 라벨–값 표(2~4열)">＋ 표</button>
@@ -785,6 +797,22 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-badge-delete">삭제</button>
+            </div>
+          </div>
+        )}
+
+        {sel && multi.length < 2 && myAdd && myAdd.kind === 'dim' && (
+          <div style={sec} data-testid="sv-dim-props">
+            <span style={title}>선택: 치수선 ({sel})</span>
+            <label style={lab}>치수 글자(예: 12,000 · 30m)<input style={input} value={myAdd.text} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { text: e.target.value }), `${sel}:text`)} data-testid="sv-dim-text" /></label>
+            <label style={lab}>글자 크기 {r2(myAdd.size)}
+              <input type="range" min="6" max="120" step="1" value={Math.min(120, Math.max(6, myAdd.size))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:size`)} data-testid="sv-dim-size" />
+            </label>
+            <div style={lab}>색<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>양 끝의 <b>주황 점</b>을 끌어 길이와 방향을 맞춥니다(Shift: 가로·세로로 고정). 치수 글자는 <b>더블클릭</b>해서 고칩니다. 그림을 끌면 통째로 움직입니다.</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} onClick={() => { setSel(''); }}>선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={remove} data-testid="sv-dim-delete">삭제</button>
             </div>
           </div>
         )}
@@ -905,7 +933,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           </div>
         )}
 
-        {sel && multi.length < 2 && myAdd && myAdd.kind !== 'badge' && myAdd.kind !== 'callout' && myAdd.kind !== 'icon' && myAdd.kind !== 'table' && myAdd.kind !== 'north' && myAdd.kind !== 'scale' && (
+        {sel && multi.length < 2 && myAdd && myAdd.kind !== 'badge' && myAdd.kind !== 'callout' && myAdd.kind !== 'dim' && myAdd.kind !== 'icon' && myAdd.kind !== 'table' && myAdd.kind !== 'north' && myAdd.kind !== 'scale' && (
           <div style={sec} data-testid="sv-img-props">
             <span style={title}>선택: 내 이미지 ({sel})</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>끌어서 옮기고, 모서리 네모 점을 끌어 크기를 바꿉니다(원본 비율 유지, Shift: 자유롭게).</p>
@@ -1022,7 +1050,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <button style={smallBtn(false)} onClick={lineToCurve} data-testid="sv-line2curve" title="이 직선을 휘는 곡선으로 바꿉니다(바꾼 뒤 주황 점으로 모양을 고칩니다)">∿ 곡선으로 바꾸기</button>
             )}
 
-            {!isBg(sel) && rotPanel(true)}
+            {!isBg(sel) && !(myAdd && myAdd.kind === 'dim') && rotPanel(true)}
             <div style={{ ...lab, gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }}>
               <span style={title}>위치 {tr[0] || tr[1] ? `(이동 ${r2(tr[0])}, ${r2(tr[1])})` : ''}</span>
               {!isBg(sel) && (

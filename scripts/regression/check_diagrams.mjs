@@ -60,6 +60,7 @@ export { editAddNorth, editAddScale } from ${fwd(svgeditJs)};
 export { editRotate, editRotateAdd } from ${fwd(svgeditJs)};
 export { editScale, addScalePatch, opTransformStr, SCALE_MIN, SCALE_MAX } from ${fwd(svgeditJs)};
 export { scaleLineSpacing, editLineSpacing, LH_MIN, LH_MAX } from ${fwd(svgeditJs)};
+export { HEAD_ALIGNS, HEAD_LS_MIN, HEAD_LS_MAX } from ${fwd(pageJs)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
@@ -1221,6 +1222,68 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const E5 = m.editSet(E0, 'e0', { 'text-anchor': 'middle', 'letter-spacing': '2' }, sig); const o5 = m.applyEdits(svg, E5).svg; expect(/<text[^>]*text-anchor="middle"[^>]*letter-spacing="2"|<text[^>]*letter-spacing="2"[^>]*text-anchor="middle"/.test(o5), '정렬(text-anchor)·자간(letter-spacing)은 속성으로 그려짐'); const E6 = m.editSet(E5, 'e0', { 'letter-spacing': null }, sig); expect(!/letter-spacing/.test(m.applyEdits(svg, E6).svg), '자간을 0 으로 하면 속성이 빠짐(null)'); }
   { const f = m.scaleLineSpacing('<tspan x="1" dy="1.2em">a</tspan><tspan x="1" dy="1.2em">b</tspan>', 1.5); expect(/dy="1.8em"/.test(f) && (f.match(/dy="1.8em"/g) || []).length === 2, 'em 단위 줄 간격도 배수(1.2em → 1.8em)'); expect(m.scaleLineSpacing('', 2) === '' && m.scaleLineSpacing('글자만', 2) === '글자만', '빈 안쪽·tspan 없는 안쪽은 그대로'); }
   { const o = m.applyEdits(svg, E1, { ids: true }).svg; expect(!/NaN|undefined/.test(o) && (o.match(/<text/g) || []).length === 3, '편집 화면용 그림에도 NaN 이 없고 글자 수가 그대로'); }
+}
+// 글자 정렬·자간·행간(R11): 손스케치 글자 메모·리더선, 구조형 리더선
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`글자 서식(손스케치·리더선): ${label}`); };
+  const near = (a, b, e = 0.05) => Math.abs(a - b) <= e;
+  const mk = (memos) => m.normalizeSketch({ style: 'concept', blocks: [{ id: 'b1', rect: [10, 10, 60, 50] }], memos });
+  const N = mk([{ id: 'm1', x: 30, y: 30, text: '왼쪽', size: 16, align: 'start', ls: 3 }, { id: 'm2', x: 30, y: 40, text: '가운데', size: 16, align: 'middle' }, { id: 'm3', x: 30, y: 50, text: '이상', size: 16, align: 'zz', ls: 999 }, { id: 'm4', x: 30, y: 60, text: '0', size: 16, ls: 0 }, { id: 'm5', x: 30, y: 70, text: '오른쪽', size: 16, align: 'end', ls: -9 }]);
+  const g = (id) => N.memos.find((q) => q.id === id);
+  expect(g('m1').align === 'start' && g('m1').ls === 3, '글자 메모: 왼쪽 정렬·자간 3 이 남음');
+  expect(!('align' in g('m2')) && !('align' in g('m3')) && !('align' in g('m4')), '가운데(기본)·잘못된 정렬 값은 저장하지 않음');
+  expect(g('m3').ls === 30 && !('ls' in g('m4')) && g('m5').ls === -3 && g('m5').align === 'end', '자간은 -3~30 으로 제한, 0 은 저장하지 않음');
+  const o = m.renderSketch(N).svg;
+  const tag = (t) => [...o.matchAll(/<text\b[^>]*>/g)].map((q) => q[0]).find((q) => q.includes('>') && o.slice(o.indexOf(q) + q.length, o.indexOf(q) + q.length + t.length) === t);
+  expect(/text-anchor="start"/.test(tag('왼쪽')) && /letter-spacing="3"/.test(tag('왼쪽')), '왼쪽 정렬·자간이 그림에 그려짐');
+  expect(/text-anchor="middle"/.test(tag('가운데')) && !/letter-spacing/.test(tag('가운데')), '기본은 가운데, 자간 속성 없음');
+  expect(/text-anchor="end"/.test(tag('오른쪽')) && /letter-spacing="-3"/.test(tag('오른쪽')), '오른쪽 정렬·음수 자간');
+  { const B = mk([{ id: 'm1', x: 30, y: 30, text: '1', badge: 'circle', align: 'start', ls: 5 }]); expect(!('align' in B.memos[0]) && !('ls' in B.memos[0]), '번호 마커 같은 글자가 아닌 메모에는 정렬·자간을 붙이지 않음'); }
+  { const sel = m.renderSketch(mk([{ id: 'm1', x: 30, y: 30, text: '왼쪽 정렬', size: 16, align: 'start' }]), { selected: 'm1', interactive: true }).svg; const mm = /<rect x="([\d.-]+)" y="[\d.-]+" width="([\d.]+)" height="[\d.]+" fill="none" stroke="#F28C28"/.exec(sel); const T = /<text x="([\d.-]+)"[^>]*text-anchor="start"/.exec(sel); expect(mm && T && near(Number(mm[1]), Number(T[1]) - 6, 0.2), '왼쪽 정렬 글자의 선택 상자는 글자 왼쪽 끝에서 시작'); }
+  // 리더선
+  const C = mk([{ id: 'm1', x: 40, y: 20, text: '제목', callout: true, desc: '첫째 줄\n둘째 줄', size: 16, tx: 20, ty: 40, align: 'middle', ls: 2, lh: 2 }, { id: 'm2', x: 40, y: 20, text: '제목', callout: true, desc: 'a\nb', size: 16, tx: 20, ty: 40, lh: 1, align: 'x', ls: 0 }, { id: 'm3', x: 40, y: 20, text: '제목', callout: true, desc: 'a\nb', size: 16, tx: 20, ty: 40, lh: 99 }, { id: 'm4', x: 40, y: 20, text: '제목', callout: true, desc: 'a\nb', size: 16, tx: 20, ty: 40, lh: 0.1 }]);
+  const c = (id) => C.memos.find((q) => q.id === id);
+  expect(c('m1').align === 'middle' && c('m1').ls === 2 && c('m1').lh === 2, '리더선: 가운데 정렬·자간·행간 2배가 남음');
+  expect(!('lh' in c('m2')) && !('align' in c('m2')) && !('ls' in c('m2')) && c('m3').lh === 2.5 && c('m4').lh === 0.6, '리더선: 기본값은 저장하지 않고 행간은 0.6~2.5 로 제한');
+  { const base = { x: 100, y: 50, tx: 20, ty: 20, title: '제목', desc: '가\n나\n다', size: 20, color: '#111111', line: 'straight', end: 'dot' };
+    const L1 = m.calloutLayout(base); const L2 = m.calloutLayout({ ...base, lh: 2 }); const L05 = m.calloutLayout({ ...base, lh: 0.5 });
+    const gap = (L) => L.lines[2].y - L.lines[1].y;
+    expect(near(gap(L2) / gap(L1), 2, 0.01) && near(gap(L05) / gap(L1), 0.6, 0.01), '설명 행간 2배: 줄 사이 간격이 정확히 2배, 0.5 는 하한 0.6 배로 제한');
+    expect(near(gap(L2) / gap(L1), 2, 0.01) && gap(L2) > gap(L1) && m.calloutLayout({ ...base, lh: 0.1 }).lines[2].y - m.calloutLayout({ ...base, lh: 0.1 }).lines[1].y < gap(L1), '행간이 커지면 간격이 커지고 아주 작게 해도 줄어들 뿐 뒤집히지 않음');
+    expect(L2.h > L1.h, '행간이 커지면 글 상자도 아래로 길어짐');
+    const Lc = m.calloutLayout({ ...base, align: 'middle' }); const Le = m.calloutLayout({ ...base, align: 'end' });
+    expect(near(Lc.lines[0].x, Lc.x + Lc.w / 2) && near(Le.lines[0].x, Le.x + Le.w) && L1.lines[0].x === L1.x && Lc.lines[0].anchor === 'middle', '정렬: 줄 기준 x 가 왼쪽 끝·가운데·오른쪽 끝');
+    const wide = { ...base, title: '아주 긴 제목 글자입니다', desc: '설명도 꽤 길게 써 봅니다' }; expect(m.calloutLayout({ ...wide, ls: 4 }).w > m.calloutLayout(wide).w, '자간이 있으면 글 상자가 넓어짐(글자가 긴 경우)');
+    const svg = m.calloutSvg({ ...base, align: 'end', ls: 4 }); expect(/text-anchor="end"/.test(svg) && /letter-spacing="4.0"/.test(svg), '리더선 그림에 정렬·자간이 그려짐');
+    expect(!/text-anchor|letter-spacing/.test(m.calloutSvg(base)), '기본 리더선은 예전 그림과 같음(속성 없음)'); }
+  { const sv = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect x="0" y="0" width="10" height="10"/></svg>'; const E = { sig: m.scanSvg(sv).sig, ops: {}, adds: [{ id: 'a1', kind: 'callout', x: 10, y: 10, tx: 80, ty: 60, title: '제', desc: '가\n나', size: 12, fill: '#111111', line: 'straight', end: 'dot', align: 'middle', ls: 2, lh: 1.5 }] };
+    const out = m.applyEdits(sv, E).svg; expect(/text-anchor="middle"/.test(out) && /letter-spacing="2.0"/.test(out), '구조형 리더선도 정렬·자간이 그려짐'); }
+}
+// 글자 정렬·자간(R11): 페이지 머리글(구분 라벨·제목·소제목)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`페이지 머리글 정렬·자간: ${label}`); };
+  const near = (a, b, e = 0.05) => Math.abs(a - b) <= e;
+  const item = [{ id: 'c1', render: { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/></svg>' } }];
+  const mk = (o) => m.composePage({ w: 420, h: 297, medium: 'print' }, item, { title: '내 제목', subtitle: '소제목입니다', kicker: '구분', layoutId: '1x1', ...o });
+  const head = (r) => r.svg.slice(0, r.svg.indexOf('<g') > 0 ? r.svg.indexOf('<g') : 4000);
+  const tx = (r, t) => { const q = [...r.svg.matchAll(/<text\b[^>]*>(?:<tspan[^>]*>)?([^<]*)/g)].find((z) => z[1].includes(t)); return q ? q[0] : ''; };
+  const base = mk({});
+  expect(!/text-anchor|letter-spacing/.test(tx(base, '내 제목')) && base.slots.title.rect[0] > 0, '기본(왼쪽·자간 0)은 예전 그림과 같음: 속성 없음');
+  const c = mk({ headAlign: 'center' }); const r = mk({ headAlign: 'right' });
+  expect(/text-anchor="middle"/.test(tx(c, '내 제목')) && /text-anchor="middle"/.test(tx(c, '소제목입니다')) && /text-anchor="middle"/.test(tx(c, '구분')), '가운데: 구분 라벨·제목·소제목 모두 가운데 기준');
+  expect(/text-anchor="end"/.test(tx(r, '내 제목')), '오른쪽: 오른쪽 끝 기준');
+  const xOf = (r0, t) => Number(/<text x="([\d.]+)"/.exec(tx(r0, t))[1]);
+  expect(xOf(c, '내 제목') > xOf(base, '내 제목') + 50 && xOf(r, '내 제목') > xOf(c, '내 제목') + 50, '왼쪽 < 가운데 < 오른쪽 순으로 x 가 커짐');
+  const sw = (r0, k) => r0.slots[k].rect[2]; const sx = (r0, k) => r0.slots[k].rect[0];
+  expect(near(sx(c, 'title') + sw(c, 'title') / 2, xOf(c, '내 제목'), 0.6) && near(sx(r, 'title') + sw(r, 'title'), xOf(r, '내 제목'), 0.6), '눌러 고치는 자리(slots)가 정렬된 글자를 따라감');
+  expect(sx(base, 'title') < sx(c, 'title') && sx(c, 'title') < sx(r, 'title'), '자리의 왼쪽 끝도 왼쪽 < 가운데 < 오른쪽');
+  const ls = mk({ headLs: 0.1 }); const lsTxt = tx(ls, '내 제목'); const fsv = Number(/font-size="([\d.]+)"/.exec(lsTxt)[1]); const lsv = Number(/letter-spacing="(-?[\d.]+)"/.exec(lsTxt)[1]);
+  expect(near(lsv, 0.1 * fsv, 0.01), '자간 0.1em: 글자 크기의 10% 간격');
+  expect(sw(ls, 'title') > sw(base, 'title'), '자간이 있으면 글자 자리가 넓어짐');
+  const neg = mk({ headLs: -0.05 }); expect(/letter-spacing="-/.test(tx(neg, '내 제목')) && sw(neg, 'title') < sw(base, 'title'), '음수 자간은 좁게');
+  { const x = mk({ headLs: 99, headAlign: 'zz' }); expect(/letter-spacing/.test(tx(x, '내 제목')) && !/text-anchor/.test(tx(x, '내 제목')) && Number(/letter-spacing="([\d.]+)"/.exec(tx(x, '내 제목'))[1]) <= 0.4 * Number(/font-size="([\d.]+)"/.exec(tx(x, '내 제목'))[1]) + 0.01, '잘못된 정렬은 왼쪽, 자간은 최대 0.4em 로 제한'); }
+  { const long = mk({ title: '아주 긴 제목 '.repeat(20), headLs: 0.3, headAlign: 'center' }); expect(long.report.warnings.some((w) => /제목이 길어/.test(w.text)) && !/NaN/.test(long.svg), '글자가 길면 자간을 포함해 폭에 맞춰 줄이고 NaN 이 없음'); }
+  expect(m.HEAD_ALIGNS.join() === 'left,center,right' && m.HEAD_LS_MIN === -0.05 && m.HEAD_LS_MAX === 0.4, '정렬 목록·자간 범위 상수');
 }
 // 번호 마커(R3-2)
 {

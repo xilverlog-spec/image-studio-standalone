@@ -320,8 +320,11 @@ export function scopeIds(svg, prefix) {
   return svg.replace(/(\s)id="([^"]+)"/g, `$1id="${prefix}$2"`).replace(/url\(#([^)]+)\)/g, `url(#${prefix}$1)`).replace(/((?:xlink:)?href)="#([^"]+)"/g, `$1="#${prefix}$2"`);
 }
 
+// 페이지 머리글(구분 라벨·제목·소제목) 서식: 정렬(left|center|right)과 자간(em, -0.05~0.4)
+export const HEAD_ALIGNS = ['left', 'center', 'right'];
+export const HEAD_LS_MIN = -0.05; export const HEAD_LS_MAX = 0.4;
 export function composePage(page, items, opts = {}) {
-  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', corner = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null } = opts;
+  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', corner = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null, headAlign = 'left', headLs = 0 } = opts;
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(accent || '') ? accent : '#F28C28';
   const W = Number(page.w); const H = Number(page.h);
   if (!(W > 20 && H > 20)) throw new Error('용지 크기가 너무 작습니다(가로·세로 20mm 이상).');
@@ -342,14 +345,17 @@ export function composePage(page, items, opts = {}) {
   });
   const lineW = textWidth;
   // 글자 한 줄: 위치(x, 윗선 y), 목표 pt, 가용 폭 → 필요하면 줄여서 그린다. emph 이면 {강조어} 를 강조색 굵게. 반환: { pt(실제), bottom(다음 y), svg }
-  const textLine = (x, y, txt, ptv, weight, color, maxW, key, emph = false) => {
+  const hAlign = HEAD_ALIGNS.includes(headAlign) ? headAlign : 'left'; const hLs = Number.isFinite(Number(headLs)) ? Math.min(HEAD_LS_MAX, Math.max(HEAD_LS_MIN, Number(headLs))) : 0;
+  const textLine = (x, y, txt, ptv, weight, color, maxW, key, emph = false, fmt = null) => {
+    const al = fmt ? fmt.align : 'left'; const ls = fmt ? fmt.ls : 0; // 머리글 줄만 정렬·자간을 받는다
     const parts = emph ? emphParts(txt) : null; const hasEm = !!parts && parts.some((q) => q.em);
     const plain = hasEm ? parts.map((q) => q.t).join('') : String(txt);
-    let fs = ptv * PT_MM; const w = lineW(plain, fs);
+    let fs = ptv * PT_MM; const nCh = [...plain].length; const wOf = (f) => lineW(plain, f) + nCh * ls * f; const w = wOf(fs);
     if (w > maxW) { const k = Math.max(0.6, maxW / w); fs *= k; warnings.push({ level: 'info', text: `${key}이 길어 ${r1(fs / PT_MM)}pt 로 줄였습니다.` }); }
     const base = y + fs * 0.95;
     const inner = hasEm ? parts.map((q) => (q.em ? `<tspan fill="${accentColor}" font-weight="800">${esc(q.t)}</tspan>` : esc(q.t))).join('') : esc(txt);
-    return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, lineW(plain, fs)), svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${inner}</text>` };
+    const ax = al === 'center' ? x + maxW / 2 : al === 'right' ? x + maxW : x;
+    return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, wOf(fs)), svg: `<text x="${ax.toFixed(2)}" y="${base.toFixed(2)}"${al === 'center' ? ' text-anchor="middle"' : al === 'right' ? ' text-anchor="end"' : ''}${ls ? ` letter-spacing="${(ls * fs).toFixed(3)}"` : ''} font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${inner}</text>` };
   };
   let y = mg.t; const textW = W - mg.l - mg.r;
   // 오른쪽 위 도면 라벨: ' / ' 로 나눈 첫 줄은 굵게, 나머지 줄은 작은 회색(예: '종단면도 / SCALE : 1/400'). 제목·구분 라벨이 이 폭만큼 비켜 간다
@@ -360,11 +366,13 @@ export function composePage(page, items, opts = {}) {
     cornerLines.forEach((txt, i) => { const fs = cp[i] * PT_MM; const w = Math.min(textW * 0.4, lineW(txt, fs)); cw = Math.max(cw, w); const base = cy + fs * 0.95; head.push(`<text x="${(W - mg.r).toFixed(2)}" y="${base.toFixed(2)}" text-anchor="end" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${i === 0 ? 800 : 500}" fill="${i === 0 ? '#1f242b' : '#6b7178'}">${esc(txt)}</text>`); cy = base + fs * 0.45; });
     headW = Math.max(textW * 0.3, textW - cw - Math.min(W, H) * 0.03);
   }
+  const headFmt = { align: hAlign, ls: hLs };
+  const slotX = (t) => { const bw = Math.min(textW, t.w + 2); return hAlign === 'center' ? mg.l + (headW - bw) / 2 : hAlign === 'right' ? mg.l + headW - bw : mg.l; }; // 눌러 고치는 자리의 왼쪽 끝(정렬을 따라감)
   const slots = {}; // 제목·소제목이 놓인(또는 놓일) 자리 — 미리보기 위에서 눌러 바로 고칠 수 있게 위치를 알려 준다. rect: [x, y, w, h] mm, has: 지금 글자가 있는지
-  if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', headW, '구분 라벨'); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
-  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', headW, '제목', true); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
+  if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', headW, '구분 라벨', false, headFmt); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
+  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', headW, '제목', true, headFmt); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
   else slots.title = { rect: [mg.l, 0, textW, Math.max(4, mg.t)], has: false, text: '' };
-  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', headW, '소제목', true); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
+  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', headW, '소제목', true, headFmt); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
   else if (title) slots.subtitle = { rect: [mg.l, y, textW, Math.max(4, Math.min(W, H) * 0.02 + 1)], has: false, text: '' };
   const box = { x: mg.l, y: y + (title || subtitle ? Math.min(W, H) * 0.02 : 0), w: W - mg.l - mg.r, h: 0 };
   box.h = H - box.y - mg.b;

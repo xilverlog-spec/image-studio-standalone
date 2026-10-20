@@ -13,6 +13,7 @@ import { cropRect, fitInside, normCrop } from './imgutil';
 import { normDeg, rotPt, parseTransform, applyMat, rotRectKeep } from './rotate';
 import { badgeInk, assignNumbers, badgeFontK, BADGE_COLOR } from './marker';
 import { calloutSvg, calloutLayout, CALLOUT_COLOR } from './callout';
+import { dimSvg, DIM_COLOR, DIM_DEFAULT_TEXT } from './dim';
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx } from './imgfx';
@@ -149,6 +150,8 @@ const badgeTag = (a, interactive) => {
 };
 // 리더선 라벨: { id, kind:'callout', x, y(글 상자 왼쪽 위), tx, ty(가리키는 끝점), title, desc, size, fill(색), line:'straight'|'elbow', end:'dot'|'arrow'|'none' }
 const calloutOf = (a) => ({ x: a.x, y: a.y, tx: a.tx, ty: a.ty, title: a.title, desc: a.desc, size: a.size, line: a.line, end: a.end, color: a.fill, align: a.align, ls: a.ls, lh: a.lh });
+// 치수선: { id, kind:'dim', x, y(첫 끝점), tx, ty(둘째 끝점), text('12,000'·'30m'), size, fill(색) }
+const dimTag = (a, interactive) => dimSvg({ x: a.x, y: a.y, tx: a.tx, ty: a.ty, text: a.text, size: a.size, color: a.fill }, { id: a.id, interactive, font: FONT });
 const calloutTag = (a, interactive) => calloutSvg(calloutOf(a), { id: a.id, interactive, font: FONT });
 // 아이콘 칩: { id, kind:'icon', icon, shape:'rounded'|'circle'|'bare', x, y, w, h(=한 변), fill(칩 색, bare 면 아이콘 색) }
 const iconTag = (a, interactive) => {
@@ -163,10 +166,10 @@ const tableTag = (a, interactive) => tableSvg(tableOf(a), { id: a.id, interactiv
 // 도면 기호: 방위표 { id, kind:'north', style, x, y, w(원 지름), h(=w), rot, fill } · 축척 막대 { id, kind:'scale', x, y(왼쪽 위), w(막대 길이), segs, total, unit, size(글자), fill }
 const northTag = (a, interactive) => northSvg({ cx: a.x + a.w / 2, cy: a.y + a.w / 2, size: a.w, color: a.fill, rot: a.rot || 0, style: NORTH_STYLES.includes(a.style) ? a.style : 'circle', id: a.id, interactive });
 const scaleTag = (a, interactive) => scaleBarSvg({ x: a.x, y: a.y, w: a.w, segs: a.segs, total: a.total, unit: a.unit, size: a.size || 14, color: a.fill, id: a.id, interactive });
-const addTag = (a, interactive) => a.kind === 'north' ? northTag(a, interactive) : a.kind === 'scale' ? scaleTag(a, interactive) : a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
+const addTag = (a, interactive) => a.kind === 'dim' ? dimTag(a, interactive) : a.kind === 'north' ? northTag(a, interactive) : a.kind === 'scale' ? scaleTag(a, interactive) : a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
 function insertAdds(svg, _els, adds, interactive) {
   if (!adds || !adds.length) return svg;
-  const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'north' || a.kind === 'scale'));
+  const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'dim' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'north' || a.kind === 'scale'));
   if (!valid.length) return svg;
   const back = valid.filter((a) => a.behind).map((a) => addTag(a, interactive)).join('');
   const front = valid.filter((a) => !a.behind).map((a) => addTag(a, interactive)).join('');
@@ -320,6 +323,7 @@ export function addScalePatch(a, k, about) {
   const kx = clampK(k[0]); const ky = clampK(k[1]); const km = Math.min(kx, ky);
   const px = (x) => r2(about[0] + (x - about[0]) * kx); const py = (y) => r2(about[1] + (y - about[1]) * ky);
   if (a.kind === 'callout') return { x: px(a.x), y: py(a.y), tx: px(a.tx), ty: py(a.ty), size: r2((a.size || 12) * km) };
+  if (a.kind === 'dim') return { x: px(a.x), y: py(a.y), tx: px(a.tx), ty: py(a.ty), size: r2((a.size || 14) * km) }; // 치수선: 두 끝점은 기준점 둘레로, 글자 크기는 같은 비율로
   if (a.kind === 'table') return { x: px(a.x), y: py(a.y), size: r2((a.size || 12) * km) };
   if (a.kind === 'scale') { const hh = scaleBarHeight(a.size || 14); const nh = scaleBarHeight((a.size || 14) * km); const cx = px(a.x + a.w / 2); const cy = py(a.y + hh / 2); const w = r2(a.w * kx); return { x: r2(cx - w / 2), y: r2(cy - nh / 2), w, size: r2((a.size || 14) * km) }; }
   if (a.kind === 'image') { const cx = px(a.x + a.w / 2); const cy = py(a.y + a.h / 2); const w = r2(a.w * kx); const h = r2(a.h * ky); return { x: r2(cx - w / 2), y: r2(cy - h / 2), w, h }; }
@@ -338,6 +342,10 @@ export function editRotateAdd(edits, id, angle, about) {
     if (!about) return edits;
     const L = tableLayout(tableOf(a)); const c = rotPt([L.x + L.w / 2, L.y + L.h / 2], normDeg(angle) - (a.rot || 0), about);
     return { ...edits, adds: edits.adds.map((q) => (q.id === id ? { ...q, x: r2(c[0] - L.w / 2), y: r2(c[1] - L.h / 2) } : q)) };
+  }
+  if (a.kind === 'dim') { // 치수선 하나는 돌리지 않는다(끝점을 끌어 방향을 정한다). 함께 돌릴 때는 두 끝점을 묶음 중심 둘레로 돌린다
+    if (!about) return edits; const da = normDeg(angle); const p = rotPt([a.x, a.y], da, about); const q = rotPt([a.tx, a.ty], da, about);
+    return { ...edits, adds: edits.adds.map((v) => (v.id === id ? { ...v, x: r2(p[0]), y: r2(p[1]), tx: r2(q[0]), ty: r2(q[1]) } : v)) };
   }
   if (a.kind === 'callout') { // 리더선 라벨은 글이 기울지 않는다. 함께 돌릴 때는 글 상자 가운데와 끝점을 묶음 중심 둘레로 옮긴다
     if (!about) return edits;
@@ -381,6 +389,15 @@ export function editAddIcon(edits, sig, { box, icon = 'map-pin', shape = 'rounde
   return { edits: next, id: `a${n}` };
 }
 // 리더선 라벨 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에 글 상자와 끝점. 글자 크기는 그림 크기에 맞춘다
+// 치수선 추가: box=[x,y,w,h](놓을 그림 영역) 가운데 아래쪽에 가로 치수선 하나. 놓을 때마다 조금씩 비껴 놓는다
+export function editAddDim(edits, sig, { box }) {
+  const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
+  let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
+  const k = next.adds.filter((a) => a.kind === 'dim').length; const size = r2(Math.max(10, Math.min(box[2], box[3]) * 0.028)); const off = (k % 6) * size * 1.8;
+  const cx = box[0] + box[2] / 2; const cy = box[1] + box[3] * 0.72 + off;
+  next.adds.push({ id: `a${n}`, kind: 'dim', x: r2(cx - box[2] * 0.14), y: r2(cy), tx: r2(cx + box[2] * 0.14), ty: r2(cy), text: DIM_DEFAULT_TEXT, size, fill: DIM_COLOR });
+  return { edits: next, id: `a${n}` };
+}
 export function editAddCallout(edits, sig, { box }) {
   const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };
   let n = 1; while (next.adds.some((a) => a.id === `a${n}`)) n += 1;
@@ -389,7 +406,7 @@ export function editAddCallout(edits, sig, { box }) {
   return { edits: next, id: `a${n}` };
 }
 // 끌거나 옮길 때 add 의 자리 변경 조각: 리더선 라벨은 끝점도 함께(PPT 말풍선처럼 통째로). a 는 옮기기 전 값
-export const addShiftPatch = (a, dx, dy) => ({ x: r2(a.x + dx), y: r2(a.y + dy), ...(a.kind === 'callout' ? { tx: r2(a.tx + dx), ty: r2(a.ty + dy) } : {}) });
+export const addShiftPatch = (a, dx, dy) => ({ x: r2(a.x + dx), y: r2(a.y + dy), ...(a.kind === 'callout' || a.kind === 'dim' ? { tx: r2(a.tx + dx), ty: r2(a.ty + dy) } : {}) });
 // 번호 마커 추가: box=[x,y,w,h](놓을 그림 영역) 한가운데 근처에 검은 원(또는 shape:'square')으로. 번호는 다음 번호가 자동으로 붙는다
 export function editAddBadge(edits, sig, { box, shape = 'circle' }) {
   const next = { ...(edits || {}), sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, adds: [...(edits?.adds || [])] };

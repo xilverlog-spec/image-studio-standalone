@@ -203,6 +203,14 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onClear, 
                   <label style={{ ...lab, gridColumn: '1 / 3' }}>페이지 소제목 (선택)<input style={inp} value={pg.subtitle} onChange={(e) => set({ subtitle: e.target.value })} data-testid="page-subtitle" /></label>
                   <label style={{ ...lab, gridColumn: '1 / 3' }} title="제목 위 작은 글자 '| 구조계획 |'">구분 라벨 (선택)<input style={inp} maxLength={30} value={pg.kicker || ''} onChange={(e) => set({ kicker: e.target.value })} data-testid="page-kicker" /></label>
                   <label style={{ ...lab, gridColumn: '1 / 3' }} title="예: 종단면도 / SCALE : 1/400 — ' / ' 로 나누면 첫 줄은 굵게, 나머지는 작은 회색 줄">오른쪽 위 도면 라벨 (선택)<input style={inp} maxLength={60} value={pg.corner || ''} onChange={(e) => set({ corner: e.target.value })} data-testid="page-corner" /></label>
+                  <div style={{ ...lab, gridColumn: '1 / 3' }} data-testid="page-head-fmt">제목·소제목 정렬
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {[['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']].map(([k, t]) => <button key={k} type="button" style={{ ...small((pg.headAlign || 'left') === k), flex: 1 }} onClick={() => set({ headAlign: k })} data-testid={`page-head-align-${k}`}>{t}</button>)}
+                    </div>
+                  </div>
+                  <label style={{ ...lab, gridColumn: '1 / 3' }} title="제목·소제목 글자 사이 간격(글자 크기 대비). 음수는 좁게">제목·소제목 자간 {Math.round((Number(pg.headLs) || 0) * 100)}%
+                    <input type="range" min="-5" max="40" step="1" value={Math.round((Number(pg.headLs) || 0) * 100)} onChange={(e) => set({ headLs: Number(e.target.value) / 100 })} data-testid="page-head-ls" />
+                  </label>
                   <label style={lab}>프로젝트명 (꼬리말)<input style={inp} maxLength={40} value={pg.project || ''} onChange={(e) => set({ project: e.target.value })} data-testid="page-project" /></label>
                   <label style={lab}>쪽번호 (숫자)<input style={inp} maxLength={4} value={pg.pageNo || ''} onChange={(e) => set({ pageNo: e.target.value })} data-testid="page-no" placeholder="예) 2 → 02" /></label>
                   <label style={lab} title="큰 그림 칸(작은 칸들의 2배 이상)은 번호를 건너뛰고 작은 칸이 01부터 번호를 받습니다">칸 라벨 접두어

@@ -55,7 +55,7 @@ import TableEditor from './TableEditor';
 import { CONTEXT_FX } from './conceptDiagram/imgfx';
 import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { ICON_LABEL } from './conceptDiagram/icons';
-import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip, sketchGScale, sketchUnzoomPt, sketchComposeScale } from './conceptDiagram/sketch';
+import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip, sketchSetDimStart, sketchGScale, sketchUnzoomPt, sketchComposeScale } from './conceptDiagram/sketch';
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
@@ -229,7 +229,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     } else if (d.handle.startsWith('pt:')) next = sketchSetPt(o, d.id, Number(d.handle.slice(3)), pt);
     else if (d.handle === 'amp') next = sketchSetAmp(o, d.id, pt);
     else if (d.handle === 'via') next = sketchSetVia(o, d.id, pt);
-    else if (d.handle === 'tip') next = sketchSetTip(o, d.id, pt); // 리더선 라벨의 끝점(가리키는 곳)
+    else if (d.handle === 'tip') next = sketchSetTip(o, d.id, pt); // 리더선 라벨의 끝점(가리키는 곳) · 치수선의 둘째 끝점
+    else if (d.handle === 'dim1') next = sketchSetDimStart(o, d.id, pt); // 치수선의 첫 끝점
     else if (sketchFind(o, d.id)?.el?.rot) { // 돌아간 도형: 마우스를 도형 기준 좌표로 되돌려 크기를 바꾸고 반대쪽은 제자리(자석은 쓰지 않는다)
       next = sketchResizeBlock(o, d.id, d.handle, pt, { lock: !e.shiftKey });
     } else {
@@ -312,7 +313,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const setRect = (i, v) => { const r = [...sel.el.rect]; r[i] = v; set({ rect: r }, 'rect'); };
 
   const title = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
-  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
+  const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.dim ? '치수선' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
 
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
@@ -377,6 +378,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             <button style={smallBtn(false)} onClick={() => add('opening')}>＋ 개구부</button>
             <button style={smallBtn(false)} onClick={() => add('memo')}>＋ 글자</button>
             <button style={smallBtn(false)} onClick={() => add('marker')} data-testid="add-marker" title="검은 원 안의 흰 숫자(번호는 자동으로 1, 2, 3…)">＋ 번호</button>
+            <button style={smallBtn(false)} onClick={() => add('dim')} data-testid="add-dim" title="두 지점 사이의 거리를 적는 선(예: 12,000 · 30m). 양 끝을 끌어 맞추고 글자는 더블클릭해서 고칩니다">＋ 치수선</button>
             <button style={smallBtn(false)} onClick={() => add('callout')} data-testid="add-callout" title="굵은 제목 + 설명 + 끝점이 있는 안내선">＋ 리더선</button>
             <button style={smallBtn(false)} onClick={() => add('icon')} data-testid="add-icon" title="색 칩 안의 아이콘(건물·설비·에너지·안전·주거·동선 등 100여 개 중에서 고름)">＋ 아이콘</button>
             <button style={smallBtn(false)} onClick={() => add('table')} data-testid="add-table" title="건축개요·면적표 같은 라벨–값 표(2~4열)">＋ 표</button>
@@ -591,6 +593,14 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <div style={lab}>색(바탕)<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
               <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>숫자를 더블클릭해도 고칩니다. 마커를 지우면 뒤 번호가 자동으로 당겨집니다(직접 정한 번호는 그대로).</span>
             </>)}
+            {kind === 'memo' && sel.el.dim && (<>
+              <label style={lab}>치수 글자(예: 12,000 · 30m)<input style={input} value={sel.el.text} onChange={(e) => set({ text: e.target.value }, 'text')} data-testid="dim-text" /></label>
+              <label style={lab}>글자 크기 {sel.el.size}
+                <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} data-testid="dim-size" />
+              </label>
+              <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
+              <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>양 끝의 <b>주황 점</b>을 끌어 길이와 방향을 맞춥니다. 치수 글자는 더블클릭해서 고칩니다.</span>
+            </>)}
             {kind === 'memo' && sel.el.callout && (<>
               <label style={lab}>제목<input style={input} value={sel.el.text} onChange={(e) => set({ text: e.target.value }, 'text')} data-testid="co-title" /></label>
               <label style={lab}>설명 (줄바꿈으로 최대 3줄)
@@ -667,7 +677,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
               <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>막대 길이(화면 위 길이)와 그 길이가 나타내는 실제 길이를 맞춰 쓰세요(예: 막대 220 = 50m).</span>
             </>)}
-            {kind === 'memo' && !sel.el.badge && !sel.el.callout && !sel.el.chip && !sel.el.table && !sel.el.symbol && (<>
+            {kind === 'memo' && !sel.el.badge && !sel.el.callout && !sel.el.dim && !sel.el.chip && !sel.el.table && !sel.el.symbol && (<>
               <label style={lab}>글자<input style={input} value={sel.el.text} onChange={(e) => set({ text: e.target.value }, 'text')} /></label>
               <label style={lab}>크기 {sel.el.size}{ptInfo ? ` · 약 ${Math.round(sel.el.size * ptInfo.ppu * 10) / 10}pt` : ''}
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} />

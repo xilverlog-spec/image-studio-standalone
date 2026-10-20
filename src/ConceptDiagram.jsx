@@ -424,7 +424,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const ids = cellIds(pg.layoutId, pg.custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
       const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId: pg.layoutId, custom: pg.custom, gap: Number(pg.gap) || 0, measure: domMeasure,
-        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };

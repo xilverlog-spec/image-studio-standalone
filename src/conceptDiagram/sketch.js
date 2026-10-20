@@ -14,6 +14,7 @@ import { cropRect, fitInside, normCrop } from './imgutil';
 import { normDeg, rotPt, rectCenter, rectBBox, rotRectKeep, rotCursor } from './rotate';
 import { badgeInk, assignNumbers, badgeFontK, BADGE_SHAPES, BADGE_COLOR } from './marker';
 import { CALLOUT_LINES, CALLOUT_ENDS, calloutSvg, calloutLayout } from './callout';
+import { dimSvg, dimBox, DIM_COLOR, DIM_DEFAULT_TEXT } from './dim';
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx, clampPct } from './imgfx';
@@ -551,7 +552,7 @@ export function normalizeSketch(raw) {
   const memoRaw = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60);
   const tfmt = (m) => ({ ...(m.align === 'start' || m.align === 'end' ? { align: m.align } : m.align === 'middle' && m.callout ? { align: 'middle' } : {}), ...(Number(m.ls) ? { ls: num(m.ls, 0, -3, 30) } : {}) }); // 글자 정렬(왼쪽 start·오른쪽 end, 리더선은 가운데도)·자간
   const lhfmt = (m) => (Number(m.lh) > 0 && Math.abs(Number(m.lh) - 1) > 0.01 ? { lh: num(m.lh, 1, 0.6, 2.5) } : {}); // 리더선 설명 행간 배율
-  const memos = memoRaw.map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) })).map((mm, i) => { const m0 = memoRaw[i]; const plain = !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun'; return plain ? { ...mm, ...tfmt(m0) } : mm.callout ? { ...mm, ...tfmt(m0), ...lhfmt(m0) } : mm; });
+  const memos = memoRaw.map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) })).map((mm, i) => { const m0 = memoRaw[i]; const plain = !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun' && !m0.dim; if (m0.dim && !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun') { const { rot, align, ls, ...rest } = mm; return { ...rest, dim: true, tx: num(m0.tx, mm.x + 20), ty: num(m0.ty, mm.y) }; } return plain ? { ...mm, ...tfmt(m0) } : mm.callout ? { ...mm, ...tfmt(m0), ...lhfmt(m0) } : mm; });
   // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
   const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: String(z.band).slice(0, 12) } : {}) }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
@@ -909,6 +910,12 @@ export function renderSketch(raw, opts = {}) {
       if (selected === m.id) sel.push(`<rect x="${(x - side / 2 - 5).toFixed(1)}" y="${(y - side / 2 - 5).toFixed(1)}" width="${(side + 10).toFixed(1)}" height="${(side + 10).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="${m.chipShape === 'circle' ? (side / 2 + 5).toFixed(1) : 4}"/>`);
       return;
     }
+    if (m.dim) { // 치수선: (x, y) = 첫 끝점, (tx, ty) = 둘째 끝점. 선택하면 점선 틀과 두 끝점 손잡이
+      const [tx, ty] = P([m.tx, m.ty]); const dd = { x, y, tx, ty, text: m.text, size: m.size, color: m.color };
+      o.push(dimSvg(dd, { id: m.id, interactive, font: FONT, halo: concept ? C.bg : '#fff' }));
+      if (selected === m.id) { const b = dimBox(dd); sel.push(`<rect x="${(b[0] - 4).toFixed(1)}" y="${(b[1] - 4).toFixed(1)}" width="${(b[2] - b[0] + 8).toFixed(1)}" height="${(b[3] - b[1] + 8).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`); if (interactive) { dot(m.id, 'dim1', x, y); dot(m.id, 'tip', tx, ty); } }
+      return;
+    }
     if (m.callout) { // 리더선 라벨: (x, y) = 글 상자 왼쪽 위, (tx, ty) = 가리키는 끝점. 선택하면 글 상자에 점선 틀, 끝점에 손잡이
       const [tx, ty] = P([m.tx, m.ty]); const cc = { x, y, tx, ty, title: m.text, desc: m.desc, size: m.size, line: m.line, end: m.end, color: m.color, align: m.align, ls: m.ls, lh: m.lh };
       o.push(calloutSvg(cc, { id: m.id, interactive, font: FONT, halo: concept ? C.bg : '#fff' }));
@@ -1055,6 +1062,10 @@ export function sketchAdd(spec, kind, opt) {
     const id = nextId('m', 'memos'); const k = spec.memos.filter((m) => m.chip).length; const off = (k % 6) * Math.max(h, w) * 0.035; const icon = ICON_NAMES.includes(opt?.icon) ? opt.icon : 'map-pin';
     return { spec: { ...spec, memos: [...spec.memos, { id, x: cx + off, y: cy + off, text: '', size: 16, color: '#222222', chip: icon, chipShape: 'rounded' }] }, id };
   }
+  if (kind === 'dim') { // 치수선: 가운데 아래쪽에 가로 한 줄. 놓을 때마다 조금씩 비껴 놓는다
+    const id = nextId('m', 'memos'); const k = spec.memos.filter((m) => m.dim).length; const off = (k % 6) * Math.max(h, w) * 0.035;
+    return { spec: { ...spec, memos: [...spec.memos, { id, x: cx - w * 0.14, y: cy + h * 0.22 + off, tx: cx + w * 0.14, ty: cy + h * 0.22 + off, text: DIM_DEFAULT_TEXT, size: 14, color: DIM_COLOR, dim: true }] }, id };
+  }
   if (kind === 'callout') { // 리더선 라벨: 글 상자(왼쪽 위)와 끝점. 놓을 때마다 조금씩 비껴 놓는다
     const id = nextId('m', 'memos'); const k = spec.memos.filter((m) => m.callout).length; const off = (k % 6) * Math.max(h, w) * 0.03;
     return { spec: { ...spec, memos: [...spec.memos, { id, x: cx + w * 0.04 + off, y: cy - h * 0.28 + off, text: '제목', desc: '설명을 입력하세요', size: 14, color: '#222222', callout: true, tx: cx - w * 0.06 + off, ty: cy + h * 0.06 + off, line: 'straight', end: 'dot' }] }, id };
@@ -1104,14 +1115,16 @@ const clampN = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export function sketchMoveBy(spec, id, dx, dy) {
   const f = sketchFind(spec, id); if (!f) return spec; const e = f.el;
   if (f.list === 'blocks') return sketchUpdate(spec, id, { rect: [e.rect[0] + dx, e.rect[1] + dy, e.rect[2] + dx, e.rect[3] + dy] });
-  if (f.list === 'memos') return sketchUpdate(spec, id, { x: e.x + dx, y: e.y + dy, ...(e.callout ? { tx: e.tx + dx, ty: e.ty + dy } : {}) });
+  if (f.list === 'memos') return sketchUpdate(spec, id, { x: e.x + dx, y: e.y + dy, ...(e.callout || e.dim ? { tx: e.tx + dx, ty: e.ty + dy } : {}) });
   return sketchUpdate(spec, id, { pts: e.pts.map((p) => [p[0] + dx, p[1] + dy]), ...(e.via ? { via: [e.via[0] + dx, e.via[1] + dy] } : {}) });
 }
 // ── 회전(°, 시계 방향 +) ──
 // 도형·글자는 rot 값을 저장하고 그릴 때 돌린다. 선·화살표는 점을 직접 돌려 저장한다(그래서 '각도'는 시작→끝 방향).
-export function sketchCanRotate(spec, id) { const f = sketchFind(spec, id); return !!f && !(f.list === 'memos' && (f.el.icon === 'sun' || f.el.badge || f.el.callout || f.el.chip || f.el.table || f.el.symbol === 'scale')); }
+export function sketchCanRotate(spec, id) { const f = sketchFind(spec, id); return !!f && !(f.list === 'memos' && (f.el.icon === 'sun' || f.el.badge || f.el.callout || f.el.dim || f.el.chip || f.el.table || f.el.symbol === 'scale')); }
 // 리더선 라벨의 끝점(가리키는 곳)만 옮긴다
-export function sketchSetTip(spec, id, pt) { const f = sketchFind(spec, id); if (!f || !f.el.callout) return spec; return sketchUpdate(spec, id, { tx: pt[0], ty: pt[1] }); }
+export function sketchSetTip(spec, id, pt) { const f = sketchFind(spec, id); if (!f || !(f.el.callout || f.el.dim)) return spec; return sketchUpdate(spec, id, { tx: pt[0], ty: pt[1] }); }
+// 치수선의 첫 끝점(x, y)만 옮긴다
+export function sketchSetDimStart(spec, id, pt) { const f = sketchFind(spec, id); if (!f || !f.el.dim) return spec; return sketchUpdate(spec, id, { x: pt[0], y: pt[1] }); }
 export function sketchRotation(spec, id) {
   const f = sketchFind(spec, id); if (!f) return 0;
   if (f.list === 'blocks' || f.list === 'memos') return f.el.rot || 0;
@@ -1241,7 +1254,7 @@ export function sketchSnapMove(spec, id, dx, dy, tol = 1.4) {
 export function sketchBox(spec, id) {
   const f = sketchFind(spec, id); if (!f) return null; const e = f.el;
   if (f.list === 'blocks') return e.rot ? rectBBox(e.rect, e.rot) : [...e.rect];
-  if (f.list === 'memos') return e.callout ? [Math.min(e.x, e.tx), Math.min(e.y, e.ty), Math.max(e.x, e.tx), Math.max(e.y, e.ty)] : [e.x, e.y, e.x, e.y];
+  if (f.list === 'memos') return e.callout || e.dim ? [Math.min(e.x, e.tx), Math.min(e.y, e.ty), Math.max(e.x, e.tx), Math.max(e.y, e.ty)] : [e.x, e.y, e.x, e.y];
   return bbox(e.pts);
 }
 const allBoxes = (spec, skip) => LISTS.flatMap((l) => (spec[l] || []).filter((e) => e.id !== skip).map((e) => ({ id: e.id, list: l, box: sketchBox(spec, e.id) }))).filter((o) => o.box);
@@ -1317,7 +1330,7 @@ export function sketchMirrorCopy(spec, id, axisV, dir = 'h') {
   const m = (v) => 2 * axisV - v; const e = snap.el; const swap = dir === 'h' ? { left: 'right', right: 'left' } : { top: 'bottom', bottom: 'top' };
   const mp = (p) => (dir === 'h' ? [m(p[0]), p[1]] : [p[0], m(p[1])]);
   if (snap.list === 'blocks') { e.rect = dir === 'h' ? [m(e.rect[2]), e.rect[1], m(e.rect[0]), e.rect[3]] : [e.rect[0], m(e.rect[3]), e.rect[2], m(e.rect[1])]; e.openSides = (e.openSides || []).map((s) => swap[s] || s); if (e.rot) e.rot = normDeg(-e.rot); }
-  else if (snap.list === 'memos') { const p = mp([e.x, e.y]); e.x = p[0]; e.y = p[1]; if (e.callout) { const q = mp([e.tx, e.ty]); e.tx = q[0]; e.ty = q[1]; } if (e.rot) e.rot = normDeg(-e.rot); }
+  else if (snap.list === 'memos') { const p = mp([e.x, e.y]); e.x = p[0]; e.y = p[1]; if (e.callout || e.dim) { const q = mp([e.tx, e.ty]); e.tx = q[0]; e.ty = q[1]; } if (e.rot) e.rot = normDeg(-e.rot); }
   else { e.pts = e.pts.map(mp); if (e.via) e.via = mp(e.via); if (snap.list === 'winds' && typeof e.amp === 'number') e.amp = -e.amp; }
   return sketchPaste(spec, snap, 0, 0);
 }
