@@ -21,6 +21,7 @@ export const PAGE_PRESETS = [
 
 // 페이지 칸 나누기: 칸 하나 = [왼쪽, 위, 오른쪽, 아래] 를 페이지 안쪽 영역(여백을 뺀 곳)의 0~1 비율로 적는다. 칸 번호는 위→아래, 왼쪽→오른쪽 순서.
 const GRID = (cols, rows) => { const out = []; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push([c / cols, r / rows, (c + 1) / cols, (r + 1) / rows]); return out; };
+const BAND = (n, bigH) => [[0, 0, 1, bigH], ...Array.from({ length: n }, (_, i) => [i / n, bigH, (i + 1) / n, 1])]; // 위 큰 칸 1 + 아래 가로 띠 n칸
 export const PAGE_LAYOUTS = [
   { id: '1x1', label: '1칸 (한 장 전체)', cells: GRID(1, 1) },
   { id: '2x1', label: '좌우 2칸', cells: GRID(2, 1) },
@@ -35,6 +36,11 @@ export const PAGE_LAYOUTS = [
   { id: 'T2', label: '위 큰 칸 + 아래 2칸', cells: [[0, 0, 1, 0.62], [0, 0.62, 0.5, 1], [0.5, 0.62, 1, 1]] },
   { id: 'B2', label: '위 2칸 + 아래 큰 칸', cells: [[0, 0, 0.5, 0.38], [0.5, 0, 1, 0.38], [0, 0.38, 1, 1]] },
   { id: 'L3', label: '왼쪽 큰 칸 + 오른쪽 3칸', cells: [[0, 0, 0.55, 1], [0.55, 0, 1, 1 / 3], [0.55, 1 / 3, 1, 2 / 3], [0.55, 2 / 3, 1, 1]] },
+  // 사내 보드(참고 자료)에 많은 틀: 큰 그림 하나 + 아래 가로 띠 소도식 3·4·5칸 / 왼쪽에 세로로 쌓은 이슈 4칸 + 오른쪽 큰 분석 그림
+  { id: 'T3', label: '위 큰 칸 + 아래 띠 3칸', cells: BAND(3, 0.62) },
+  { id: 'T4', label: '위 큰 칸 + 아래 띠 4칸', cells: BAND(4, 0.66) },
+  { id: 'T5', label: '위 큰 칸 + 아래 띠 5칸', cells: BAND(5, 0.7) },
+  { id: 'L4', label: '왼쪽 세로 4칸 + 오른쪽 큰 칸', cells: [...[0, 1, 2, 3].map((i) => [0, i / 4, 0.2, (i + 1) / 4]), [0.2, 0, 1, 1]] },
 ];
 // 'g4x3' 같은 이름은 가로 4 × 세로 3 균등 격자(직접 지정, 최대 6×6)
 export function layoutById(id) {
@@ -139,6 +145,19 @@ export function moveCellContent(items, ids, from, to) {
   return { items: n, swapped: !!b };
 }
 
+// 칸 라벨(예: 'STEP 01') 자동 채움. cells: [{ id, r }] (getCells 결과), prefix: 'STEP'·'ISSUE'·'배치전략'… (비우면 라벨 없음). 반환: { 칸 id → 라벨 글자 | null }
+// 칸이 3개 이상일 때 다른 칸들의 중간 넓이의 2.2배 이상인 '큰 그림 칸'은 번호를 매기지 않고, 나머지(소도식 칸)를 01부터 칸 번호 순서로 센다.
+export const LABEL_PREFIXES = [['', '없음'], ['STEP', 'STEP'], ['ISSUE', 'ISSUE'], ['배치전략', '배치전략']];
+export function autoCellLabels(cells, prefix) {
+  const out = {}; cells.forEach((c) => { out[c.id] = null; });
+  const p = String(prefix || '').trim(); if (!p) return out;
+  const area = (c) => (c.r[2] - c.r[0]) * (c.r[3] - c.r[1]);
+  const big = new Set();
+  if (cells.length >= 3) cells.forEach((c) => { const o = cells.filter((q) => q !== c).map(area).sort((a, b) => a - b); if (area(c) >= 2.2 * o[Math.floor(o.length / 2)]) big.add(c.id); });
+  let n = 0; cells.forEach((c) => { if (big.has(c.id)) return; n += 1; out[c.id] = `${p} ${String(n).padStart(2, '0')}`; });
+  return out;
+}
+
 export function nextCellId(cells) { return `c${cells.reduce((m, c) => Math.max(m, Number(String(c.id).replace(/\D/g, '')) || 0), 0) + 1}`; }
 // 칸을 반으로 나눈다. dir 'v': 좌우로(왼쪽은 그대로 id, 오른쪽이 새 칸), 'h': 위아래로(위쪽 그대로, 아래쪽이 새 칸). 반환: { cells, newId } (12칸을 넘으면 그대로)
 export function splitCell(cells, id, dir) {
@@ -168,9 +187,9 @@ export function bestCols(n, cellAspect, panelW, panelH, maxCols = 3) {
 }
 
 export const FONT_OPTIONS = [
-  { id: 'malgun', label: '맑은 고딕 (Windows 기본 · 기본값)', css: ENGINE_FONT },
+  { id: 'malgun', label: '맑은 고딕 (Windows 기본)', css: ENGINE_FONT },
   { id: 'noto', label: 'Noto Sans KR (본고딕)', css: "'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif" },
-  { id: 'pretendard', label: 'Pretendard', css: "'Pretendard','Malgun Gothic','Noto Sans KR',sans-serif" },
+  { id: 'pretendard', label: 'Pretendard (사내 보드 기본 · 그 PC에 설치돼 있어야 보임)', css: "'Pretendard','Malgun Gothic','Noto Sans KR',sans-serif" },
   { id: 'nanum', label: '나눔고딕', css: "'NanumGothic','Nanum Gothic','Malgun Gothic',sans-serif" },
   { id: 'dotum', label: '돋움', css: "'Dotum','Malgun Gothic',sans-serif" },
   { id: 'batang', label: '바탕 (명조 계열)', css: "'Batang','Noto Serif KR','Malgun Gothic',serif" },
@@ -262,6 +281,34 @@ export function scaleTexts(svg, k) {
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const r1 = (v) => Math.round(v * 10) / 10;
+// 글자 폭 어림(한글·전각은 1em, 그 밖은 0.58em)
+export const textWidth = (s, fs) => [...String(s)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
+// 설명문 줄바꿈: 폭 maxW 안에서 띄어쓰기에서 끊고(긴 낱말은 글자 단위), maxLines 줄을 넘으면 마지막 줄 끝을 '…' 로 줄인다
+export function wrapLines(text, fs, maxW, maxLines = 2) {
+  const lines = []; let cur = '';
+  for (const ch of String(text ?? '').replace(/\s+/g, ' ').trim()) {
+    if (cur && textWidth(cur + ch, fs) > maxW) {
+      const sp = cur.lastIndexOf(' ');
+      if (sp > 0 && ch !== ' ') { lines.push(cur.slice(0, sp)); cur = cur.slice(sp + 1) + ch; } else { lines.push(cur.trimEnd()); cur = ch === ' ' ? '' : ch; }
+    } else cur += ch;
+  }
+  if (cur.trim()) lines.push(cur.trim());
+  if (lines.length > maxLines) {
+    const k = lines.slice(0, maxLines); let last = k[maxLines - 1];
+    while (last && textWidth(`${last}…`, fs) > maxW) last = last.slice(0, -1);
+    k[maxLines - 1] = `${last.trimEnd()}…`; return k;
+  }
+  return lines;
+}
+// 제목 안의 {강조어} 를 나눈다: [{ t, em }]
+export const emphParts = (txt) => String(txt ?? '').split(/(\{[^{}]*\})/).filter((q) => q !== '').map((q) => (/^\{[^{}]*\}$/.test(q) ? { t: q.slice(1, -1), em: true } : { t: q, em: false }));
+// 칸 안쪽 맨 앞의 바탕 사각형(그림 전체를 덮는 것)을 뺀다 → 페이지의 흰 종이 위에 그림만 올라간다
+export function stripBg(inner, vw, vh) {
+  const m = /^\s*<rect\b([^>]*)\/>/.exec(inner); if (!m) return inner;
+  const w = /\bwidth="([\d.]+%?)"/.exec(m[1]); const h = /\bheight="([\d.]+%?)"/.exec(m[1]);
+  const full = (v, tot) => !!v && (v.endsWith('%') ? parseFloat(v) >= 95 : parseFloat(v) >= tot * 0.95);
+  return full(w && w[1], vw) && full(h && h[1], vh) ? inner.slice(m[0].length) : inner;
+}
 
 // items: [{ id:'c1', render:{svg}|null, caption:'', cropTop:0 }] (render 는 제목을 비운 채 그린 것). page: { w, h, medium } (mm).
 // opts: title/subtitle(페이지 제목), fontId, sizes({title,sub,label,small} 사용자가 정한 pt, 비우면 추천값), fill(true: 칸을 꽉 채움 / false: 본문 글자를 목표 pt 에 맞춤), layoutId, gap(mm),
@@ -272,7 +319,8 @@ export function scopeIds(svg, prefix) {
 }
 
 export function composePage(page, items, opts = {}) {
-  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null } = opts;
+  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null } = opts;
+  const accentColor = /^#[0-9a-fA-F]{6}$/.test(accent || '') ? accent : '#F28C28';
   const W = Number(page.w); const H = Number(page.h);
   if (!(W > 20 && H > 20)) throw new Error('용지 크기가 너무 작습니다(가로·세로 20mm 이상).');
   const rec = recommendType({ w: W, h: H, medium: page.medium });
@@ -290,19 +338,23 @@ export function composePage(page, items, opts = {}) {
   [['title', '제목', 'sub', '소제목'], ['sub', '소제목', 'label', '본문'], ['label', '본문', 'small', '작은 글자']].forEach(([a, an, b, bn]) => {
     if (pt[a] <= pt[b]) warnings.push({ level: 'warn', text: `글자 위계가 거꾸로입니다: ${an}(${pt[a]}pt)이 ${bn}(${pt[b]}pt)보다 작거나 같습니다. 제목 > 소제목 > 본문 > 작은 글자 순으로 정하세요(“추천값으로 되돌리기”).` });
   });
-  const lineW = (s, fs) => [...String(s)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
-  // 글자 한 줄: 위치(x, 윗선 y), 목표 pt, 가용 폭 → 필요하면 줄여서 그린다. 반환: { pt(실제), bottom(다음 y), svg }
-  const textLine = (x, y, txt, ptv, weight, color, maxW, key) => {
-    let fs = ptv * PT_MM; const w = lineW(txt, fs);
+  const lineW = textWidth;
+  // 글자 한 줄: 위치(x, 윗선 y), 목표 pt, 가용 폭 → 필요하면 줄여서 그린다. emph 이면 {강조어} 를 강조색 굵게. 반환: { pt(실제), bottom(다음 y), svg }
+  const textLine = (x, y, txt, ptv, weight, color, maxW, key, emph = false) => {
+    const parts = emph ? emphParts(txt) : null; const hasEm = !!parts && parts.some((q) => q.em);
+    const plain = hasEm ? parts.map((q) => q.t).join('') : String(txt);
+    let fs = ptv * PT_MM; const w = lineW(plain, fs);
     if (w > maxW) { const k = Math.max(0.6, maxW / w); fs *= k; warnings.push({ level: 'info', text: `${key}이 길어 ${r1(fs / PT_MM)}pt 로 줄였습니다.` }); }
     const base = y + fs * 0.95;
-    return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, lineW(txt, fs)), svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${esc(txt)}</text>` };
+    const inner = hasEm ? parts.map((q) => (q.em ? `<tspan fill="${accentColor}" font-weight="800">${esc(q.t)}</tspan>` : esc(q.t))).join('') : esc(txt);
+    return { pt: fs / PT_MM, bottom: base + fs * 0.35, w: Math.min(maxW, lineW(plain, fs)), svg: `<text x="${x.toFixed(2)}" y="${base.toFixed(2)}" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${weight}" fill="${color}">${inner}</text>` };
   };
   let y = mg.t; const textW = W - mg.l - mg.r;
   const slots = {}; // 제목·소제목이 놓인(또는 놓일) 자리 — 미리보기 위에서 눌러 바로 고칠 수 있게 위치를 알려 준다. rect: [x, y, w, h] mm, has: 지금 글자가 있는지
-  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', textW, '제목'); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
+  if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', textW, '구분 라벨'); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
+  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', textW, '제목', true); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
   else slots.title = { rect: [mg.l, 0, textW, Math.max(4, mg.t)], has: false, text: '' };
-  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', textW, '소제목'); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
+  if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', textW, '소제목', true); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [mg.l, y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
   else if (title) slots.subtitle = { rect: [mg.l, y, textW, Math.max(4, Math.min(W, H) * 0.02 + 1)], has: false, text: '' };
   const box = { x: mg.l, y: y + (title || subtitle ? Math.min(W, H) * 0.02 : 0), w: W - mg.l - mg.r, h: 0 };
   box.h = H - box.y - mg.b;
@@ -313,6 +365,7 @@ export function composePage(page, items, opts = {}) {
   const frameSvg = frame && Number(frame.w) > 0 ? (() => { const ins = numOr(frame.inset, Math.min(mg.t, mg.b, mg.l, mg.r) / 2); return `<rect x="${ins.toFixed(2)}" y="${ins.toFixed(2)}" width="${(W - 2 * ins).toFixed(2)}" height="${(H - 2 * ins).toFixed(2)}" fill="none" stroke="${/^#[0-9a-fA-F]{6}$/.test(frame.color || '') ? frame.color : '#222222'}" stroke-width="${Number(frame.w).toFixed(3)}"/>`; })() : '';
   const cells = resolveCells(layoutId, box, gap, custom);
   const multi = cells.length > 1;
+  const autoLabels = autoCellLabels(getCells(layoutId, custom), labelPrefix);
   const bg = { v: '#FFFFFF' }; const reports = [];
   cells.forEach((cell, idx) => {
     const item = (items || []).find((i) => i.id === cell.id);
@@ -322,16 +375,37 @@ export function composePage(page, items, opts = {}) {
       reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, empty: true });
       return;
     }
-    let cy = cell.y; let capPt = null; let capRect = null;
+    let cy = cell.y; let capPt = null; let capRect = null; let labRect = null; let descRect = null; let labelText = '';
+    const meta = (multi && cellMeta && cellMeta[cell.id]) || {};
+    if (multi) { // 칸 라벨(선 사이 라벨) → 칸 제목(굵은 한 줄) → 설명(최대 2줄)
+      labelText = meta.label !== undefined && meta.label !== null ? String(meta.label).trim() : (autoLabels[cell.id] || '');
+      if (labelText) {
+        let fs = pt.label * PT_MM * 0.95; const gp = fs * 0.9; const tw0 = textWidth(labelText, fs);
+        if (tw0 + 2 * gp > cell.w) fs *= Math.max(0.6, (cell.w - 2 * gp) / tw0);
+        const tw = textWidth(labelText, fs); const mid = cell.x + cell.w / 2; const ly = cy + fs * 0.78; const rowH = fs * 1.9;
+        const ln = (xa, xb) => `<line x1="${xa.toFixed(2)}" y1="${ly.toFixed(2)}" x2="${xb.toFixed(2)}" y2="${ly.toFixed(2)}" stroke="#8a9099" stroke-width="0.25"/>`;
+        const tick = (xx) => `<line x1="${xx.toFixed(2)}" y1="${ly.toFixed(2)}" x2="${xx.toFixed(2)}" y2="${(ly + fs * 0.7).toFixed(2)}" stroke="#8a9099" stroke-width="0.25"/>`;
+        if (tw + 2 * gp < cell.w) body.push(`${ln(cell.x, mid - tw / 2 - gp)}${ln(mid + tw / 2 + gp, cell.x + cell.w)}${tick(cell.x)}${tick(cell.x + cell.w)}`);
+        body.push(`<text x="${mid.toFixed(2)}" y="${(ly + fs * 0.35).toFixed(2)}" text-anchor="middle" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="500" fill="#5b6168">${esc(labelText)}</text>`);
+        labRect = [cell.x, cy, cell.w, rowH]; cy += rowH;
+      }
+    }
     if (multi && item.caption) { const t = textLine(cell.x, cy, item.caption, pt.sub, 600, '#1f242b', cell.w, `칸 ${idx + 1} 제목`); body.push(t.svg); capRect = [cell.x, cy, Math.min(cell.w, t.w + 2), t.bottom - cy]; cy = t.bottom + Math.min(cell.w, cell.h) * 0.01; capPt = t.pt; }
+    if (multi && String(meta.desc || '').trim()) {
+      if (cell.h < 35 || cell.w < 45) warnings.push({ level: 'info', text: `칸 ${idx + 1}이 작아 설명을 그리지 않았습니다(칸을 키우거나 설명을 지우세요).` });
+      else {
+        const fsd = pt.small * PT_MM; const lh = fsd * 1.4; const lines = wrapLines(meta.desc, fsd, cell.w, 2);
+        lines.forEach((ln2, i) => body.push(`<text x="${cell.x.toFixed(2)}" y="${(cy + fsd * 0.95 + i * lh).toFixed(2)}" font-family="${font}" font-size="${fsd.toFixed(3)}" fill="#555a60">${esc(ln2)}</text>`));
+        descRect = [cell.x, cy, cell.w, lines.length * lh]; cy += lines.length * lh + Math.min(cell.w, cell.h) * 0.01;
+      }
+    }
     const cw = cell.w; const ch = cell.y + cell.h - cy;
     const src = String(item.render.svg);
     const root = src.match(/<svg\b[^>]*\bviewBox="([\d.\-\s]+)"[^>]*>/);
     if (!root) throw new Error('그림의 크기를 읽을 수 없습니다.');
     const [vx0, vy0, vw0, vh0] = root[1].trim().split(/\s+/).map(Number);
     let inner = src.slice(root.index + root[0].length, src.lastIndexOf('</svg>')).split(ENGINE_FONT).join(font);
-    if (!multi) bg.v = (inner.match(/^\s*<rect\b[^>]*\bfill="(#[0-9a-fA-F]{3,8})"/) || [])[1] || bg.v;   // 한 칸짜리면 페이지 바탕을 그림의 바탕색으로
-    else inner = inner.replace(/^\s*<rect\b[^>]*\/>/, '');                                              // 여러 칸이면 칸마다 다른 바탕색이 얼룩지지 않게 바탕을 빼고 흰 페이지 위에 올린다
+    inner = stripBg(inner, vw0, vh0);                                                                    // 페이지 모드: 그림 바탕(크림 등)을 빼고 흰 종이 위에 그림만 올린다(칸마다 다른 바탕색이 얼룩지지 않는다)
     if (multi) inner = scopeIds(inner, `c${idx}_`);                                                       // 여러 칸에 같은 id(화살촉·마스크·무늬)가 겹쳐 서로를 덮어쓰지 않게 칸마다 접두어를 붙인다
     // 보이는 영역: 실제 내용 상자(재면 그것, 약간 여유) → 아니면 제목 자리로 비워 둔 위쪽 띠만 자른다
     let vx = vx0; let vy = vy0; let vw = vw0; let vh = vh0;
@@ -360,10 +434,18 @@ export function composePage(page, items, opts = {}) {
     }
     const cid = `pgclip${idx}`;
     body.push(`<clipPath id="${cid}"><rect x="${ox.toFixed(3)}" y="${oy.toFixed(3)}" width="${ow.toFixed(3)}" height="${oh.toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
-    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
+    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, labRect, descRect, labelText, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
   });
   const first = reports.find((r) => !r.empty);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${bg.v}"/>${frameSvg}${head.join('')}${body.join('')}${over.join('')}</svg>`;
+  // 꼬리말: 오른쪽 아래에 '프로젝트명  02'(쪽번호는 숫자면 두 자리). 아래 여백 안쪽 가운데에 놓는다
+  const projTxt = String(project ?? '').trim(); const noRaw = String(pageNo ?? '').trim(); const noTxt = /^\d+$/.test(noRaw) ? noRaw.padStart(2, '0') : noRaw;
+  let footSvg = '';
+  if (projTxt || noTxt) {
+    const fsf = Math.max(1.5, pt.small * PT_MM * 0.85);
+    if (mg.b < fsf * 1.8) warnings.push({ level: 'info', text: `꼬리말이 들어갈 아래 여백이 좁습니다(${r1(fsf * 1.8)}mm 이상 권장).` });
+    footSvg = `<text x="${(W - mg.r).toFixed(2)}" y="${(H - mg.b / 2 + fsf * 0.35).toFixed(2)}" text-anchor="end" font-family="${font}" font-size="${fsf.toFixed(3)}" fill="#8a9099">${esc(projTxt)}${projTxt && noTxt ? '  ' : ''}${noTxt ? `<tspan font-weight="700" fill="#555a60">${esc(noTxt)}</tspan>` : ''}</text>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${bg.v}"/>${frameSvg}${head.join('')}${body.join('')}${footSvg}${over.join('')}</svg>`;
   return {
     svg, width: Math.round(W * MM_PX), height: Math.round(H * MM_PX), page: { w: W, h: H, medium: page.medium }, box,
     cells: reports, slots,

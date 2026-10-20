@@ -1,5 +1,5 @@
 import React from 'react';
-import { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, presetById, recommendType, recommendFont } from './conceptDiagram/page';
+import { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, LABEL_PREFIXES, presetById, recommendType, recommendFont } from './conceptDiagram/page';
 
 // 출력 크기·칸 나누기·글자 위계 상자(다이어그램 탭 왼쪽). 계산은 conceptDiagram/page.js 가 하고 여기는 입력만 받는다.
 const inp = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.9)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box', width: '100%' };
@@ -7,7 +7,7 @@ const lab = { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, co
 const small = (on) => ({ padding: '4px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #F28C28' : '1px solid var(--border-color)', background: on ? 'rgba(242,140,40,0.14)' : 'rgba(255,255,255,0.85)', color: on ? '#B45309' : 'var(--text-secondary)' });
 const mmText = (r) => `${Math.round(r[2])}×${Math.round(r[3])}mm`;
 
-export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect, onClear, onExample, selRaw, onCellMm, onSplit, onRemove, onResetLayout, setLayout, onMoveContent }) {
+export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect, onClear, onExample, selRaw, onCellMm, onSplit, onRemove, onResetLayout, setLayout, onMoveContent, selMeta, autoLabel, onCellMeta }) {
   const set = (patch) => setPg((p) => ({ ...p, ...patch }));
   const setLay = setLayout || set; // 칸 배치를 바꿀 때는 되돌리기 기록을 남기는 쪽으로
   const rec = recommendType({ w: Number(pg.w) || 420, h: Number(pg.h) || 297, medium: pg.medium });
@@ -79,6 +79,17 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
                     {[['x', 'X(mm)', selRaw[0]], ['y', 'Y(mm)', selRaw[1]], ['w', '가로', selRaw[2]], ['h', '세로', selRaw[3]]].map(([k, name, v]) => (
                       <label key={k} style={lab}>{name}<input type="number" step="1" style={inp} value={Math.round(v * 10) / 10} onChange={(e) => onCellMm({ [k]: e.target.value })} data-testid={`cell-${k}`} /></label>
                     ))}
+                  </div>
+                )}
+                {info.cells.length > 1 && onCellMeta && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, alignItems: 'end' }} data-testid="cell-meta">
+                    <label style={lab}>이 칸의 라벨 (예: STEP 01{pg.labelPrefix ? '' : ' · 아래에서 접두어를 고르면 자동'})
+                      <input style={inp} maxLength={30} value={selMeta?.label ?? autoLabel ?? ''} placeholder={autoLabel || '라벨 없음'} onChange={(e) => onCellMeta({ label: e.target.value })} data-testid="cell-label" />
+                    </label>
+                    <button style={small(false)} onClick={() => onCellMeta({ label: null })} disabled={selMeta?.label === undefined || selMeta?.label === null} title="직접 고친 라벨을 버리고 자동 번호로 되돌립니다" data-testid="cell-label-auto">↺ 자동</button>
+                    <label style={{ ...lab, gridColumn: '1 / 3' }}>이 칸의 설명 (칸 제목 아래 최대 2줄, 칸이 작으면 생략)
+                      <input style={inp} maxLength={90} value={selMeta?.desc ?? ''} placeholder="예) 소음과 진동 등 환경적인 조건을 고려하여 1층에 배치한다" onChange={(e) => onCellMeta({ desc: e.target.value })} data-testid="cell-desc" />
+                    </label>
                   </div>
                 )}
                 <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>✋ 오른쪽 페이지 미리보기에서 <b>칸 가장자리의 점을 끌면 크기</b>가 바뀌고(맞닿은 칸도 함께, <b>Alt</b>를 누르고 끌면 이 칸만), <b>칸 안쪽을 끌면 옮겨집니다</b>. 다른 칸·가운데에 가까워지면 붙습니다. 위 숫자로 정확한 위치·크기(mm)도 넣을 수 있습니다.</span>
@@ -165,8 +176,16 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onSelect,
               </label>
               <span style={{ gridColumn: '1 / 3', fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>권장 방식은 그림은 칸에 맞춘 배율 그대로 두고, <b>그림 속 모든 글자에 같은 비율</b>을 곱해 가장 많이 쓰인 글자(본문)가 위의 목표 pt 가 되게 합니다(그림 속 글자끼리의 크기 차이는 유지, 글자 가운데 위치 유지, 키울 때는 최대 1.3배·줄일 때는 0.3배까지). 그래서 큰 칸에서도 글자가 소제목보다 커지지 않습니다.</span>
               <label style={lab}>PNG 해상도<select style={inp} value={pg.dpi} onChange={(e) => num('dpi', e.target.value)}><option value={96}>96dpi (화면)</option><option value={150}>150dpi</option><option value={300}>300dpi (인쇄)</option></select></label>
-              <label style={{ ...lab, gridColumn: '1 / 3' }}>페이지 제목 (비우면 그림의 제목)<input style={inp} value={pg.title} onChange={(e) => set({ title: e.target.value })} data-testid="page-title" /></label>
+              <label style={{ ...lab, gridColumn: '1 / 3' }}>구분 라벨 (제목 위 작은 글자 '| 구조계획 |', 선택)<input style={inp} maxLength={30} value={pg.kicker || ''} onChange={(e) => set({ kicker: e.target.value })} data-testid="page-kicker" /></label>
+              <label style={{ ...lab, gridColumn: '1 / 3' }}>페이지 제목 (비우면 그림의 제목 · 강조할 말은 {'{중괄호}'}로: 공원 속 {'{체육센터}'})<input style={inp} value={pg.title} onChange={(e) => set({ title: e.target.value })} data-testid="page-title" /></label>
               <label style={{ ...lab, gridColumn: '1 / 3' }}>페이지 소제목 (선택)<input style={inp} value={pg.subtitle} onChange={(e) => set({ subtitle: e.target.value })} data-testid="page-subtitle" /></label>
+              <label style={lab}>프로젝트명 (꼬리말, 선택)<input style={inp} maxLength={40} value={pg.project || ''} onChange={(e) => set({ project: e.target.value })} data-testid="page-project" /></label>
+              <label style={lab}>쪽번호 (꼬리말, 숫자)<input style={inp} maxLength={4} value={pg.pageNo || ''} onChange={(e) => set({ pageNo: e.target.value })} data-testid="page-no" placeholder="예) 2 → 02" /></label>
+              <label style={lab}>칸 라벨 접두어 (여러 칸일 때)
+                <select style={inp} value={pg.labelPrefix || ''} onChange={(e) => set({ labelPrefix: e.target.value })} data-testid="page-label-prefix">{LABEL_PREFIXES.map(([v, t]) => <option key={v} value={v}>{t}{v ? ` 01, ${v} 02…` : ''}</option>)}</select>
+              </label>
+              <label style={lab}>강조색 (제목 {'{강조어}'})<input type="color" style={{ ...inp, padding: 1, height: 28 }} value={pg.accent || '#F28C28'} onChange={(e) => set({ accent: e.target.value })} data-testid="page-accent" /></label>
+              <span style={{ gridColumn: '1 / 3', fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>칸 라벨은 칸 위에 “─── STEP 01 ───” 모양으로 붙습니다. 큰 그림 칸(작은 칸들의 2배 이상)은 번호를 건너뛰고 작은 칸이 01부터 번호를 받습니다. 구분 라벨·제목·라벨·설명은 미리보기 위에서 눌러(라벨·설명은 더블클릭) 바로 고칠 수도 있습니다. 꼬리말은 오른쪽 아래에 나오며 아래 여백이 너무 좁으면 알려 드립니다.</span>
             </div>
 
             {info?.warnings?.length > 0 && (

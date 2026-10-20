@@ -20,7 +20,7 @@ const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
-export { judgeTextPt, moveCellContent } from ${fwd(pageJs)};
+export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
 export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
 export { cropRect, fitInside, normCrop, stagger, IMG_QUALITY, imgQualityOf } from ${fwd(imgutilJs)};
@@ -927,6 +927,60 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const a = m.anchorScroll({ left: 0, top: 0, px: 300, py: 200, z0: 1, z1: 2 }); expect(a.left === 300 && a.top === 200, '확대해도 마우스 아래 그림 점이 제자리에 남는다'); }
   { const a = m.anchorScroll({ left: 500, top: 80, px: 300, py: 100, z0: 2, z1: 1 }); expect(near(a.left, 100, 0.001) && a.top === 0, '축소할 때도 같은 점 유지(계산값이 음수면 0)'); }
   expect(m.anchorScroll({ left: 0, top: 0, px: 300, py: 300, z0: 2, z1: 1 }).left === 0, '스크롤 위치는 음수가 되지 않는다');
+}
+// 보드 틀 v1: 배치 프리셋·칸 라벨·머리·꼬리·제목 강조·자동 투명
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`보드 틀: ${label}`); };
+  const PG = { w: 420, h: 297, medium: 'print' };
+  const svgIn = (bg) => `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" viewBox="0 0 100 60"><rect width="100" height="60" fill="${bg}"/><rect x="10" y="10" width="40" height="30" fill="#E8833A"/><text x="20" y="30" font-size="6" font-family="${m.ENGINE_FONT}">본문 글자</text></svg>`;
+  // 1) 배치 프리셋: 칸 수·범위·겹침·합계 넓이
+  for (const [id, n] of [['T3', 4], ['T4', 5], ['T5', 6], ['L4', 5]]) {
+    const cs = m.getCells(id, null);
+    expect(cs.length === n, `${id} 칸 수 ${n}`);
+    expect(cs.every((c) => c.r.every((v) => v >= 0 && v <= 1) && c.r[2] > c.r[0] && c.r[3] > c.r[1]), `${id} 칸 좌표가 0~1 안`);
+    expect(m.overlappingCells(cs).length === 0, `${id} 칸이 겹치지 않음`);
+    expect(Math.abs(cs.reduce((a, c) => a + (c.r[2] - c.r[0]) * (c.r[3] - c.r[1]), 0) - 1) < 1e-9, `${id} 칸이 페이지를 빈틈없이 채움`);
+  }
+  // 2) 칸 라벨 자동 번호: 큰 그림 칸은 건너뛰고 소도식 칸을 01부터
+  { const lb = m.autoCellLabels(m.getCells('T4', null), 'STEP'); expect(lb.c1 === null && lb.c2 === 'STEP 01' && lb.c5 === 'STEP 04', 'T4: 큰 칸은 라벨 없음, 아래 4칸이 STEP 01~04'); }
+  { const lb = m.autoCellLabels(m.getCells('L4', null), 'ISSUE'); expect(lb.c1 === 'ISSUE 01' && lb.c4 === 'ISSUE 04' && lb.c5 === null, 'L4: 왼쪽 4칸이 ISSUE 01~04, 오른쪽 큰 칸은 없음'); }
+  { const lb = m.autoCellLabels(m.getCells('2x2', null), '배치전략'); expect(Object.values(lb).join() === '배치전략 01,배치전략 02,배치전략 03,배치전략 04', '2×2: 모든 칸에 번호'); }
+  { const lb = m.autoCellLabels(m.getCells('2x1', null), 'STEP'); expect(lb.c1 === 'STEP 01' && lb.c2 === 'STEP 02', '2칸은 둘 다 번호'); }
+  expect(Object.values(m.autoCellLabels(m.getCells('T4', null), '')).every((v) => v === null), '접두어가 없으면 라벨 없음');
+  // 3) 설명문 줄바꿈
+  { const fs = 3; const w = 60; const l = m.wrapLines('소음과 진동 등 환경적인 조건을 고려하여 1층에 배치하고 상부 공간 구성의 기초를 마련한다', fs, w, 2);
+    expect(l.length <= 2 && l.every((x) => m.textWidth(x, fs) <= w + 0.001), '설명문은 2줄 이내, 각 줄이 폭 안'); expect(l[l.length - 1].endsWith('…'), '길면 마지막 줄을 …로 줄임'); }
+  expect(m.wrapLines('짧은 설명', 3, 60, 2).join('|') === '짧은 설명', '짧으면 한 줄 그대로');
+  // 4) 제목 강조
+  expect(JSON.stringify(m.emphParts('공원 속 {체육센터}')) === JSON.stringify([{ t: '공원 속 ', em: false }, { t: '체육센터', em: true }]), '{강조어} 나누기');
+  expect(m.emphParts('중괄호 없음').length === 1 && !m.emphParts('중괄호 없음')[0].em, '중괄호가 없으면 그대로');
+  // 5) 바탕 사각형: 그림 전체를 덮는 것만 뺀다
+  expect(!m.stripBg('<rect width="100" height="60" fill="#FDF8EC"/><g/>', 100, 60).includes('FDF8EC'), '전체를 덮는 바탕을 뺌');
+  expect(m.stripBg('<rect x="5" y="5" width="20" height="10" fill="#fff"/><g/>', 100, 60).includes('<rect'), '작은 사각형은 그대로 둠');
+  expect(!m.stripBg('<rect width="100%" height="100%" fill="#fff"/>', 100, 60).includes('<rect'), '100% 바탕도 뺌');
+  // 6) composePage: 한 칸 — 크림 바탕이 페이지에 번지지 않고 흰 종이
+  { const one = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#FDF8EC') } }], { layoutId: '1x1' });
+    expect(!one.svg.includes('FDF8EC') && one.svg.includes('fill="#FFFFFF"'), '한 칸 페이지: 크림 바탕 대신 흰 종이'); }
+  // 7) 칸 라벨·설명(여러 칸)
+  { const items = ['c1', 'c2', 'c3', 'c4', 'c5'].map((id, i) => ({ id, render: { svg: svgIn('#FDF8EC') }, caption: i ? `소도식 ${i}` : '' }));
+    const r0 = m.composePage(PG, items, { layoutId: 'T4' });
+    expect(!r0.svg.includes('STEP'), '접두어를 안 정하면 라벨 없음(기존과 같음)');
+    const r1c = m.composePage(PG, items, { layoutId: 'T4', labelPrefix: 'STEP', cellMeta: { c2: { desc: '소음과 진동 등 환경적인 조건을 고려하여 1층에 배치한다' }, c3: { label: '직접 라벨' } } });
+    expect(r1c.svg.includes('STEP 01') && r1c.svg.includes('STEP 04') && !r1c.svg.includes('STEP 05'), 'T4: STEP 01~04 라벨');
+    expect(r1c.svg.includes('직접 라벨') && !r1c.svg.includes('STEP 02'), '칸별 직접 라벨이 자동 번호를 덮어씀');
+    const c2 = r1c.cells.find((c) => c.id === 'c2'); expect(!!c2.labRect && !!c2.descRect && !!c2.capRect && c2.labRect[1] < c2.capRect[1] && c2.capRect[1] < c2.descRect[1], '라벨 → 제목 → 설명 순서로 위에서 아래로');
+    expect(r1c.cells.find((c) => c.id === 'c1').labRect === null, '큰 칸에는 라벨 자리 없음');
+    expect(!/NaN|undefined|Infinity/.test(r1c.svg), '라벨·설명 SVG 에 NaN/undefined 없음');
+    const none = m.composePage(PG, items, { layoutId: 'T4', labelPrefix: 'STEP', cellMeta: { c2: { label: '' } }, preview: true }); expect(!none.svg.includes('STEP 01') && none.svg.includes('STEP 02'), '빈 라벨은 그 칸만 라벨을 숨김'); }
+  // 8) 머리 라벨·제목 강조·꼬리말
+  { const r = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', kicker: '구조계획', title: '공원 속 {체육센터}', project: '시험 프로젝트', pageNo: 2, accent: '#F28C28' });
+    expect(r.svg.includes('| 구조계획 |') && r.slots.kicker && r.slots.kicker.has, '구분 라벨이 그려지고 눌러 고칠 자리가 있음');
+    expect(r.svg.includes('<tspan fill="#F28C28" font-weight="800">체육센터</tspan>') && !r.svg.includes('{체육센터}'), '제목의 {강조어} 가 강조색 굵게');
+    expect(r.slots.title.text === '공원 속 {체육센터}', '제목 고치기는 중괄호 포함 원문');
+    expect(r.svg.includes('text-anchor="end"') && r.svg.includes('시험 프로젝트') && r.svg.includes('>02<'), '꼬리말: 프로젝트명 + 두 자리 쪽번호');
+    const y = (re) => Number(re.exec(r.svg)[1]); expect(y(/y="([\d.]+)"[^>]*>\| 구조계획/) < y(/y="([\d.]+)"[^>]*>공원 속/), '구분 라벨이 제목 위에 놓임');
+    const plain = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', title: '일반 제목' }); expect(!plain.svg.includes('<tspan') && !plain.svg.includes('text-anchor="end"'), '아무것도 안 정하면 예전과 같은 출력(꼬리말·강조 없음)');
+    const onlyNo = m.composePage(PG, [{ id: 'c1', render: { svg: svgIn('#fff') } }], { layoutId: '1x1', pageNo: '7' }); expect(onlyNo.svg.includes('>07<'), '쪽번호만 있어도 꼬리말'); }
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

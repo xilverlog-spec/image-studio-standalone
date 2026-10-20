@@ -3,7 +3,7 @@ import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, rende
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
-import { composePage, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
+import { composePage, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -255,12 +255,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   }, []);
   const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
-    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'malgun', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222' };
-    try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '' }; } catch { return d; }
+    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
+    try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '', kicker: '', pageNo: '', cellMeta: {} }; } catch { return d; } // 구분 라벨·쪽번호·칸 설명은 제목처럼 기억하지 않는다(프로젝트명·라벨 접두어·강조색은 기억)
   });
   const [cells, setCells] = useState({});     // 칸 번호 → 그 칸의 결과 { type, spec, ... }
   const [selCell, setSelCell] = useState('c1');
-  useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '' } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
+  useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '', kicker: '', pageNo: '', cellMeta: {} } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
   const refreshPaid = () => {
     apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
@@ -287,13 +287,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const histRef = useRef({ past: [], future: [], tag: '', t: 0 });
   const textHist = useRef({ past: [], future: [] }); // 그림 위 글자 고치기(손스케치가 아닌 결과)의 되돌리기 기록 — 같은 결과(ver)일 때만 쓴다
   const rootRef = useRef(null); const ctxRef = useRef('sketch'); const cellClip = useRef(null); const dragCancelRef = useRef(null); const keyRef = useRef(null); // ctxRef: 마지막에 만진 곳('page' 페이지 미리보기·설정 / 'sketch' 손스케치 편집기) — 같은 키를 두 곳이 같이 받지 않게 한다
-  const snapNow = () => ({ layoutId: pg.layoutId, custom: pg.custom, basePreset: pg.basePreset, cells, selCell });
+  const snapNow = () => ({ layoutId: pg.layoutId, custom: pg.custom, basePreset: pg.basePreset, cellMeta: pg.cellMeta || {}, cells, selCell });
   const pushHistory = (tag = '') => { // 같은 종류의 연속 동작(방향키·숫자 입력)은 0.8초 안에 이어지면 한 번으로 묶는다
     const h = histRef.current; const now = Date.now();
     if (tag && h.tag === tag && now - h.t < 800) { h.t = now; return; }
     h.past.push(snapNow()); if (h.past.length > 60) h.past.shift(); h.future = []; h.tag = tag; h.t = now;
   };
-  const restoreSnap = (s) => { setPg((p) => ({ ...p, layoutId: s.layoutId, custom: s.custom, basePreset: s.basePreset })); setCells(s.cells); setSelCell(s.selCell); setResult(s.cells[s.selCell] || null); };
+  const restoreSnap = (s) => { setPg((p) => ({ ...p, layoutId: s.layoutId, custom: s.custom, basePreset: s.basePreset, cellMeta: s.cellMeta || {} })); setCells(s.cells); setSelCell(s.selCell); setResult(s.cells[s.selCell] || null); };
   const pageUndo = () => { const h = histRef.current; const s = h.past.pop(); if (!s) { addToast?.('info', '되돌릴 페이지 변경이 없습니다'); return; } h.future.push(snapNow()); h.tag = ''; restoreSnap(s); };
   const pageRedo = () => { const h = histRef.current; const s = h.future.pop(); if (!s) return; h.past.push(snapNow()); h.tag = ''; restoreSnap(s); };
   useEffect(() => { if (pageOn) ctxRef.current = 'page'; }, [pageOn]);
@@ -398,10 +398,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!m) return;
     const no = (id) => ids.indexOf(id) + 1;
     pushHistory();
+    setPg((p) => { const cm = p.cellMeta || {}; return { ...p, cellMeta: { ...cm, [toId]: { ...(cm[toId] || {}), desc: cm[fromId]?.desc }, [fromId]: { ...(cm[fromId] || {}), desc: cm[toId]?.desc } } }; }); // 칸 설명은 그림을 따라간다(맞바꿈이면 서로)
     setCells(m.items); setSelCell(toId); setResult(m.items[toId]); setGenError('');
     addToast?.('success', m.swapped ? `칸 ${no(fromId)}과 칸 ${no(toId)}의 그림을 맞바꿨습니다` : `칸 ${no(fromId)}의 그림을 칸 ${no(toId)}(으)로 옮겼습니다`, '칸 크기가 다르면 그림이 새 칸에 맞춰 다시 배치됩니다. 되돌리려면 Ctrl+Z.');
   };
-  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setResult(null); };
+  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined } } })); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const pageModel = useMemo(() => {
     if (!pageOn) return null;
@@ -411,7 +412,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const ids = cellIds(pg.layoutId, pg.custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
       const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId: pg.layoutId, custom: pg.custom, gap: Number(pg.gap) || 0, measure: domMeasure,
-        margin: pg.marginMode === 'custom' ? pg.margin : null, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };
@@ -453,6 +454,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       else setCells((c) => (c[id] ? { ...c, [id]: { ...c[id], spec: { ...c[id].spec, [key]: v } } } : c));
     };
     if (ed.kind === 'cap') { pushHistory(); setSpecTitle(ed.id, 'title', val); return; }
+    if (ed.kind === 'label' || ed.kind === 'desc') { pushHistory('meta'); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [ed.id]: { ...((p.cellMeta || {})[ed.id] || {}), [ed.kind]: val } } })); return; } // 라벨을 비우면 그 칸 라벨만 숨긴다
     const ids = cellIds(pg.layoutId, pg.custom); const only = ids.length === 1 ? ids[0] : null;
     const fromSpec = !!only && !pg[ed.kind] && !!cells[only]?.spec?.[ed.kind];
     setPg((p) => ({ ...p, [ed.kind]: val }));
@@ -499,10 +501,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const cs = getCells(pg.layoutId, pg.custom); if (cs.length < 2) return;
     const next = removeCell(cs, selCell); commitCustom(next);
     setCells((c) => { const n = { ...c }; delete n[selCell]; return n; });
+    setPg((p) => { const cm = { ...(p.cellMeta || {}) }; delete cm[selCell]; return { ...p, cellMeta: cm }; });
     setSelCell(next[0].id); setResult(cells[next[0].id] || null);
   };
   const onResetLayout = () => { pushHistory(); setPg((p) => ({ ...p, layoutId: p.basePreset && p.basePreset !== 'custom' ? p.basePreset : '1x1', custom: null })); };
   const setLayout = (patch) => { pushHistory(); setPg((p) => ({ ...p, ...patch })); };
+  const onCellMeta = (patch) => { pushHistory('meta'); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), ...patch } } })); }; // 고른 칸의 라벨·설명(label: null 이면 자동 번호로 되돌림)
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
@@ -1103,7 +1107,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div onPointerDownCapture={() => { ctxRef.current = 'page'; }}>
         <PageBox on={pageOn} setOn={setPageOn} pg={pg} setPg={setPg} info={pageModel?.preview ? { cells: pageModel.preview.cells, warnings: pageModel.preview.report.warnings, margin: pageModel.preview.report.margin, marginAuto: pageModel.preview.report.marginAuto } : null} selCell={selCell} onSelect={selectCell} onClear={clearCell}
           selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
-          onMoveContent={moveCellContent} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
+          onMoveContent={moveCellContent} selMeta={pg.cellMeta?.[selCell] || {}} autoLabel={autoCellLabels(getCells(pg.layoutId, pg.custom), pg.labelPrefix)[selCell] || ''} onCellMeta={onCellMeta} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
         </div>
         {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
 
@@ -1330,9 +1334,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                       <React.Fragment key={c.id}>
                         <div data-cellid={c.id} onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
                           style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed #F28C28' : live && sel ? '2px solid #F28C28' : 'none', background: dropCell === c.id ? 'rgba(242,140,40,0.18)' : live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }}>
-                          {!live && (() => { const cr = pm.cells.find((q) => q.id === c.id); if (!cr?.capRect) return null; const [cx, cy, cw, ch] = cr.capRect; return (
-                            <div className="pg-slot" data-has="1" data-testid={`cap-hit-${c.id}`} title="더블클릭: 칸 제목 고치기" onDoubleClick={(e) => { e.stopPropagation(); setPgEdit({ kind: 'cap', id: c.id, el: e.currentTarget, value: cr.captionText || '' }); }}
-                              style={{ position: 'absolute', left: `${((cx - x) / w) * 100}%`, top: `${((cy - y) / h) * 100}%`, width: `${(cw / w) * 100}%`, height: `${(ch / h) * 100}%`, cursor: 'text' }} />); })()}
+                          {!live && (() => { const cr = pm.cells.find((q) => q.id === c.id); if (!cr) return null;
+                            const mk = (kind, rect, value, title, tid) => { if (!rect) return null; const [rx, ry, rw, rh] = rect; return (
+                              <div key={kind} className="pg-slot" data-has="1" data-testid={`${tid}-${c.id}`} title={title} onDoubleClick={(e) => { e.stopPropagation(); setPgEdit({ kind, id: c.id, el: e.currentTarget, value }); }}
+                                style={{ position: 'absolute', left: `${((rx - x) / w) * 100}%`, top: `${((ry - y) / h) * 100}%`, width: `${(rw / w) * 100}%`, height: `${(rh / h) * 100}%`, cursor: 'text' }} />); };
+                            return (<>{mk('label', cr.labRect, cr.labelText || '', '더블클릭: 칸 라벨 고치기(비우면 이 칸 라벨 숨김)', 'lab-hit')}{mk('cap', cr.capRect, cr.captionText || '', '더블클릭: 칸 제목 고치기', 'cap-hit')}{mk('desc', cr.descRect, String(pg.cellMeta?.[c.id]?.desc || ''), '더블클릭: 칸 설명 고치기', 'desc-hit')}</>); })()}
                         </div>
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
@@ -1341,8 +1347,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                         {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
                       </React.Fragment>
                     );
-                  }).concat(live ? [] : ['title', 'subtitle'].map((k) => { const sl = pm.slots?.[k]; if (!sl) return null; const [sx, sy, sw, sh] = sl.rect; return (
-                    <div key={`slot-${k}`} className="pg-slot" data-has={sl.has ? '1' : '0'} data-hint={k === 'title' ? '＋ 제목 추가' : '＋ 소제목 추가'} data-testid={`slot-${k}`} title={sl.has ? `눌러서 ${k === 'title' ? '제목' : '소제목'} 고치기` : undefined}
+                  }).concat(live ? [] : ['kicker', 'title', 'subtitle'].map((k) => { const sl = pm.slots?.[k]; if (!sl) return null; const [sx, sy, sw, sh] = sl.rect; return (
+                    <div key={`slot-${k}`} className="pg-slot" data-has={sl.has ? '1' : '0'} data-hint={k === 'title' ? '＋ 제목 추가' : '＋ 소제목 추가'} data-testid={`slot-${k}`} title={sl.has ? `눌러서 ${k === 'kicker' ? '구분 라벨' : k === 'title' ? '제목' : '소제목'} 고치기` : undefined}
                       onClick={(e) => setPgEdit({ kind: k, el: e.currentTarget, value: sl.text || '' })}
                       style={{ position: 'absolute', left: `${(sx / pw) * 100}%`, top: `${(sy / ph) * 100}%`, width: `${(sw / pw) * 100}%`, height: `${(sh / ph) * 100}%`, cursor: 'text', zIndex: 1 }} />); }));
                 })()}
