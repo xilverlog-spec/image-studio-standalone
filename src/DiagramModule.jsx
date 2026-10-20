@@ -10,17 +10,12 @@ export default function DiagramModule({ addToast, apiFetch }) {
   const [mode, setMode] = useState('make');
 
   const tab = (id, label) => (
-    <button key={id} onClick={() => setMode(id)}
-      style={{
-        padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
-        background: mode === id ? 'linear-gradient(135deg, #333399, #4f46e5)' : 'transparent',
-        color: mode === id ? '#fff' : 'var(--text-secondary)',
-      }}>{label}</button>
+    <button key={id} type="button" role="tab" aria-selected={mode === id} className={`tab${mode === id ? ' active' : ''}`} onClick={() => setMode(id)}>{label}</button>
   );
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: 6, padding: '8px 14px', borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.5)' }}>
+      <div className="tabs" role="tablist" aria-label="다이어그램 작업" style={{ padding: '0 14px', background: 'var(--surface)' }}>
         {tab('make', '다이어그램 만들기')}
         {tab('trace', '이미지 → 깔끔한 선')}
       </div>

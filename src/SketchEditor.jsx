@@ -1,16 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
 
-const input = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.9)', color: 'var(--text-primary)', fontSize: 12.5, width: '100%', boxSizing: 'border-box' };
+const input = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12.5, width: '100%', boxSizing: 'border-box' };
 const smallBtn = (on, danger) => ({
   padding: '5px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-  border: `1px solid ${danger ? '#fca5a5' : on ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-  background: danger ? '#fef2f2' : on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: danger ? '#B91C1C' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+  border: `1px solid ${danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--line-strong)'}`,
+  background: danger ? 'var(--err-soft)' : on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)',
 });
-const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' };
+const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' };
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222'];
 const ZONE_SWATCHES = ['#F6B8B3', '#F9D3A0', '#F8E8A0', '#BFE0B8', '#B5D5F2', '#D9C2E8', '#DDDDDD']; // 구역을 칠하는 연한 색(곱하기로 칠해져 선·글자는 그대로 비친다)
@@ -55,7 +55,7 @@ import TableEditor from './TableEditor';
 import { CONTEXT_FX } from './conceptDiagram/imgfx';
 import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { ICON_LABEL } from './conceptDiagram/icons';
-import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip } from './conceptDiagram/sketch';
+import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip, sketchGScale, sketchUnzoomPt, sketchComposeScale } from './conceptDiagram/sketch';
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
@@ -64,6 +64,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
   const regionDrag = useRef(null);
   const [rotInfo, setRotInfo] = useState(null);   // 회전 손잡이를 끄는 동안 보여 줄 각도 { deg, c(다이어그램 좌표 중심) }
+  const [whole, setWhole] = useState(false);     // 전체 크기 조절 모드(그림 속 내용 전체를 감싸는 상자와 모서리 손잡이)
+  const [wbox, setWbox] = useState(null);         // 내용 전체의 바깥 상자(그림 좌표 1200x760 의 [x0,y0,x1,y1])
+  const [wInfo, setWInfo] = useState(null);       // 모서리를 끄는 동안 보여 줄 배율 { k }
   const [textInfo, setTextInfo] = useState(null); // 마지막으로 누른 글자의 크기(그림 단위) — 몇 pt 인지 알려 주는 데 쓴다
   const [cropFor, setCropFor] = useState(null); const [imgBusy, setImgBusy] = useState(false); const [imgNote, setImgNote] = useState(''); const imgFileRef = useRef(null); // 넣은 이미지 자르기 창·바꾸기
   const past = useRef([]); const future = useRef([]);
@@ -113,6 +116,13 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const doMirrorCopy = (dir) => { const r = sketchMirrorCopy(norm, selected, axisVal(dir), dir); if (r.id) { commit(r.spec); setSelected(r.id); } };
   const kind = sel ? sketchKind(norm, selected) : '';
   const set = (patch, key) => commit(sketchUpdate(norm, selected, patch), key ? `${selected}:${key}` : '');
+  const TA_K = { start: 0, middle: 0.5, end: 1 };
+  const setMemoAlign = (k) => { // 일반 글자 메모: 왼쪽/가운데/오른쪽. 글자 묶음은 제자리(회전했으면 글자 방향으로 보정)
+    const e = sel?.el; if (!e) return; const cur = e.align || 'middle'; if (cur === k) return;
+    const t = canvasRef.current?.querySelector(`text[data-eid="${selected}"]`); let dx = 0; let dy = 0;
+    try { if (t) { const w = t.getBBox().width / view.K; const v = (TA_K[k] - TA_K[cur]) * w; const a = ((e.rot || 0) * Math.PI) / 180; dx = v * Math.cos(a); dy = v * Math.sin(a); } } catch { /* 글자 상자를 못 구하면 정렬만 */ }
+    set({ align: k === 'middle' ? undefined : k, x: Math.round((e.x + dx) * 100) / 100, y: Math.round((e.y + dy) * 100) / 100 });
+  };
   const remove = () => { commit(sketchDelete(norm, selected)); setSelected(''); };
   const normRef = useRef(norm); normRef.current = norm; // 파일을 읽는 동안 그림이 바뀌었을 수 있어, 끝난 뒤에는 그때의 최신 그림에 적용한다
   const replaceImg = async (file) => {
@@ -136,8 +146,32 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const toDiag = (clientX, clientY) => {
     const el = canvasRef.current?.querySelector('svg'); if (!el) return null;
     const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null; // 그림 영역이 접혀 있으면 계산하지 않는다
-    return sketchView(specRef.current).toDiag([((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height]);
+    return sketchView(specRef.current).toDiag(sketchUnzoomPt(specRef.current, [((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height]));
   };
+  const toCanvas = (clientX, clientY) => { // 화면 → 그림 좌표(1200x760, 전체 크기 변환을 거친 보이는 자리)
+    const el = canvasRef.current?.querySelector('svg'); if (!el) return null; const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null;
+    return [((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height];
+  };
+  // 전체 크기 조절 모드: 그림 속 모든 요소(data-eid)의 보이는 상자를 합쳐 바깥 상자를 구한다(그림이 바뀔 때마다 다시)
+  useLayoutEffect(() => {
+    if (!whole) { setWbox(null); return; }
+    const root = canvasRef.current; const el = root?.querySelector('svg'); if (!el) { setWbox(null); return; }
+    const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) { setWbox(null); return; }
+    const kx = SKETCH_SIZE[0] / r.width; const ky = SKETCH_SIZE[1] / r.height; let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    root.querySelectorAll('[data-eid]').forEach((n) => { const q = n.getBoundingClientRect(); if (q.width === 0 && q.height === 0) return; x0 = Math.min(x0, (q.left - r.left) * kx); y0 = Math.min(y0, (q.top - r.top) * ky); x1 = Math.max(x1, (q.right - r.left) * kx); y1 = Math.max(y1, (q.bottom - r.top) * ky); });
+    setWbox(x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null);
+  }, [whole, svg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startWhole = (e, corner) => { // 모서리 손잡이: 반대쪽 모서리는 고정, 대각선 방향으로 끈 만큼 같은 비율로 키우고 줄인다(선 굵기·글자 포함)
+    e.preventDefault(); e.stopPropagation(); if (!wbox) return;
+    const [x0, y0, x1, y1] = wbox; const east = corner.includes('e'); const south = corner.includes('s');
+    const piv = [east ? x0 : x1, south ? y0 : y1]; const grab = [east ? x1 + 6 : x0 - 6, south ? y1 + 6 : y0 - 6]; // 손잡이는 상자 모서리에서 6 바깥 — 잡은 자리가 100% 가 되게
+    if (Math.hypot(grab[0] - piv[0], grab[1] - piv[1]) < 8) return;
+    drag.current = { kind: 'whole', piv, grab, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+  };
+  const scaleWholeBy = (k) => { if (!wbox) return; commit(sketchComposeScale(norm, k, [(wbox[0] + wbox[2]) / 2, (wbox[1] + wbox[3]) / 2])); };
+  const resetWhole = () => { if (!norm.gscale) return; const { gscale, ...rest } = norm; commit(rest); }; // eslint-disable-line no-unused-vars
+
   const onRegionMove = (e) => {
     const d = regionDrag.current; if (!d) return; const p = toDiag(e.clientX, e.clientY); if (!p) return;
     d.p1 = p; setRegionDraft([Math.min(d.p0[0], p[0]), Math.min(d.p0[1], p[1]), Math.max(d.p0[0], p[0]), Math.max(d.p0[1], p[1])]);
@@ -154,6 +188,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       regionDrag.current = { p0, p1: null }; setRegionDraft([p0[0], p0[1], p0[0], p0[1]]);
       window.addEventListener('pointermove', onRegionMove); window.addEventListener('pointerup', onRegionUp, { once: true }); return;
     }
+    if (whole) setWhole(false); // 그림을 직접 누르면 전체 크기 조절 모드는 끝
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
     if (!el) { setSelected(''); return; }
@@ -169,6 +204,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     if (!d.moved) {
       if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; // 살짝 눌렀다 떼면 선택만
       d.moved = true; past.current = [...past.current.slice(-49), d.orig]; future.current = []; lastKey.current = ''; setDragging(true);
+    }
+    if (d.kind === 'whole') {
+      const m = toCanvas(e.clientX, e.clientY); if (!m) return; const vx = d.grab[0] - d.piv[0]; const vy = d.grab[1] - d.piv[1];
+      const k = ((m[0] - d.piv[0]) * vx + (m[1] - d.piv[1]) * vy) / (vx * vx + vy * vy); const next = sketchComposeScale(d.orig, k, d.piv);
+      setWInfo({ k: sketchGScale(next).k / sketchGScale(d.orig).k }); onChange(next); tick((n) => n + 1); return;
     }
     const pt = toDiag(e.clientX, e.clientY); if (!pt) return; const snap = !e.altKey; const o = d.orig; let next = o; let gd = [];
     if (!d.handle) {
@@ -200,7 +240,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     setGuides(gd);
     onChange(next); tick((n) => n + 1);
   };
-  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); tick((n) => n + 1); };
+  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
@@ -217,6 +257,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); markInternalCopy(); remove(); } }
     else if (mod && !typing && k === 'v' && CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
     else if (mod && !typing && k === 'd' && selected) { e.preventDefault(); if (copySel()) pasteClip(3); }
+    else if (mod && !typing && k === 'a') { e.preventDefault(); setSelected(''); setWhole(true); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
     else if (!typing && selected && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); remove(); }
@@ -226,7 +267,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       commit(sketchMoveBy(norm, selected, dx, dy), `nudge:${selected}`);
     } else if (!typing && selected && kind === 'memo' && (e.key === 'Enter' || e.key === 'F2')) { // 고른 글자(메모)를 그 자리에서 고친다
       e.preventDefault(); const el = canvasRef.current?.querySelector(`[data-eid="${selected}"]`); if (el) openTextEdit(el);
-    } else if (e.key === 'Escape') setSelected('');
+    } else if (e.key === 'Escape') { setSelected(''); setWhole(false); }
   };
   keyRef.current = onKey; // 창 단위 키 입력 리스너가 항상 최신 상태의 처리 함수를 부르게 한다
 
@@ -270,7 +311,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   };
   const setRect = (i, v) => { const r = [...sel.el.rect]; r[i] = v; set({ rect: r }, 'rect'); };
 
-  const title = { fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' };
+  const title = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
   const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
 
   return (
@@ -279,6 +320,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       <ZoomView testid="sk-zoom">
       <div ref={hostRef} style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
         <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+          <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
           {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
             <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
           {[...axisGuides, ...guides].map((g, i) => {
@@ -290,10 +332,17 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             </g>);
           })}
           {rotInfo && (() => { const q = view.toScreen(rotInfo.c); return (<g data-testid="rot-label"><rect x={q[0] - 28} y={q[1] - 13} width="56" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={q[0]} y={q[1] + 5} textAnchor="middle" fontSize="15" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(rotInfo.deg * 10) / 10}°</text></g>); })()}
+          </g>
+          {whole && wbox && (<g data-testid="whole-overlay">
+            <rect x={wbox[0] - 6} y={wbox[1] - 6} width={wbox[2] - wbox[0] + 12} height={wbox[3] - wbox[1] + 12} fill="none" stroke="#F28C28" strokeWidth="3" strokeDasharray="12 8" rx="4" />
+            {[['nw', wbox[0] - 6, wbox[1] - 6, 'nwse-resize'], ['ne', wbox[2] + 6, wbox[1] - 6, 'nesw-resize'], ['se', wbox[2] + 6, wbox[3] + 6, 'nwse-resize'], ['sw', wbox[0] - 6, wbox[3] + 6, 'nesw-resize']].map(([c, hx, hy, cur]) => (
+              <rect key={c} data-testid={`whole-${c}`} x={hx - 11} y={hy - 11} width="22" height="22" rx="4" fill="#F28C28" stroke="#fff" strokeWidth="3" style={{ pointerEvents: 'auto', cursor: cur }} onPointerDown={(ev) => startWhole(ev, c)}><title>끌어서 그림 전체의 크기를 조절합니다(글자·선 굵기도 함께)</title></rect>))}
+            {wInfo && (() => { const cx = (wbox[0] + wbox[2]) / 2; const cy = (wbox[1] + wbox[3]) / 2; return (<g data-testid="whole-label"><rect x={cx - 40} y={cy - 14} width="80" height="28" rx="7" fill="rgba(30,30,30,0.85)" /><text x={cx} y={cy + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(wInfo.k * 100)}%</text></g>); })()}
+          </g>)}
         </svg>
         <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
-        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">✏️ 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
       </ZoomView>
       </div>
@@ -302,8 +351,22 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={smallBtn(false)} disabled={!past.current.length} onClick={undo} title="Ctrl+Z" data-testid="undo">↶ 되돌리기</button>
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
+          <button style={smallBtn(whole)} onClick={() => { setSelected(''); setWhole((v) => !v); }} data-testid="sk-whole" title="Ctrl+A — 그림 속 내용 전체를 감싸는 상자의 모서리를 끌어 전체 크기를 조절합니다(글자·선 굵기도 함께)">전체 크기</button>
           <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 4 }} title="그림 틀 가운데의 세로·가로 중심선을 항상 보여 줍니다"><input type="checkbox" checked={showAxis} onChange={(e) => setShowAxis(e.target.checked)} data-testid="show-axis" />중심축 보기</label>
         </div>
+        {whole && (
+          <div style={sec} data-testid="sk-whole-panel">
+            <span style={title}>전체 크기 조절 · 지금 {Math.round(sketchGScale(norm).k * 100)}%</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.55 }}>주황 상자의 <b>네 모서리를 끌면</b> 그림 속 도형·선·화살표·글자·표가 <b>같은 비율로</b>(글자·선 굵기도) 커지거나 줄어듭니다. 반대쪽 모서리는 제자리에 있습니다. 제목·범례 칸은 그대로입니다.</span>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {[[0.8, '80%'], [0.9, '−10%'], [1.1, '+10%'], [1.25, '125%']].map(([kk, t]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 8px' }} onClick={() => scaleWholeBy(kk)} data-testid={`sk-whole-${Math.round(kk * 100)}`}>{t}</button>)}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={smallBtn(false)} disabled={!norm.gscale} onClick={resetWhole} data-testid="sk-whole-reset">원래 크기로</button>
+              <button style={smallBtn(false)} onClick={() => setWhole(false)} data-testid="sk-whole-done">끝내기</button>
+            </div>
+          </div>
+        )}
         {textInfo && <PtReadout size={textInfo.size} ptInfo={ptInfo} text={textInfo.text} testid="sk-pt" onFix={kind === 'memo' && sel && sel.el.text === textInfo.text ? (pt) => set({ size: Math.min(48, Math.max(8, Math.round(pt / ptInfo.ppu))) }, 'size') : undefined} />}
         <div style={sec}>
           <span style={title}>요소 추가</span>
@@ -354,7 +417,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시(개념도)</label>
             {norm.textBlock && (
               <div style={{ ...sec, gap: 6, background: 'rgba(240,176,0,0.08)' }} data-testid="textblock-panel">
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>오른쪽 문구 블록</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>오른쪽 문구 블록</span>
                 <label style={lab}>제목(줄바꿈 가능)<textarea rows={2} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} value={norm.textBlock.title} onChange={(e) => setGlobal({ textBlock: { ...norm.textBlock, title: e.target.value } }, 'tbtitle')} data-testid="textblock-title" /></label>
                 {[0, 1, 2].map((i) => <label key={i} style={lab}>부제 {i + 1}<input style={input} value={norm.textBlock.subs[i] || ''} onChange={(e) => { const n = [...norm.textBlock.subs]; while (n.length < 3) n.push(''); n[i] = e.target.value; setGlobal({ textBlock: { ...norm.textBlock, subs: n.filter((t, k) => t || k < 2) } }, `tbsub${i}`); }} /></label>)}
                 <div style={lab}>강조색<Colors value={norm.textBlock.accent} onChange={(c) => setGlobal({ textBlock: { ...norm.textBlock, accent: c } })} /></div>
@@ -448,7 +511,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                 <input type="range" min="0" max="100" step="5" value={sel.el.edge || 0} onChange={(e) => set({ edge: Number(e.target.value) }, 'edge')} data-testid="img-edge" />
               </label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button style={smallBtn(false)} onClick={() => set({ gray: CONTEXT_FX.gray, opacity: CONTEXT_FX.opacity, edge: CONTEXT_FX.edge, layer: 'back' })} data-testid="img-context" title="흑백 + 투명도 35% + 맨 뒤로 — 그 위에 매스·동선을 얹는 흐린 바탕(대지·평면 맥락)">🌫 맥락 바탕으로 흐리게</button>
+                <button style={smallBtn(false)} onClick={() => set({ gray: CONTEXT_FX.gray, opacity: CONTEXT_FX.opacity, edge: CONTEXT_FX.edge, layer: 'back' })} data-testid="img-context" title="흑백 + 투명도 35% + 맨 뒤로 — 그 위에 매스·동선을 얹는 흐린 바탕(대지·평면 맥락)">맥락 바탕으로 흐리게</button>
                 {((sel.el.gray || 0) > 0 || (sel.el.edge || 0) > 0 || sel.el.opacity < 1) && <button style={smallBtn(false)} onClick={() => set({ gray: 0, edge: 0, opacity: 1 })} data-testid="img-fx-reset" title="탈색·가장자리·투명도를 처음 상태로">효과 지우기</button>}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -457,8 +520,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                 {sel.el.ar > 0 && <button style={smallBtn(false)} onClick={() => { const r = sel.el.rect; set({ rect: [r[0], r[1], r[2], r[1] + (r[2] - r[0]) / sel.el.ar] }); }} data-testid="img-ratio">원본 비율로</button>}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">🔄 이미지 바꾸기</button>
-                <button style={smallBtn(!!sel.el.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: selected })} data-testid="img-crop" title="이미지의 필요한 부분만 남깁니다">✂ 자르기{sel.el.crop ? ' (자른 상태)' : ''}</button>
+                <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">이미지 바꾸기</button>
+                <button style={smallBtn(!!sel.el.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: selected })} data-testid="img-crop" title="이미지의 필요한 부분만 남깁니다">자르기{sel.el.crop ? ' (자른 상태)' : ''}</button>
                 <input ref={imgFileRef} type="file" accept="image/*" hidden data-testid="img-replace-input" onChange={(e) => { replaceImg(e.target.files?.[0]); e.target.value = ''; }} />
               </div>
               {imgNote && <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }} data-testid="img-note">{imgNote}</p>}
@@ -542,6 +605,18 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <label style={lab}>글자 크기 {sel.el.size}
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} data-testid="co-size" />
               </label>
+              <div style={{ ...lab, gap: 6 }} data-testid="sk-co-textfmt">
+                <span>글자 정렬(글 상자 안)</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn((sel.el.align || 'start') === k), flex: 1, padding: '4px 2px' }} onClick={() => set({ align: k === 'start' ? undefined : k })} data-testid={`sk-co-ta-${k}`}>{t}</button>)}
+                </div>
+                <label style={lab}>자간 {sel.el.ls || 0}
+                  <input type="range" min="-2" max="12" step="0.5" value={sel.el.ls || 0} onChange={(e) => set({ ls: Number(e.target.value) || undefined }, 'ls')} data-testid="sk-co-ls" />
+                </label>
+                <label style={lab}>설명 행간 {Math.round((sel.el.lh || 1) * 100)}%
+                  <input type="range" min="0.6" max="2.5" step="0.05" value={sel.el.lh || 1} onChange={(e) => set({ lh: Math.abs(Number(e.target.value) - 1) < 0.01 ? undefined : Number(e.target.value) }, 'lh')} data-testid="sk-co-lh" />
+                </label>
+              </div>
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
               <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>글을 끌면 끝점까지 통째로 움직입니다. <b>끝점의 동그라미 손잡이</b>를 끌어 가리킬 곳을 정하세요. 제목·설명 글자를 더블클릭해도 고칩니다(Enter 확정 · Shift+Enter 줄바꿈).</span>
             </>)}
@@ -597,6 +672,15 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <label style={lab}>크기 {sel.el.size}{ptInfo ? ` · 약 ${Math.round(sel.el.size * ptInfo.ppu * 10) / 10}pt` : ''}
                 <input type="range" min="9" max="40" step="1" value={sel.el.size} onChange={(e) => set({ size: Number(e.target.value) }, 'size')} />
               </label>
+              <div style={{ ...lab, gap: 6 }} data-testid="sk-textfmt">
+                <span>글자 정렬 <span style={{ fontWeight: 400 }}>(글자는 제자리에 둡니다)</span></span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn((sel.el.align || 'middle') === k), flex: 1, padding: '4px 2px' }} onClick={() => setMemoAlign(k)} data-testid={`sk-ta-${k}`}>{t}</button>)}
+                </div>
+                <label style={lab}>자간 {sel.el.ls || 0}
+                  <input type="range" min="-2" max="20" step="0.5" value={sel.el.ls || 0} onChange={(e) => set({ ls: Number(e.target.value) || undefined }, 'ls')} data-testid="sk-ls" />
+                </label>
+              </div>
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <Num label="X" value={sel.el.x} onChange={(v) => set({ x: v }, 'x')} />
@@ -606,7 +690,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
 
             {sketchCanRotate(norm, selected) && (
               <div style={{ ...lab, gap: 6, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="rotate-panel">
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>회전</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>회전</span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, alignItems: 'end' }}>
                   <Num label={kind === 'wind' || kind === 'line' ? '각도(°) — 시작→끝 방향, 시계 방향이 +' : '각도(°) — 시계 방향이 +'} value={sketchRotation(norm, selected)} step={1} testid="rot-input" onChange={(v) => commit(sketchSetAngle(norm, selected, v), `${selected}:rot`)} />
                   <button style={smallBtn(false)} onClick={() => commit(sketchSetAngle(norm, selected, 0))} disabled={!sketchRotation(norm, selected)} title={kind === 'wind' || kind === 'line' ? '수평(→)으로 되돌립니다' : '돌리기 전 모양으로 되돌립니다'} data-testid="rot-zero">0°</button>
@@ -618,7 +702,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               </div>
             )}
             <div style={{ ...lab, gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="align-panel">
-              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>정렬·대칭</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>정렬·대칭</span>
               <label style={lab}>기준
                 <select style={input} value={ref} onChange={(e) => setRefId(e.target.value)} data-testid="align-ref">
                   <option value="axis">그림 가운데(틀)</option>

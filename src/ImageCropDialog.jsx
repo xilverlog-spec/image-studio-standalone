@@ -5,7 +5,7 @@ import { normCrop } from './conceptDiagram/imgutil';
 // src: 원본 이미지(data URL), crop: 지금 보이는 범위 [왼쪽, 위, 오른쪽, 아래](0~1, 없으면 전체), onApply(crop|null): null 은 자르기 해제
 const MIN = 0.05;
 const HANDLES = [['nw', 0, 0, 'nwse-resize'], ['n', 0.5, 0, 'ns-resize'], ['ne', 1, 0, 'nesw-resize'], ['e', 1, 0.5, 'ew-resize'], ['se', 1, 1, 'nwse-resize'], ['s', 0.5, 1, 'ns-resize'], ['sw', 0, 1, 'nesw-resize'], ['w', 0, 0.5, 'ew-resize']];
-const btn = (primary) => ({ padding: '7px 14px', borderRadius: 7, border: primary ? '1px solid #F28C28' : '1px solid var(--border-color, #cbd5e1)', background: primary ? '#F28C28' : '#fff', color: primary ? '#fff' : '#334155', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
+const btn = (primary) => ({ padding: '7px 14px', borderRadius: 7, border: primary ? '1px solid var(--primary)' : '1px solid var(--line-strong)', background: primary ? 'var(--primary)' : 'var(--surface)', color: primary ? '#fff' : '#334155', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
 
 export default function ImageCropDialog({ src, crop, onApply, onCancel, busy }) {
   const [c, setC] = useState(crop || [0, 0, 1, 1]);
@@ -41,13 +41,13 @@ export default function ImageCropDialog({ src, crop, onApply, onCancel, busy }) 
   const px = nat ? `${Math.round((c[2] - c[0]) * nat.w)}×${Math.round((c[3] - c[1]) * nat.h)}px` : '';
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} data-testid="crop-dialog" onPointerDown={(e) => e.stopPropagation()}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.4)', maxWidth: '96vw', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ background: '#fff', borderRadius: 'var(--r-btn)', padding: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.4)', maxWidth: '96vw', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 15, color: '#0f172a' }}>✂ 이미지 자르기</b>
+          <b style={{ fontSize: 15, color: '#0f172a' }}>이미지 자르기</b>
           <span style={{ fontSize: 12, color: '#64748b' }}>주황 상자 안만 남깁니다. 상자 안을 끌면 옮기고, 가장자리·모서리 점을 끌면 크기가 바뀝니다. (Enter 적용 · Esc 취소)</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <div ref={stage} style={{ position: 'relative', width: W, height: H, overflow: 'hidden', background: '#e2e8f0', userSelect: 'none', touchAction: 'none' }} data-testid="crop-stage">
+          <div ref={stage} style={{ position: 'relative', width: W, height: H, overflow: 'hidden', background: 'var(--line-strong)', userSelect: 'none', touchAction: 'none' }} data-testid="crop-stage">
             <img src={src} alt="자를 이미지" draggable={false} style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
             <div onPointerDown={(e) => begin(e, 'move')} data-testid="crop-box" style={{ position: 'absolute', left: pct(c[0]), top: pct(c[1]), width: pct(c[2] - c[0]), height: pct(c[3] - c[1]), border: '2px solid #F28C28', boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)', cursor: 'move', boxSizing: 'border-box' }}>
               {HANDLES.map(([m, fx, fy, cur]) => (

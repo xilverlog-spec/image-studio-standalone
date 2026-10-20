@@ -4,10 +4,10 @@ import { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, LABEL_PREFIXES, presetById, r
 // 페이지 설정(다이어그램 탭 왼쪽 ② 페이지). 계산은 conceptDiagram/page.js 가 하고 여기는 입력만 받는다.
 // 2026-10-20 단순화(R9 후속): 기본으로 보이는 것은 켜기 · 용지 크기 · 칸 배치(그림으로 고름)뿐이고, 칸은 오른쪽 미리보기에서 직접 눌러 고른다.
 // 선택한 칸의 크기·라벨·옮기기와 칸 간격·여백·글자·머리꼬리는 접어 두었다. 긴 안내문은 마우스를 올리면 나오는 설명(title)으로만 둔다.
-const inp = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.9)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box', width: '100%' };
+const inp = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box', width: '100%' };
 const lab = { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
-const small = (on) => ({ padding: '4px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #F28C28' : '1px solid var(--border-color)', background: on ? 'rgba(242,140,40,0.14)' : 'rgba(255,255,255,0.85)', color: on ? '#B45309' : 'var(--text-secondary)' });
-const sum = { fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)', cursor: 'pointer' };
+const small = (on) => ({ padding: '4px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: on ? '1px solid var(--primary)' : '1px solid var(--line-strong)', background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--warn)' : 'var(--text-secondary)' });
+const sum = { fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' };
 const mmText = (r) => `${Math.round(r[2])}×${Math.round(r[3])}mm`;
 
 // 칸 배치 미리 그림: 비율 상자(0~1)를 작은 그림으로
@@ -15,7 +15,7 @@ function LayoutThumb({ layout, on, onClick }) {
   const W = 52; const H = 38; const g = 1.2;
   return (
     <button type="button" onClick={onClick} title={layout.label} aria-label={layout.label} data-testid={`page-layout-${layout.id}`}
-      style={{ padding: 3, borderRadius: 6, cursor: 'pointer', border: on ? '2px solid #F28C28' : '1px solid var(--border-color)', background: on ? 'rgba(242,140,40,0.12)' : 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      style={{ padding: 3, borderRadius: 6, cursor: 'pointer', border: on ? '2px solid var(--primary)' : '1px solid var(--border-color)', background: on ? 'var(--primary-soft)' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', maxWidth: 52 }}>
         {layout.cells.map((c, i) => <rect key={i} x={c[0] * W + g} y={c[1] * H + g} width={Math.max(2, (c[2] - c[0]) * W - 2 * g)} height={Math.max(2, (c[3] - c[1]) * H - 2 * g)} rx="1.5" fill={on ? '#F5B26B' : '#C9D2DE'} stroke={on ? '#E8833A' : '#8A96A8'} strokeWidth="0.8" />)}
       </svg>
@@ -37,9 +37,9 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onClear, 
   const rows = [['title', '제목', '페이지 제목'], ['sub', '소제목', '부제 · 칸 제목'], ['label', '본문', '다이어그램 속 글자(목표)'], ['small', '작은 글자', '범례·각주']];
   const setGrid = (gx, gy) => setLay({ layoutId: `g${Math.min(6, Math.max(1, Number(gx) || 1))}x${Math.min(6, Math.max(1, Number(gy) || 1))}`, custom: null, basePreset: null });
   return (
-    <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.5)' }} data-testid="page-box">
-      <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)' }} title="켜면 오른쪽에 페이지 미리보기가 생기고, 그림을 칸에 나눠 넣어 정해진 용지 크기로 저장합니다.">
-        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} data-testid="page-on" />📐 페이지에 맞춰 만들기 (여러 그림을 한 장에)
+    <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '8px 10px', background: 'var(--surface)' }} data-testid="page-box">
+      <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }} title="켜면 오른쪽에 페이지 미리보기가 생기고, 그림을 칸에 나눠 넣어 정해진 용지 크기로 저장합니다.">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} data-testid="page-on" />페이지에 맞춰 만들기 (여러 그림을 한 장에)
       </label>
       {!on && (
         <p style={{ margin: '6px 0 0', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-tertiary, #64748b)' }} data-testid="page-off-note">
@@ -64,7 +64,7 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onClear, 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ ...lab, flexDirection: 'row', justifyContent: 'space-between' }} title="오른쪽 미리보기에서 칸을 직접 눌러 고르고, 칸 가장자리의 점을 끌어 크기를 바꿀 수 있습니다. 칸을 고른 뒤 ① 만들기에서 다이어그램을 만들면 그 칸 크기에 맞춰 들어갑니다.">
               <span>칸 배치 <span style={{ color: '#94a3b8' }}>(칸은 오른쪽 미리보기에서 눌러 고릅니다)</span></span>
-              {grid ? <span>직접 격자 {grid[1]}×{grid[2]}</span> : pg.layoutId === 'custom' ? <span>✋ 직접 조정한 배치</span> : null}
+              {grid ? <span>직접 격자 {grid[1]}×{grid[2]}</span> : pg.layoutId === 'custom' ? <span>직접 조정한 배치</span> : null}
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }} data-testid="page-layout">
               {PAGE_LAYOUTS.map((l) => <LayoutThumb key={l.id} layout={l} on={!grid && pg.layoutId === l.id} onClick={() => setLay({ layoutId: l.id, custom: null, basePreset: l.id })} />)}
@@ -74,7 +74,7 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onClear, 
 
           {info?.warnings?.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="page-warnings">
-              {info.warnings.map((w, i) => <span key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: w.level === 'warn' ? '#B91C1C' : '#475569' }}>{w.level === 'warn' ? '⚠️' : 'ℹ️'} {w.text}</span>)}
+              {info.warnings.map((w, i) => <span key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: w.level === 'warn' ? '#B91C1C' : '#475569' }}>{w.level === 'warn' ? '' : 'ℹ️'} {w.text}</span>)}
             </div>
           )}
 

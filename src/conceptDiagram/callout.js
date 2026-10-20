@@ -5,6 +5,8 @@ export const CALLOUT_LINES = ['straight', 'elbow'];   // 직선 / 꺾은선(가�
 export const CALLOUT_ENDS = ['dot', 'arrow', 'none']; // 끝점 모양
 export const CALLOUT_COLOR = '#222222';
 export const CALLOUT_MAX_DESC = 3;
+export const CALLOUT_ALIGNS = ['start', 'middle', 'end'];   // 글 상자 안에서 줄 맞춤(왼쪽·가운데·오른쪽)
+export const CALLOUT_LH_MIN = 0.6; export const CALLOUT_LH_MAX = 2.5; // 설명 줄 사이 간격 배율(1 = 기본)
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const f1 = (n) => (Math.round(n * 10) / 10).toFixed(1);
@@ -19,18 +21,23 @@ export const descLines = (desc) => String(desc ?? '').split('\n').map((s) => s.t
 export function calloutLayout(c) {
   const s = Math.max(8, Number(c.size) || 14); const ds = s * 0.78; const x = Number(c.x) || 0; const y = Number(c.y) || 0;
   const title = String(c.title ?? ''); const dl = descLines(c.desc);
-  const w = Math.max(s * 4, textW(title, s) * 1.08 + s * 0.4, ...dl.map((l) => textW(l, ds) + ds * 0.3));
+  const ls = Number.isFinite(Number(c.ls)) ? Math.min(30, Math.max(-3, Number(c.ls))) : 0; // 자간(px)
+  const lh = Number.isFinite(Number(c.lh)) && Number(c.lh) > 0 ? Math.min(CALLOUT_LH_MAX, Math.max(CALLOUT_LH_MIN, Number(c.lh))) : 1;
+  const align = CALLOUT_ALIGNS.includes(c.align) ? c.align : 'start';
+  const tw = (t, size) => textW(t, size) + [...String(t ?? '')].length * ls;
+  const w = Math.max(s * 4, tw(title, s) * 1.08 + s * 0.4, ...dl.map((l) => tw(l, ds) + ds * 0.3));
   const ry = y + s * 1.3; // 밑줄 높이
+  const lx = align === 'middle' ? x + w / 2 : align === 'end' ? x + w : x; // 줄 맞춤 기준 x
   const lines = [];
-  if (title) lines.push({ t: title, x, y: y + s * 0.92, size: s, bold: true });
-  dl.forEach((t, i) => lines.push({ t, x, y: ry + s * 0.3 + ds * 0.92 + i * ds * 1.36, size: ds, bold: false }));
-  const bottom = dl.length ? ry + s * 0.3 + ds * 0.92 + (dl.length - 1) * ds * 1.36 + ds * 0.32 : ry + s * 0.25;
+  if (title) lines.push({ t: title, x: lx, y: y + s * 0.92, size: s, bold: true, anchor: align });
+  dl.forEach((t, i) => lines.push({ t, x: lx, y: ry + s * 0.3 + ds * 0.92 + i * ds * 1.36 * lh, size: ds, bold: false, anchor: align }));
+  const bottom = dl.length ? ry + s * 0.3 + ds * 0.92 + (dl.length - 1) * ds * 1.36 * lh + ds * 0.32 : ry + s * 0.25;
   const T = [Number(c.tx) || 0, Number(c.ty) || 0];
   const right = T[0] >= x + w / 2; // 끝점이 오른쪽에 가까우면 밑줄의 오른쪽 끝에서, 아니면 왼쪽 끝에서 나간다
   const S = right ? [x + w, ry] : [x, ry];
   let pts = [S, T];
   if (c.line === 'elbow') { const out = right ? T[0] > S[0] : T[0] < S[0]; if (out && Math.abs(T[1] - S[1]) > 0.5) pts = [S, [T[0], S[1]], T]; } // 밖으로 나가는 쪽일 때만 꺾는다(아니면 직선)
-  return { x, y, w, h: bottom - y, s, ds, lines, rule: [x, ry, x + w, ry], pts, S, T };
+  return { x, y, w, h: bottom - y, s, ds, lines, rule: [x, ry, x + w, ry], pts, S, T, ls };
 }
 
 // 글 상자와 끝점을 모두 감싸는 사각형 [x0, y0, x1, y1]
@@ -43,7 +50,7 @@ export function calloutBox(c) {
 export function calloutSvg(c, { id = '', interactive = false, font = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif", halo = '' } = {}) {
   const L = calloutLayout(c); const col = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : CALLOUT_COLOR; const sw = Math.max(1.2, L.s * 0.1);
   const h = halo ? ` paint-order="stroke" stroke="${halo}" stroke-width="3.5" stroke-linejoin="round"` : '';
-  const txt = L.lines.map((l) => `<text x="${f1(l.x)}" y="${f1(l.y)}" font-family="${font}" font-size="${f1(l.size)}" font-weight="${l.bold ? 800 : 500}" fill="${col}"${l.bold ? '' : ' fill-opacity="0.8"'}${h}>${esc(l.t)}</text>`).join('');
+  const txt = L.lines.map((l) => `<text x="${f1(l.x)}" y="${f1(l.y)}"${l.anchor && l.anchor !== 'start' ? ` text-anchor="${l.anchor}"` : ''}${L.ls ? ` letter-spacing="${f1(L.ls)}"` : ''} font-family="${font}" font-size="${f1(l.size)}" font-weight="${l.bold ? 800 : 500}" fill="${col}"${l.bold ? '' : ' fill-opacity="0.8"'}${h}>${esc(l.t)}</text>`).join('');
   const rule = `<line x1="${f1(L.rule[0])}" y1="${f1(L.rule[1])}" x2="${f1(L.rule[2])}" y2="${f1(L.rule[3])}" stroke="${col}" stroke-width="${f1(sw * 0.85)}" stroke-linecap="round"/>`;
   const poly = `<polyline points="${L.pts.map((p) => `${f1(p[0])},${f1(p[1])}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${f1(sw)}" stroke-linejoin="round" stroke-linecap="round"/>`;
   let end = '';

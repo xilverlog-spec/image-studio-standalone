@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
+import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
@@ -19,15 +19,15 @@ import { snapDeg, normDeg, rotRectKeep } from './conceptDiagram/rotate';
 // 그림 속 도형을 하나씩 눌러 고른 뒤 색·위치(끌기)·곡선(마디 끌기)·선 종류·굵기·투명도를 고친다. 글자는 더블클릭으로 그 자리에서 고친다.
 // 고친 내용(edits)은 부모가 갖고, 그림을 다시 그릴 때(글자를 고쳤을 때)도 같은 요소에 다시 입혀진다.
 
-const input = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.9)', color: 'var(--text-primary)', fontSize: 12.5, width: '100%', boxSizing: 'border-box' };
+const input = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12.5, width: '100%', boxSizing: 'border-box' };
 const smallBtn = (on, danger) => ({
   padding: '5px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-  border: `1px solid ${danger ? '#fca5a5' : on ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-  background: danger ? '#fef2f2' : on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: danger ? '#B91C1C' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+  border: `1px solid ${danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--line-strong)'}`,
+  background: danger ? 'var(--err-soft)' : on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)',
 });
-const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' };
+const sec = { display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' };
 const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
-const title = { fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' };
+const title = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
 const SWATCHES = ['#1E88C8', '#E8833A', '#3E8E41', '#D6453D', '#7C5CBF', '#222222', '#FFFFFF'];
 const TAG_NAME = { path: '곡선·경로', line: '선', polyline: '꺾은선', polygon: '다각형', rect: '사각형', circle: '원', ellipse: '타원', text: '글자', g: '묶음(여러 요소)' };
 
@@ -67,6 +67,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const [note, setNote] = useState('');          // 복사·붙여넣기 같은 짧은 알림
   const [node, setNode] = useState(-1);          // 고른 경로 마디(segs 번호)
   const [rotInfo, setRotInfo] = useState(null);  // 회전 손잡이를 끄는 동안 보여 줄 각도 { deg, multi }
+  const [scaleInfo, setScaleInfo] = useState(null); // 전체 크기 조절 손잡이를 끄는 동안 보여 줄 배율 { kx, ky }
   const [ov, setOv] = useState(null);            // 화면 위 손잡이·선택 상자(화소 좌표)
   const [ed, setEd] = useState(null);            // 글자 고치는 중
   const [cropFor, setCropFor] = useState(null); const [imgBusy, setImgBusy] = useState(false); const [imgNote, setImgNote] = useState(''); const imgFileRef = useRef(null); // 넣은 이미지 자르기 창·바꾸기
@@ -119,7 +120,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       const boxes = multi.map((id) => elOf(id)).filter(Boolean).map((n) => { const r = n.getBoundingClientRect(); return [r.left - hr.left, r.top - hr.top, r.width, r.height]; });
       if (!boxes.length) { setOv(null); return; }
       const x0 = Math.min(...boxes.map((b) => b[0])); const y0 = Math.min(...boxes.map((b) => b[1])); const x1 = Math.max(...boxes.map((b) => b[0] + b[2])); const y1 = Math.max(...boxes.map((b) => b[1] + b[3]));
-      setOv({ box: [x0, y0, x1 - x0, y1 - y0], multi: boxes, pts: [], ctrls: [], lines: [], w: hr.width, h: hr.height, rotC: [(x0 + x1) / 2, (y0 + y1) / 2], rot: [(x0 + x1) / 2, y0 - 30] }); return;
+      setOv({ box: [x0, y0, x1 - x0, y1 - y0], multi: boxes, pts: [], ctrls: [], lines: [], scaleH: true, w: hr.width, h: hr.height, rotC: [(x0 + x1) / 2, (y0 + y1) / 2], rot: [(x0 + x1) / 2, y0 - 30] }); return;
     }
     const el = sel ? elOf(sel) : null; if (!el) { setOv(null); return; }
     const br = el.getBoundingClientRect();
@@ -237,9 +238,39 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     drag.current = { kind: 'rotate', items, piv, multi: items.length > 1, ang0: Math.atan2(e.clientY - piv[1], e.clientX - piv[0]), cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
   };
+  // 전체 크기 조절: 고른 것(들)을 기준점 둘레로 같은 비율로 키우거나 줄인다. 선 굵기·글자·화살촉은 transform 으로, 넣은 것(이미지·표·리더선 등)은 크기 값으로 함께 바뀐다.
+  // piv = 기준점(화면 좌표). 요소마다 부모 좌표의 기준점을 한 번만 구해 둔다(끄는 동안 그림이 다시 그려져도 어긋나지 않게)
+  const scaleItems = (ids, piv) => ids.map((id) => {
+    const n = elOf(id); if (!n) return null; const ad = (Eref.current.adds || []).find((a) => a.id === id);
+    const inv = invOf(n.parentNode && n.parentNode.getScreenCTM ? n.parentNode.getScreenCTM() : null); if (!inv) return null;
+    const geom = ad ? null : geomOf(id); if (!ad && !geom) return null;
+    return { id, add0: ad ? { ...ad } : null, geom, about: through(inv, piv[0], piv[1]), text: !ad && byId[id]?.tag === 'text' };
+  }).filter(Boolean);
+  const applyScale = (base, items, kx, ky) => {
+    let next = base; const km = Math.min(kx, ky); const sig = sigRef.current;
+    items.forEach((it) => { const k = it.text ? [km, km] : [kx, ky]; next = it.add0 ? editUpdateAdd(next, it.id, addScalePatch(it.add0, k, it.about)) : editScale(next, it.id, k, it.about, it.geom, sig); }); // 글자는 가로·세로를 따로 늘이지 않고 작은 쪽 배율로
+    return next;
+  };
+  const startScale = (e, corner) => {
+    const ids = selIds.filter((i) => !isBg(i)); if (ids.length < 2 || !ov?.box || !hostRef.current) return;
+    const hr = hostRef.current.getBoundingClientRect(); const [bx, by, bw, bh] = ov.box; const x0 = hr.left + bx; const y0 = hr.top + by;
+    const east = corner.includes('e'); const south = corner.includes('s');
+    const piv = [east ? x0 : x0 + bw, south ? y0 : y0 + bh]; const grab = [east ? x0 + bw + 3 : x0 - 3, south ? y0 + bh + 3 : y0 - 3]; // 반대쪽 모서리는 고정, 잡은 모서리(손잡이 자리 = 점선 상자 모서리)를 끈다 — 처음엔 배율 100% 에서 출발
+    if (Math.abs(grab[0] - piv[0]) < 4 || Math.abs(grab[1] - piv[1]) < 4) return;
+    const items = scaleItems(ids, piv); if (!items.length) return;
+    drag.current = { kind: 'scaleMulti', items, piv, grab, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+  };
+  const scaleSelBy = (k) => { // 단추: 고른 것 전체를 가운데 둘레로 k 배
+    const ids = selIds.filter((i) => !isBg(i)); const bs = ids.map(boxOf).filter(Boolean); if (!ids.length || !bs.length) return;
+    const piv = [(Math.min(...bs.map((b) => b.l)) + Math.max(...bs.map((b) => b.r))) / 2, (Math.min(...bs.map((b) => b.t)) + Math.max(...bs.map((b) => b.b))) / 2];
+    const items = scaleItems(ids, piv); if (!items.length) return;
+    commit(applyScale(Eref.current, items, k, k), `scalebtn:${Date.now()}`);
+  };
   const startHandle = (e, h) => {
     e.preventDefault(); e.stopPropagation();
     if (h === 'rot') { startRotate(e); return; }
+    if (h.startsWith('ms:')) { startScale(e, h.slice(3)); return; }
     const el = elOf(sel); if (!el) return;
     const [kind, arg] = h.split(':'); const tag = el.tagName.toLowerCase();
     const d = { kind, arg, id: sel, el, tag, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, key: `${sel}:${kind}` };
@@ -265,6 +296,13 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       const delta = one ? snapped - d.items[0].a0 : snapped; let next = d.base;
       d.items.forEach((it) => { const about = d.multi ? through(it.inv, d.piv[0], d.piv[1]) : null; const ang = it.a0 + delta; next = it.add ? editRotateAdd(next, it.id, ang, about) : editRotate(next, it.id, ang, it.geom, sig, about); });
       setRotInfo({ deg: snapped, multi: d.multi }); commit(next, 'rot'); return;
+    }
+    if (d.kind === 'scaleMulti') { // Shift 가 아니면 가로·세로 같은 비율(대각선 방향으로 끈 양), Shift 는 가로·세로 따로
+      const vx = d.grab[0] - d.piv[0]; const vy = d.grab[1] - d.piv[1]; const mx = e.clientX - d.piv[0]; const my = e.clientY - d.piv[1];
+      const cl = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
+      let kx; let ky;
+      if (e.shiftKey) { kx = cl(mx / vx); ky = cl(my / vy); } else { kx = ky = cl((mx * vx + my * vy) / (vx * vx + vy * vy)); }
+      setScaleInfo({ kx, ky }); commit(applyScale(d.base, d.items, kx, ky), 'scale'); return;
     }
     if (d.kind === 'moveMulti') {
       const [cdx, cdy] = clientDelta(d, e); let next = d.base;
@@ -316,7 +354,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     if (set) commit(editSet(d.base, d.id, set, sig), d.key);
   };
   const onUp = (e) => {
-    window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setTick((n) => n + 1);
+    window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setScaleInfo(null); setTick((n) => n + 1);
     if (d && d.kind === 'marquee') {
       setMarq(null);
       if (!d.moved) { if (!d.add) { setMulti([]); setSel(d.bgId); setNode(-1); } return; } // 끌지 않고 놓음: 배경(또는 빈 곳) 클릭
@@ -364,6 +402,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const dash = el ? dashKind(el.getAttribute('stroke-dasharray')) : 'solid';
   const op = el ? num(el.getAttribute('opacity'), 1) : 1;
   const fs = el && tag === 'text' ? num(cs?.fontSize, 14) : 0;
+  const taOf = el && tag === 'text' ? (cs?.textAnchor || 'start') : '';                      // 글자 정렬: start | middle | end
+  const lsOf = el && tag === 'text' ? num(el.getAttribute('letter-spacing'), 0) : 0;          // 자간(그림 단위)
+  const lineN = el && tag === 'text' ? [...el.querySelectorAll('tspan')].filter((t) => t.hasAttribute('dy') || t.hasAttribute('y')).length : 0; // 줄 수(2 줄 이상일 때만 행간을 보인다)
+  const lhOf = sel ? (E.ops[sel]?.lh || 1) : 1;
   const tr = sel ? editTranslate(E, sel) : [0, 0]; const edited = !!(sel && E.ops[sel]);
   const editedCount = Object.keys(E.ops).length;
   const kids = (id) => els.filter((x) => x.kind === 'e' && (() => { let p = x.parent; while (p) { if (p === id) return true; p = byId[p]?.parent; } return false; })());
@@ -487,6 +529,18 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const a = through(inv, 0, 0); const b = through(inv, dxc, dyc); const dx = b[0] - a[0]; const dy = b[1] - a[1]; const ad = (next.adds || []).find((q) => q.id === id);
     return ad ? editUpdateAdd(next, id, addShiftPatch(ad, dx, dy)) : editMove(next, id, dx, dy, sigRef.current);
   };
+  // 글자 정렬: text-anchor 를 바꾸면 기준점(x) 둘레로 글자가 옮겨 가므로, 글자 묶음이 화면에서 제자리에 남게 같은 양만큼 되옮긴다(돌아가거나 커진 글자도 화면 좌표로 계산)
+  const TA_K = { start: 0, middle: 0.5, end: 1 };
+  const anchorShift = (next, id, k) => {
+    const n = elOf(id); if (!n) return next; const cur = getComputedStyle(n).textAnchor || 'start'; if (cur === k) return next;
+    let out = editSet(next, id, { 'text-anchor': k }, sigRef.current);
+    try { const bb = n.getBBox(); const mm = n.getScreenCTM(); if (mm) { const vx = (TA_K[k] - TA_K[cur]) * bb.width; out = moveClient(out, id, mm.a * vx, mm.b * vx); } } catch { /* 글자 상자를 못 구하면 정렬만 바꾼다 */ }
+    return out;
+  };
+  const setTextAnchor = (k) => commit(anchorShift(Eref.current, sel, k));
+  const textIds = (ids) => ids.filter((i) => byId[i]?.tag === 'text' && !isBg(i));
+  const multiAnchor = (k) => { let next = Eref.current; textIds(multi).forEach((id) => { next = anchorShift(next, id, k); }); commit(next); };
+  const multiSpacing = (v) => { let next = Eref.current; textIds(multi).forEach((id) => { next = editSet(next, id, { 'letter-spacing': Number(v) === 0 ? null : String(v) }, sigRef.current); }); commit(next, 'multi:ls'); };
   const geomOf = (id) => { const n = elOf(id); if (!n) return null; let bb = null; try { bb = n.getBBox(); } catch { return null; } return { bbox: [bb.x, bb.y, bb.width, bb.height], t0: byId[id]?.attrs?.transform || '' }; };
   const rotateSel = (delta) => { // 고른 것(들)을 delta° 돌린다(시계 방향 +). 여러 개면 묶음의 가운데를 중심으로 함께
     const ids = selIds.filter((i) => !isBg(i)); if (!ids.length || !delta) return;
@@ -594,11 +648,14 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               {ov.pts.map((p) => (p.sq
                 ? <rect key={p.h} data-h={p.h} x={p.p[0] - 5} y={p.p[1] - 5} width="10" height="10" rx="2" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'nwse-resize' }} />
                 : <circle key={p.h} data-h={p.h} cx={p.p[0]} cy={p.p[1]} r="6" fill={p.sel ? '#F28C28' : '#fff'} stroke="#F28C28" strokeWidth="2.2" style={{ pointerEvents: 'auto', cursor: 'move' }} />))}
+              {ov.scaleH && [['nw', ov.box[0] - 3, ov.box[1] - 3, 'nwse-resize'], ['ne', ov.box[0] + ov.box[2] + 3, ov.box[1] - 3, 'nesw-resize'], ['se', ov.box[0] + ov.box[2] + 3, ov.box[1] + ov.box[3] + 3, 'nwse-resize'], ['sw', ov.box[0] - 3, ov.box[1] + ov.box[3] + 3, 'nesw-resize']].map(([k, px, py, cur]) => (
+                <rect key={k} data-h={`ms:${k}`} data-testid={`sv-scale-${k}`} x={px - 6} y={py - 6} width="12" height="12" rx="2.5" fill="#F28C28" stroke="#fff" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: cur }}><title>끌어서 선택한 것 전체의 크기를 조절합니다(글자·선 굵기도 함께, Shift: 가로·세로 따로)</title></rect>))}
               {ov.rot && (<g>
                 <line x1={ov.rot[0]} y1={ov.rot[1] + 8} x2={ov.rot[0]} y2={ov.box[1] - 3} stroke="#F28C28" strokeWidth="1.6" />
                 <circle data-h="rot" data-testid="sv-rot-handle" cx={ov.rot[0]} cy={ov.rot[1]} r="8.5" fill="#fff" stroke="#F28C28" strokeWidth="2.4" style={{ pointerEvents: 'auto', cursor: 'grab' }} />
                 <path d={`M${ov.rot[0] - 3.4} ${ov.rot[1] + 0.4} a3.4 3.4 0 1 1 1.2 2.6`} fill="none" stroke="#F28C28" strokeWidth="1.8" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
               </g>)}
+              {scaleInfo && ov.rotC && (<g data-testid="sv-scale-label"><rect x={ov.rotC[0] - 38} y={ov.rotC[1] - 13} width="76" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{Math.abs(scaleInfo.kx - scaleInfo.ky) < 0.005 ? `${Math.round(scaleInfo.kx * 100)}%` : `${Math.round(scaleInfo.kx * 100)}×${Math.round(scaleInfo.ky * 100)}%`}</text></g>)}
               {rotInfo && ov.rotC && (<g data-testid="sv-rot-label"><rect x={ov.rotC[0] - 30} y={ov.rotC[1] - 13} width="60" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{rotInfo.multi && rotInfo.deg > 0 ? '+' : ''}{Math.round(rotInfo.deg * 10) / 10}°</text></g>)}
             </svg>
           )}
@@ -608,7 +665,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           )}
         </div>
         </ZoomView>
-        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">✏️ 도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두). 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두). 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
       </div>
 
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sv-side">
@@ -631,12 +688,13 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy(); }} data-testid="sv-copy" title="Ctrl+C">복사</button>
             <button style={smallBtn(false)} onClick={() => pasteClip()} data-testid="sv-paste" title="Ctrl+V">붙여넣기</button>
             <button style={smallBtn(false)} onClick={duplicateSel} data-testid="sv-dup" title="Ctrl+D">복제</button>
+            <button style={smallBtn(false)} onClick={selectAll} data-testid="sv-select-all-btn" title="Ctrl+A — 모두 고른 뒤 주황 상자의 모서리를 끌면 그림 전체의 크기를 조절합니다(글자·선 굵기도 함께, Shift: 가로·세로 따로)">전체 선택</button>
           </div>
-          {note && <span style={{ fontSize: 11, color: '#9A3412' }} data-testid="sv-note">{note}</span>}
+          {note && <span style={{ fontSize: 11, color: 'var(--warn)' }} data-testid="sv-note">{note}</span>}
         </div>
         <div style={sec}>
           <span style={title}>그림 속 도형 고치기</span>
-          <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>손으로 고친 요소 <b data-testid="sv-count">{editedCount}</b>개{adds.length ? ` · 내 이미지 ${adds.length}장` : ''}{shapes.length ? ` · 내가 그린 도형 ${shapes.length}개` : ''}{stale && <span style={{ color: '#B45309' }}> · 그림 구조가 바뀌어 예전 수정은 적용되지 않았습니다</span>}</p>
+          <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 }}>손으로 고친 요소 <b data-testid="sv-count">{editedCount}</b>개{adds.length ? ` · 내 이미지 ${adds.length}장` : ''}{shapes.length ? ` · 내가 그린 도형 ${shapes.length}개` : ''}{stale && <span style={{ color: 'var(--warn)' }}> · 그림 구조가 바뀌어 예전 수정은 적용되지 않았습니다</span>}</p>
           {(editedCount > 0 || adds.length > 0 || shapes.length > 0) && <button style={smallBtn(false, true)} onClick={() => { commit({ sig: view.sig, ops: {} }); setSel(''); }} data-testid="sv-reset">모든 수정·내가 넣은 것 지우고 처음으로</button>}
         </div>
 
@@ -680,7 +738,22 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
               {[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([t, dx, dy]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => nudgeAll(dx * 5, dy * 5)} data-testid={`sv-multi-nudge-${t}`}>{t} 5</button>)}
             </div>
+            {textIds(multi).length > 0 && (
+              <div style={{ ...lab, gap: 6 }} data-testid="sv-multi-textfmt">
+                <span>글자 정렬·자간(고른 글자 {textIds(multi).length}개)</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), flex: 1, padding: '4px 2px' }} onClick={() => multiAnchor(k)} data-testid={`sv-multi-ta-${k}`}>{t}</button>)}
+                </div>
+                <label style={lab}>자간(모두)
+                  <input type="range" min="-2" max="20" step="0.5" defaultValue="0" onChange={(e) => multiSpacing(e.target.value)} data-testid="sv-multi-ls" />
+                </label>
+              </div>
+            )}
             {rotPanel(false)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }} data-testid="sv-scale-panel">
+              <span style={{ ...lab, flexBasis: '100%' }} title="주황 상자의 네 모서리를 끌어도 됩니다. 글자·선 굵기도 같은 비율로 바뀝니다. 모서리를 Shift 와 함께 끌면 가로·세로를 따로 바꿉니다.">크기 조절(모두, 글자·선 포함)</span>
+              {[[0.8, '80%'], [0.9, '−10%'], [1.1, '+10%'], [1.25, '125%']].map(([k, t]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 8px' }} onClick={() => scaleSelBy(k)} data-testid={`sv-scale-${Math.round(k * 100)}`}>{t}</button>)}
+            </div>
           </div>
         )}
 
@@ -688,6 +761,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           <div style={sec}>
             <span style={title}>전체</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림 속 <b>선·도형·원·글자</b>를 클릭하면 여기에 속성이 나옵니다. 여러 요소가 한 덩어리(칩·아이콘 등)로 묶여 있으면 <b>Alt+클릭</b> 또는 <b>↑ 묶음</b> 버튼으로 통째로 고릅니다.</p>
+            <button style={smallBtn(false)} onClick={selectAll} data-testid="sv-select-all" title="Ctrl+A — 모두 고른 뒤 주황 상자의 모서리를 끌면 그림 전체의 크기를 글자·선 굵기까지 함께 조절합니다(Shift: 가로·세로 따로)">전체 선택 → 모서리를 끌어 크기 조절</button>
           </div>
         )}
 
@@ -731,6 +805,18 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <label style={lab}>글자 크기 {r2(myAdd.size)}
               <input type="range" min="6" max="120" step="1" value={Math.min(120, Math.max(6, myAdd.size))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { size: Number(e.target.value) }), `${sel}:size`)} data-testid="sv-co-size" />
             </label>
+            <div style={{ ...lab, gap: 6 }} data-testid="sv-co-textfmt">
+              <span>글자 정렬(글 상자 안)</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, tt]) => <button key={k} style={{ ...smallBtn((myAdd.align || 'start') === k), flex: 1, padding: '4px 2px' }} onClick={() => commit(editUpdateAdd(Eref.current, sel, { align: k === 'start' ? undefined : k }))} data-testid={`sv-co-ta-${k}`}>{tt}</button>)}
+              </div>
+              <label style={lab}>자간 {r2(myAdd.ls || 0)}
+                <input type="range" min="-2" max="12" step="0.5" value={Math.min(12, Math.max(-2, myAdd.ls || 0))} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { ls: Number(e.target.value) || undefined }), `${sel}:ls`)} data-testid="sv-co-ls" />
+              </label>
+              <label style={lab}>설명 행간 {Math.round((myAdd.lh || 1) * 100)}%
+                <input type="range" min="0.6" max="2.5" step="0.05" value={myAdd.lh || 1} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { lh: Math.abs(Number(e.target.value) - 1) < 0.01 ? undefined : Number(e.target.value) }), `${sel}:lh`)} data-testid="sv-co-lh" />
+              </label>
+            </div>
             <div style={lab}>색<Colors value={myAdd.fill} onChange={(c) => commit(editUpdateAdd(Eref.current, sel, { fill: c }), `${sel}:fill`)} none={false} /></div>
             <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>글을 끌면 끝점까지 통째로 움직입니다. <b>끝점의 동그라미 손잡이</b>를 끌어 가리킬 곳을 정하세요. 제목·설명 글자를 더블클릭해도 고칩니다(Enter 확정 · Shift+Enter 줄바꿈).</span>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -833,7 +919,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <input type="range" min="0" max="100" step="5" value={myAdd.edge || 0} onChange={(e) => commit(editUpdateAdd(Eref.current, sel, { edge: Number(e.target.value) }), `${sel}:edge`)} data-testid="sv-img-edge" />
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { gray: CONTEXT_FX.gray, opacity: CONTEXT_FX.opacity, edge: CONTEXT_FX.edge, behind: true }))} data-testid="sv-img-context" title="흑백 + 투명도 35% + 맨 뒤로 — 그 위에 매스·동선을 얹는 흐린 바탕(대지·평면 맥락)">🌫 맥락 바탕으로 흐리게</button>
+              <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { gray: CONTEXT_FX.gray, opacity: CONTEXT_FX.opacity, edge: CONTEXT_FX.edge, behind: true }))} data-testid="sv-img-context" title="흑백 + 투명도 35% + 맨 뒤로 — 그 위에 매스·동선을 얹는 흐린 바탕(대지·평면 맥락)">맥락 바탕으로 흐리게</button>
               {((myAdd.gray || 0) > 0 || (myAdd.edge || 0) > 0 || myAdd.opacity < 1) && <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { gray: 0, edge: 0, opacity: 1 }))} data-testid="sv-img-fx-reset" title="탈색·가장자리·투명도를 처음 상태로">효과 지우기</button>}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -842,8 +928,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               {myAdd.ar > 0 && <button style={smallBtn(false)} onClick={() => commit(editUpdateAdd(Eref.current, sel, { h: r2(myAdd.w / myAdd.ar) }))} data-testid="sv-img-ratio">원본 비율로</button>}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="sv-img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">🔄 이미지 바꾸기</button>
-              <button style={smallBtn(!!myAdd.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: sel })} data-testid="sv-img-crop" title="이미지의 필요한 부분만 남깁니다">✂ 자르기{myAdd.crop ? ' (자른 상태)' : ''}</button>
+              <button style={smallBtn(false)} disabled={imgBusy} onClick={() => imgFileRef.current?.click()} data-testid="sv-img-replace" title="다른 이미지로 바꿉니다(자리·투명도·앞뒤는 그대로)">이미지 바꾸기</button>
+              <button style={smallBtn(!!myAdd.crop)} disabled={imgBusy} onClick={() => setCropFor({ id: sel })} data-testid="sv-img-crop" title="이미지의 필요한 부분만 남깁니다">자르기{myAdd.crop ? ' (자른 상태)' : ''}</button>
               <input ref={imgFileRef} type="file" accept="image/*" hidden data-testid="sv-img-replace-input" onChange={(e) => { replaceImg(e.target.files?.[0]); e.target.value = ''; }} />
             </div>
             {imgNote && <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }} data-testid="sv-img-note">{imgNote}</p>}
@@ -900,6 +986,22 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <label style={lab}>글자 크기 {r2(fs)}
                 <input type="range" min="6" max="60" step="1" value={Math.min(60, Math.max(6, fs))} onChange={(e) => patch(sel, { 'font-size': e.target.value }, 'fs')} data-testid="sv-fs" />
               </label>
+            )}
+            {tag === 'text' && (
+              <div style={{ ...lab, gap: 6 }} data-testid="sv-textfmt">
+                <span>글자 정렬 <span style={{ fontWeight: 400 }}>(글자 묶음은 제자리에 둡니다)</span></span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn(taOf === k), flex: 1, padding: '4px 2px' }} onClick={() => setTextAnchor(k)} data-testid={`sv-ta-${k}`}>{t}</button>)}
+                </div>
+                <label style={lab}>자간 {r2(lsOf)}
+                  <input type="range" min="-2" max="20" step="0.5" value={Math.min(20, Math.max(-2, lsOf))} onChange={(e) => patch(sel, { 'letter-spacing': Number(e.target.value) === 0 ? null : e.target.value }, 'ls')} data-testid="sv-ls" />
+                </label>
+                {lineN >= 2 && (
+                  <label style={lab}>행간 {Math.round(lhOf * 100)}% <span style={{ fontWeight: 400 }}>(줄 사이 간격, {lineN}줄)</span>
+                    <input type="range" min={LH_MIN} max={LH_MAX} step="0.05" value={lhOf} onChange={(e) => commit(editLineSpacing(Eref.current, sel, Number(e.target.value), sigRef.current), `${sel}:lh`)} data-testid="sv-lh" />
+                  </label>
+                )}
+              </div>
             )}
             <label style={lab}>투명도 {Math.round(op * 100)}%
               <input type="range" min="0.05" max="1" step="0.05" value={op} onChange={(e) => patch(sel, { opacity: Number(e.target.value) >= 1 ? null : e.target.value }, 'op')} data-testid="sv-opacity" />

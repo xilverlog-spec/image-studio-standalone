@@ -12,7 +12,7 @@ export default function TableEditor({ table, onChange, testid = 'table-editor', 
     onChange({ ...r.table, style: t.style, title: r.title || t.title }, '');
     setRaw(''); setNote(`${r.table.rows.length}행 × ${r.table.cols}열로 바꿨습니다${r.truncated ? ' — 4열을 넘는 오른쪽 열은 잘렸습니다' : ''}${r.droppedRows ? ` — ${r.droppedRows}행은 30행을 넘어 잘렸습니다` : ''}.`);
   };
-  const btn = (on, danger) => ({ padding: '3px 7px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${danger ? '#fca5a5' : on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: danger ? '#fef2f2' : on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: danger ? '#B91C1C' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
+  const btn = (on, danger) => ({ padding: '3px 7px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: danger ? 'var(--err-soft)' : on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
   const inp = { padding: '3px 5px', borderRadius: 5, border: '1px solid var(--border-color)', fontSize: 11.5, width: '100%', minWidth: 0, boxSizing: 'border-box', background: 'rgba(255,255,255,0.95)', color: 'var(--text-primary)' };
   const lab = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' };
   return (

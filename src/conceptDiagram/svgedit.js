@@ -4,6 +4,9 @@
 // 고친 내용(edits)은 '요소 번호 → 바꾼 값'으로 따로 저장하고, 그림을 다시 그릴 때(예: 글자를 고쳤을 때) 같은 번호의 요소에 다시 입힌다.
 //   edits = { sig, ops: { e12: { t:[dx,dy], r:30, rc:[cx,cy], set:{ fill:'#fff', d:'M…', 'stroke-dasharray':'9 6' }, del:true, tag:'path' } } }
 //   r = 회전 각도(°, 시계 방향 +), rc = 돌리는 중심(요소의 원래 변환을 적용한 뒤의 좌표). 그릴 때 transform = translate(t) rotate(r rc) 원래변환
+//   s = 크기 배율 [가로, 세로](전체 크기 조절로 생김, 선 굵기·글자도 함께 커짐), sc = 키우는 중심(rc 처럼 원래 변환을 적용한 뒤의 좌표).
+//   그릴 때 transform = translate(t) [sc 둘레로 scale(s)] rotate(r rc) 원래변환 — 이동(t)은 항상 가장 바깥이라 크기를 바꾼 뒤에도 끌어 옮기는 양이 그대로다
+//   lh = 행간 배율(여러 줄 글자 <text> 안 tspan 줄 간격 dy·y 를 이 배수로, 1 이면 그대로). 정렬(text-anchor)·자간(letter-spacing)은 set 속성으로 둔다
 //   sig = 그림 구조(요소 종류의 순서)의 지문. 구조가 달라지면(다른 그림이 되면) 옛 수정은 적용하지 않는다.
 
 import { cropRect, fitInside, normCrop } from './imgutil';
@@ -21,6 +24,7 @@ const TAG_RE = /<(\/?)([A-Za-z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
 const ATTR_RE = /([^\s=/"'<>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/g;
 const ATTR_ESC = (v) => String(v).replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const r2 = (v) => Math.round(Number(v) * 100) / 100;
+const r4 = (v) => Math.round(Number(v) * 10000) / 10000;
 
 function parseAttrs(s) {
   const out = {}; ATTR_RE.lastIndex = 0; let m;
@@ -144,7 +148,7 @@ const badgeTag = (a, interactive) => {
   return `<g${interactive ? ` data-eid="${a.id}"` : ''}>${shp}<text x="${r2(cx)}" y="${r2(cy + fs * 0.36)}" text-anchor="middle" font-family="${FONT}" font-size="${r2(fs)}" font-weight="700" fill="${badgeInk(a.fill || BADGE_COLOR)}"${interactive ? ' pointer-events="none"' : ''}>${TXT_ESC(t)}</text></g>`;
 };
 // 리더선 라벨: { id, kind:'callout', x, y(글 상자 왼쪽 위), tx, ty(가리키는 끝점), title, desc, size, fill(색), line:'straight'|'elbow', end:'dot'|'arrow'|'none' }
-const calloutOf = (a) => ({ x: a.x, y: a.y, tx: a.tx, ty: a.ty, title: a.title, desc: a.desc, size: a.size, line: a.line, end: a.end, color: a.fill });
+const calloutOf = (a) => ({ x: a.x, y: a.y, tx: a.tx, ty: a.ty, title: a.title, desc: a.desc, size: a.size, line: a.line, end: a.end, color: a.fill, align: a.align, ls: a.ls, lh: a.lh });
 const calloutTag = (a, interactive) => calloutSvg(calloutOf(a), { id: a.id, interactive, font: FONT });
 // 아이콘 칩: { id, kind:'icon', icon, shape:'rounded'|'circle'|'bare', x, y, w, h(=한 변), fill(칩 색, bare 면 아이콘 색) }
 const iconTag = (a, interactive) => {
@@ -177,6 +181,24 @@ function insertAdds(svg, _els, adds, interactive) {
   return out;
 }
 
+// 여러 줄 글자의 행간: <tspan dy="줄 간격"> 은 간격을, <tspan y="줄 위치"> 는 첫 줄에서 떨어진 거리를 f 배로 한다(첫 줄은 제자리). 값 뒤의 단위(em 등)는 그대로 둔다
+export function scaleLineSpacing(inner, f) {
+  let base = null;
+  return String(inner).replace(/<tspan\b[^>]*>/g, (tag) => {
+    let t = tag.replace(/(\sdy=")(-?[\d.]+)([a-z%]*)(")/, (m0, a, v, u, q) => `${a}${r4(parseFloat(v) * f)}${u}${q}`);
+    t = t.replace(/(\sy=")(-?[\d.]+)(")/, (m0, a, v, q) => { const y = parseFloat(v); if (base === null) { base = y; return m0; } return `${a}${r2(base + (y - base) * f)}${q}`; });
+    return t;
+  });
+}
+// 손으로 고친 이동·크기·회전을 하나의 transform 글자로(원래 transform 앞에 붙는다). 비면 ''
+export function opTransformStr(op) {
+  if (!op) return '';
+  const tStr = op.t && (op.t[0] || op.t[1]) ? `translate(${r2(op.t[0])} ${r2(op.t[1])})` : '';
+  const sStr = op.s && op.sc && (op.s[0] !== 1 || op.s[1] !== 1) ? `translate(${r2(op.sc[0])} ${r2(op.sc[1])}) scale(${r4(op.s[0])} ${r4(op.s[1])}) translate(${r2(-op.sc[0])} ${r2(-op.sc[1])})` : '';
+  const rStr = op.r && op.rc ? `rotate(${r2(op.r)} ${r2(op.rc[0])} ${r2(op.rc[1])})` : '';
+  return [tStr, sStr, rStr].filter(Boolean).join(' ');
+}
+
 // 고친 내용을 그림에 입힌다. opts.ids 가 참이면 편집 화면용: 요소마다 data-eid 를 달고, 얇은 선에는 눌리기 쉽게 보이지 않는 굵은 선을 덧댄다.
 // 반환: { svg, ok(구조가 같아 적용했는가), sig, els }
 export function applyEdits(svg0, edits, opts = {}) {
@@ -197,9 +219,8 @@ export function applyEdits(svg0, edits, opts = {}) {
     if (op) {
       if (op.tag && el.self && op.tag !== el.tag) tag = op.tag;
       Object.entries(op.set || {}).forEach(([k, v]) => { if (v === null || v === undefined) delete attrs[k]; else attrs[k] = v; });
-      const tStr = op.t && (op.t[0] || op.t[1]) ? `translate(${r2(op.t[0])} ${r2(op.t[1])})` : '';
-      const rStr = op.r && op.rc ? `rotate(${r2(op.r)} ${r2(op.rc[0])} ${r2(op.rc[1])})` : '';
-      if (tStr || rStr) attrs.transform = [tStr, rStr, el.attrs.transform].filter(Boolean).join(' ');
+      const opStr = opTransformStr(op);
+      if (opStr) attrs.transform = [opStr, el.attrs.transform].filter(Boolean).join(' ');
       if (op.del) attrs.display = 'none';
     }
     let extra = '';
@@ -211,6 +232,10 @@ export function applyEdits(svg0, edits, opts = {}) {
       }
     }
     out += svg.slice(pos, el.s) + buildTag(tag, attrs, el.self) + extra; pos = el.e;
+    if (op && op.lh && Math.abs(op.lh - 1) > 0.005 && el.tag === 'text' && !el.self) { // 행간: 이 글자 안쪽 줄(tspan)의 간격만 배수로
+      const ci = svg.indexOf('</text>', el.e);
+      if (ci > el.e) { out += scaleLineSpacing(svg.slice(el.e, ci), op.lh); pos = ci; }
+    }
   }
   out += svg.slice(pos);
   return { svg: insertAdds(out, els, adds, interactive), ok, sig, els, baseLeaf };
@@ -220,11 +245,13 @@ export function applyEdits(svg0, edits, opts = {}) {
 const cloneEdits = (edits, sig) => ({ sig: edits?.sig ?? sig, ops: { ...(edits?.ops || {}) }, ...(edits?.adds?.length ? { adds: edits.adds } : {}), ...(edits?.shapes?.length ? { shapes: edits.shapes } : {}) });
 function withOp(edits, id, fn, sig) {
   const next = cloneEdits(edits, sig); const cur = next.ops[id] ? { ...next.ops[id], set: { ...(next.ops[id].set || {}) } } : { set: {} };
-  const res = fn(cur) || cur; const empty = !res.del && !res.tag && !res.r && !(res.t && (res.t[0] || res.t[1])) && !Object.keys(res.set || {}).length;
+  const res = fn(cur) || cur; const empty = !res.del && !res.tag && !res.r && !res.s && !res.lh && !(res.t && (res.t[0] || res.t[1])) && !Object.keys(res.set || {}).length;
   if (empty) delete next.ops[id]; else next.ops[id] = res;
   return next;
 }
 export const editSet = (edits, id, patch, sig) => withOp(edits, id, (o) => { Object.entries(patch).forEach(([k, v]) => { o.set[k] = v; }); return o; }, sig);
+export const LH_MIN = 0.5; export const LH_MAX = 3;
+export const editLineSpacing = (edits, id, k, sig) => withOp(edits, id, (o) => { const v = Math.min(LH_MAX, Math.max(LH_MIN, Number.isFinite(k) ? k : 1)); if (Math.abs(v - 1) < 0.01) delete o.lh; else o.lh = r2(v); return o; }, sig);
 export const editMove = (edits, id, dx, dy, sig) => withOp(edits, id, (o) => { o.t = [r2((o.t?.[0] || 0) + dx), r2((o.t?.[1] || 0) + dy)]; return o; }, sig);
 export const editMoveTo = (edits, id, tx, ty, sig) => withOp(edits, id, (o) => { o.t = [r2(tx), r2(ty)]; return o; }, sig);
 export const editDelete = (edits, id, sig) => withOp(edits, id, (o) => { o.del = true; return o; }, sig);
@@ -258,15 +285,46 @@ export function editCropImage(edits, id, { crop, orig, href, w, h }) {
 // 요소: angle = 새 총 각도, geom = { bbox:[x,y,w,h] (브라우저 getBBox, 요소 자기 좌표), t0: 원래 transform 속성 글자 }, about = 여러 개를 함께 돌릴 때 부모 좌표의 중심(없으면 요소 자신의 가운데).
 // 돌리기 전 도형의 가운데(원래 변환을 적용한 뒤 좌표)를 중심 c 로 저장하고, 지금 보이는 가운데가 그대로(또는 about 둘레로 돌아간 자리) 남도록 이동(t)을 다시 계산한다 → 크기·모양을 고친 뒤 다시 돌려도 가운데 둘레로 돈다.
 export function editRotate(edits, id, angle, geom, sig, about) {
-  const op0 = edits?.ops?.[id] || {}; const a0 = op0.r || 0; const a1 = normDeg(angle); const t = op0.t || [0, 0];
+  const op0 = edits?.ops?.[id] || {}; const a0 = op0.r || 0; const a1 = normDeg(angle);
   const bb = geom.bbox; const c = applyMat(parseTransform(geom.t0 || ''), [bb[0] + bb[2] / 2, bb[1] + bb[3] / 2]);
-  const c0 = op0.rc || c; const r0 = rotPt(c, a0, c0); const cv = [t[0] + r0[0], t[1] + r0[1]]; // 지금 보이는 가운데(부모 좌표)
+  const cv = applyMat(parseTransform(opTransformStr(op0)), c); // 지금 보이는 가운데(부모 좌표)
   const cn = about ? rotPt(cv, a1 - a0, about) : cv;
   return withOp(edits, id, (o) => {
     if (a1) { o.r = a1; o.rc = [r2(c[0]), r2(c[1])]; } else { delete o.r; delete o.rc; }
-    const nt = [r2(cn[0] - c[0]), r2(cn[1] - c[1])]; if (nt[0] || nt[1]) o.t = nt; else delete o.t;
+    delete o.t; const v = applyMat(parseTransform(opTransformStr(o)), c); // 이동 없이 그렸을 때 가운데가 어디인가 → 모자란 만큼을 이동으로
+    const nt = [r2(cn[0] - v[0]), r2(cn[1] - v[1])]; if (nt[0] || nt[1]) o.t = nt;
     return o;
   }, sig);
+}
+// ── 크기 조절 ──
+// 요소: k = [가로 배율, 세로 배율](지금 크기에 곱함), about = 기준점(부모 좌표 — 이 점은 제자리), geom 은 editRotate 와 같다.
+// 요소를 자기 가운데(sc) 둘레로 키우고, 보이는 가운데가 about 에서 k 배 떨어진 자리로 가도록 이동(t)을 다시 계산한다. 선 굵기·글자·화살촉이 transform 으로 함께 커진다.
+export const SCALE_MIN = 0.05; export const SCALE_MAX = 20;
+const clampK = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number.isFinite(v) ? v : 1));
+export function editScale(edits, id, k, about, geom, sig) {
+  const op0 = edits?.ops?.[id] || {}; const kx = clampK(k[0]); const ky = clampK(k[1]);
+  const bb = geom.bbox; const c = applyMat(parseTransform(geom.t0 || ''), [bb[0] + bb[2] / 2, bb[1] + bb[3] / 2]);
+  const cv = applyMat(parseTransform(opTransformStr(op0)), c); // 지금 보이는 가운데
+  const cn = [about[0] + (cv[0] - about[0]) * kx, about[1] + (cv[1] - about[1]) * ky];
+  const s0 = op0.s || [1, 1];
+  return withOp(edits, id, (o) => {
+    const sx = clampK(s0[0] * kx); const sy = clampK(s0[1] * ky);
+    if (Math.abs(sx - 1) < 1e-4 && Math.abs(sy - 1) < 1e-4) { delete o.s; delete o.sc; } else { o.s = [r4(sx), r4(sy)]; o.sc = o.sc || [r2(c[0]), r2(c[1])]; }
+    delete o.t; const v = applyMat(parseTransform(opTransformStr(o)), c);
+    const nt = [r2(cn[0] - v[0]), r2(cn[1] - v[1])]; if (nt[0] || nt[1]) o.t = nt;
+    return o;
+  }, sig);
+}
+// 넣은 것(adds)의 크기 조절 조각: 자리는 about 둘레로 가로·세로 따로, 크기·글자는 같은 비율로(둘이 다르면 작은 쪽). 리더선 끝점도 함께. a 는 조절하기 전 값
+export function addScalePatch(a, k, about) {
+  const kx = clampK(k[0]); const ky = clampK(k[1]); const km = Math.min(kx, ky);
+  const px = (x) => r2(about[0] + (x - about[0]) * kx); const py = (y) => r2(about[1] + (y - about[1]) * ky);
+  if (a.kind === 'callout') return { x: px(a.x), y: py(a.y), tx: px(a.tx), ty: py(a.ty), size: r2((a.size || 12) * km) };
+  if (a.kind === 'table') return { x: px(a.x), y: py(a.y), size: r2((a.size || 12) * km) };
+  if (a.kind === 'scale') { const hh = scaleBarHeight(a.size || 14); const nh = scaleBarHeight((a.size || 14) * km); const cx = px(a.x + a.w / 2); const cy = py(a.y + hh / 2); const w = r2(a.w * kx); return { x: r2(cx - w / 2), y: r2(cy - nh / 2), w, size: r2((a.size || 14) * km) }; }
+  if (a.kind === 'image') { const cx = px(a.x + a.w / 2); const cy = py(a.y + a.h / 2); const w = r2(a.w * kx); const h = r2(a.h * ky); return { x: r2(cx - w / 2), y: r2(cy - h / 2), w, h }; }
+  const cx = px(a.x + a.w / 2); const cy = py(a.y + a.h / 2); const w = r2(a.w * km); const h = r2((a.h || a.w) * km); // 번호 마커·아이콘·방위표는 모양(원·정사각)을 지킨다
+  return { x: r2(cx - w / 2), y: r2(cy - h / 2), w, h };
 }
 // 내 이미지: x,y,w,h 의 가운데를 중심으로 rot 만큼 그린다. 여러 개를 함께 돌릴 때는 about(그림 좌표) 둘레로 가운데가 옮겨 간다
 export function editRotateAdd(edits, id, angle, about) {

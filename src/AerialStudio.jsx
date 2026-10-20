@@ -18,26 +18,29 @@ const VARIANT_OPTIONAL = (mode) => mode !== 'facade';
 
 // 형태 점수 기준(0~100): 입력의 뼈대 선이 결과에 얼마나 남았는지
 const scoreInfo = (s) => (s == null ? { text: '점수 없음', color: '#64748b' }
-  : s >= 40 ? { text: `형태 ${s} · 양호`, color: '#15803D' }
-    : s >= 25 ? { text: `형태 ${s} · 주의`, color: '#C2410C' }
-      : { text: `형태 ${s} · 변형 의심`, color: '#B91C1C' });
+  : s >= 40 ? { text: `형태 ${s} · 양호`, color: 'var(--ok)' }
+    : s >= 25 ? { text: `형태 ${s} · 주의`, color: 'var(--warn)' }
+      : { text: `형태 ${s} · 변형 의심`, color: 'var(--err)' });
 // 실측(무료 엔진 6장): 형태가 잘 지켜진 결과 40~53, 형태가 무너진 결과 3~33
 const AUTO_RETRY_BELOW = 25;
 
 const inputBase = {
-  padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-  background: 'rgba(255,255,255,0.8)', color: 'var(--text-primary)', fontSize: '12.5px',
+  padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--line-strong)',
+  background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12.5px',
 };
 const chip = (on, disabled) => ({
   padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
   cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1,
-  border: on ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+  border: on ? '2px solid var(--accent-cyan)' : '1px solid var(--line-strong)',
   background: on ? 'rgba(51,51,153,0.10)' : 'rgba(255,255,255,0.75)',
   color: on ? 'var(--accent-cyan)' : 'var(--text-secondary)',
 });
 const label = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
 const hint = { fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.55 };
 const col = { display: 'flex', flexDirection: 'column', gap: 6 };
+// 왼쪽 패널: 다이어그램 탭과 같은 수준 — 연한 바탕색 위에 굵은 제목 + 흰 입력창(또렷한 테두리). 항목마다 박스는 두지 않는다
+const cardPad = {};
+const card = { ...col, gap: 8 };
 
 const fileToResizedDataUrl = (file, maxEdge) => new Promise((resolve, reject) => {
   const fr = new FileReader();
@@ -439,7 +442,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   // 이지·프로 둘 다 쓰는 부분
   const imageBlock = (
-    <div style={col}>
+    <div style={card}>
       <span style={label}>1. 원본 이미지 (형태 기준)</span>
       {image ? (
         <div style={col}>
@@ -454,7 +457,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); onPickFile(e.dataTransfer.files?.[0]); }}
         >
-          🖼️ 이미지 선택 (또는 끌어다 놓기)
+          이미지 선택 (또는 끌어다 놓기)
         </button>
       )}
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
@@ -463,11 +466,11 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   // 이지: 여러 장을 한 번에 첨부하고, 첫 번째가 원본·나머지가 참조. 번호표와 순서 바꾸기로 원본/참조가 뒤바뀌는 실수를 막는다.
   const easyImageBlock = (
-    <div style={col}>
+    <div style={card}>
       <span style={label}>1. 이미지 첨부 (여러 장 가능)</span>
       <p style={hint}>첫 번째 이미지가 <strong>원본(형태 기준)</strong>이고, 나머지는 <strong>참조</strong>입니다. 원본 1장 + 참조 최대 {MAX_REFS}장까지 넣을 수 있습니다.</p>
       {easyImgs.map((im, i) => (
-        <div key={im.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6, borderRadius: 8, border: i === 0 ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="easy-img">
+        <div key={im.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6, borderRadius: 8, border: i === 0 ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: 'var(--surface)' }} data-testid="easy-img">
           <img src={im.dataUrl} alt={i === 0 ? '원본' : `참조 ${i + 1}`} style={{ width: i === 0 ? 120 : 72, height: i === 0 ? 80 : 54, objectFit: 'cover', borderRadius: 6, background: '#fff' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: i === 0 ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}>{i === 0 ? '이미지 1 · 원본(형태 기준)' : `이미지 ${i + 1} · 참조`}</div>
@@ -487,7 +490,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); onPickEasyFiles(e.dataTransfer.files); }}
         >
-          🖼️ {easyImgs.length ? '＋ 이미지 더 넣기 (참조)' : '이미지 선택 (여러 장 가능, 끌어다 놓기)'}
+          {easyImgs.length ? '＋ 이미지 더 넣기 (참조)' : '이미지 선택 (여러 장 가능, 끌어다 놓기)'}
         </button>
       )}
       <input ref={easyFileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { onPickEasyFiles(e.target.files); e.target.value = ''; }} />
@@ -496,30 +499,30 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   const generateButton = (
     <>
-      <button className="run-btn glow-cyan" style={{ padding: '12px', fontSize: 14, borderRadius: 10, opacity: canGenerate ? 1 : 0.55 }}
+      <button className="run-btn glow-cyan" style={{ padding: '12px', fontSize: 14, borderRadius: 'var(--r-btn)', opacity: canGenerate ? 1 : 0.55 }}
         onClick={generate} disabled={!canGenerate}>
         {busy
           ? `생성 중… (${progress.current}/${progress.total})${elapsedHint}`
-          : `✨ 조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
+          : `조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
       </button>
-      {busy && queue.position > 1 && <p style={{ ...hint, color: '#B45309' }}>다른 작업이 먼저 진행 중입니다. 내 앞에 {queue.position - 1}건 대기 중이며, 앞 작업이 끝나면 자동으로 시작합니다. 창을 닫지 마세요.</p>}
+      {busy && queue.position > 1 && <p style={{ ...hint, color: 'var(--warn)' }}>다른 작업이 먼저 진행 중입니다. 내 앞에 {queue.position - 1}건 대기 중이며, 앞 작업이 끝나면 자동으로 시작합니다. 창을 닫지 마세요.</p>}
       {busy && queue.position === 1 && queue.total > 1 && <p style={hint}>지금 내 작업을 만들고 있습니다. 뒤에 {queue.total - 1}건이 기다리고 있습니다.</p>}
-      {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: '#B91C1C', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
-      {easy && !providerInfo && opts && <p style={{ ...hint, color: '#B91C1C' }}>사용할 수 있는 무료 이미지 엔진이 없습니다(ComfyUI가 꺼져 있을 수 있습니다). 관리자에게 알려 주세요.</p>}
+      {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: 'var(--err)', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
+      {easy && !providerInfo && opts && <p style={{ ...hint, color: 'var(--err)' }}>사용할 수 있는 무료 이미지 엔진이 없습니다(ComfyUI가 꺼져 있을 수 있습니다). 관리자에게 알려 주세요.</p>}
     </>
   );
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
-      <div style={{ width: 380, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }}>
+      <div style={{ width: 380, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'var(--bg)' }}>
         {easy ? (
           <>
-            <div ref={topRef}>
+            <div ref={topRef} style={card}>
               <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 이지 모드</div>
               <p style={hint}>모델링 이미지를 올리고 원하는 모습을 글로 적으면 바로 실사 조감도로 만들어 줍니다. 건물 형태는 최대한 그대로 유지합니다. 참고할 사진이 있으면 함께 첨부하고, 글에 "이미지 2에서는 재질을 참고해서"처럼 적어 주세요.</p>
             </div>
             {easyImageBlock}
-            <div style={col}>
+            <div style={card}>
               <span style={label}>2. 만들고 싶은 모습 (한글 가능)</span>
               {easyImgs.length > 1 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -541,10 +544,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
                 </p>
               )}
               {easyImgs.length > 1 && !/(이미지|사진)\s*\d|\d\s*번/.test(extra) && (
-                <p style={{ ...hint, color: '#C2410C' }} data-testid="easy-noroles">참조 사진에서 가져올 것이 글에 없습니다. 이 경우 사진의 재료와 입면 느낌을 자동으로 읽어서 반영합니다. 원하는 것이 있으면 위 예시처럼 적어 주세요.</p>
+                <p style={{ ...hint, color: 'var(--warn)' }} data-testid="easy-noroles">참조 사진에서 가져올 것이 글에 없습니다. 이 경우 사진의 재료와 입면 느낌을 자동으로 읽어서 반영합니다. 원하는 것이 있으면 위 예시처럼 적어 주세요.</p>
               )}
             </div>
-            <div style={{ ...col, gap: 4 }}>
+            <div style={card}>
               <span style={label}>만들 장수</span>
               <select value={perVariant} onChange={(e) => setPerVariant(Number(e.target.value))} style={inputBase}>
                 {[1, 2, 3].map((n) => <option key={n} value={n}>{n}장</option>)}
@@ -554,12 +557,12 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           </>
         ) : (
           <>
-        <div ref={topRef}>
+        <div ref={topRef} style={card}>
           <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 프로 모드</div>
           <p style={hint}>스케치업 캡처·매스·3D 모델 이미지를 올리면 형태를 지킨 실사 렌더로 만들어 줍니다. 무료(로컬) 엔진은 초안용, 유료 엔진은 형태를 더 정확히 지키는 최종본용입니다.</p>
         </div>
 
-        <div style={col}>
+        <div style={card}>
           <span style={label}>작업 방식</span>
           <div style={{ display: 'flex', gap: 6 }}>
             {(opts?.modes || []).map((m) => (
@@ -571,7 +574,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
         {imageBlock}
 
-        <div style={col}>
+        <div style={card}>
           <span style={label}>2. 참조 이미지 {refsNeeded ? '(필수' : '(선택'}, 최대 {MAX_REFS}장)</span>
           <p style={hint}>
             {mode === 'reference'
@@ -599,11 +602,11 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
             <button style={{ ...chip(false, busy), borderStyle: 'dashed' }} disabled={busy} onClick={() => refFileRef.current?.click()}>＋ 참조 이미지 추가</button>
           )}
           <input ref={refFileRef} type="file" accept="image/*" hidden onChange={(e) => { onPickRef(e.target.files?.[0]); e.target.value = ''; }} />
-          {refsNeeded && refs.length === 0 && <p style={{ ...hint, color: '#B91C1C' }}>이 방식은 참조 이미지가 1장 이상 필요합니다.</p>}
+          {refsNeeded && refs.length === 0 && <p style={{ ...hint, color: 'var(--err)' }}>이 방식은 참조 이미지가 1장 이상 필요합니다.</p>}
         </div>
 
         {modeDepths.length > 0 && (
-          <div style={col}>
+          <div style={card}>
             <span style={label}>{mode === 'facade' ? '입면을 얼마나 바꿀까요' : '참조를 어떻게 쓸까요'}</span>
             <div style={{ display: 'flex', gap: 6 }}>
               {modeDepths.map((d) => (
@@ -614,7 +617,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           </div>
         )}
 
-        <div style={col}>
+        <div style={card}>
           <span style={label}>3. {mode === 'facade' ? '입면 후보 (여러 개 선택 → 한 번에 비교)' : '분위기 비교 (선택 사항)'}</span>
           {optionalVariants && (
             <p style={hint}>분위기는 아래 4번 요구사항에 글로 써도 됩니다(예: "해질녘, 비 온 뒤"). 여러 시간대·날씨를 한 번에 나란히 비교하고 싶을 때만 여기서 고르세요. 아무것도 안 고르면 요구사항 내용대로 1장 만듭니다.</p>
@@ -626,22 +629,22 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           </div>
         </div>
 
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
+        <label style={{ ...cardPad, display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={keepSite} onChange={(e) => setKeepSite(e.target.checked)} disabled={busy} style={{ marginTop: 3 }} data-testid="keep-site" />
           <span>
             부지·주변을 원본 그대로 두도록 요청 (지형·도로·울타리·이웃 건물은 두고 건물만 바꾸도록 지시합니다)
-            <br /><span style={{ color: '#C2410C' }}>보장되지는 않습니다. 추가 요구사항에 오션뷰·광장처럼 부지를 바꾸는 내용이 있으면 그쪽이 우선되어 주변이 바뀝니다.</span>
+            <br /><span style={{ color: 'var(--warn)' }}>보장되지는 않습니다. 추가 요구사항에 오션뷰·광장처럼 부지를 바꾸는 내용이 있으면 그쪽이 우선되어 주변이 바뀝니다.</span>
           </span>
         </label>
 
-        <div style={col}>
+        <div style={card}>
           <span style={label}>4. 추가 요구사항 (선택, 한글 가능)</span>
           <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={3}
             placeholder="예: 1층은 유리 로비, 주변에 가로수와 보행자, 입구 앞 광장에 사람들"
             style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }} />
         </div>
 
-        <div style={col}>
+        <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button style={{ ...chip(false), padding: '4px 8px', fontSize: 11.5 }} onClick={() => setShowPrompt((v) => !v)}>
               {showPrompt ? '▼' : '▶'} 프롬프트 보기·수정 (고급)
@@ -657,12 +660,12 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
               <textarea value={commonPrompt} onChange={(e) => { setCommonPrompt(e.target.value); setPromptEdited(true); }} rows={7} disabled={busy}
                 placeholder={'"프롬프트 만들기"를 누르면 형태 고정 문구, 참조 이미지 역할, 한글 요청의 영어 확장이 합쳐져 나타납니다. 비워 두고 생성하면 자동으로 만들어서 씁니다.\n선택한 분위기·입면 문구는 장마다 뒤에 붙습니다. 유료·정밀 편집 엔진이 이 문장을 쓰고, 빠른 초안 엔진은 장면 묘사로 자동 변환해 씁니다.'}
                 style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit', fontSize: 11.5, lineHeight: 1.5 }} />
-              {promptStale && !promptEdited && <p style={{ ...hint, color: '#C2410C' }}>요구사항·참조 역할이 바뀌었습니다. 생성할 때 자동으로 다시 만듭니다.</p>}
+              {promptStale && !promptEdited && <p style={{ ...hint, color: 'var(--warn)' }}>요구사항·참조 역할이 바뀌었습니다. 생성할 때 자동으로 다시 만듭니다.</p>}
             </>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ ...cardPad, display: 'flex', gap: 10 }}>
           <div style={{ flex: 1, ...col, gap: 4 }}>
             <span style={label}>항목당 장수</span>
             <select value={perVariant} onChange={(e) => setPerVariant(Number(e.target.value))} style={inputBase}>
@@ -679,10 +682,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           )}
         </div>
         {paid && image && aspect !== nearestAspect(image.width, image.height) && (
-          <p style={{ ...hint, color: '#C2410C' }}>입력과 화면 비율이 달라서 형태 보존 점수를 계산하지 못할 수 있습니다.</p>
+          <p style={{ ...hint, color: 'var(--warn)' }}>입력과 화면 비율이 달라서 형태 보존 점수를 계산하지 못할 수 있습니다.</p>
         )}
 
-        <div style={col}>
+        <div style={card}>
           <span style={label}>AI 엔진</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {providers.map((p) => (
@@ -695,7 +698,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
             ))}
           </div>
           {opts?.external_allowed === false ? (
-            <p style={{ ...hint, color: '#B91C1C' }} data-testid="external-locked">🔒 이 프로젝트는 외부 서버 전송이 금지되어 있습니다. 유료 엔진은 쓸 수 없고, 한글 요구사항도 이 PC의 모델로만 변환합니다.</p>
+            <p style={{ ...hint, color: 'var(--err)' }} data-testid="external-locked">이 프로젝트는 외부 서버 전송이 금지되어 있습니다. 유료 엔진은 쓸 수 없고, 한글 요구사항도 이 PC의 모델로만 변환합니다.</p>
           ) : providers.length > 0 && !providers.some((p) => !p.free && p.available) && (
             <p style={hint}>유료 엔진은 관리자가 backend/.env 에 API 키를 넣으면 켜집니다. 지금은 무료 엔진만 쓸 수 있습니다.</p>
           )}
@@ -703,7 +706,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
             {policyOpen ? '▼' : '▶'} 프로젝트 외부 전송 설정
           </button>
           {policyOpen && (
-            <div style={{ ...col, padding: 8, border: '1px solid var(--border-color)', borderRadius: 8, background: 'rgba(255,255,255,0.6)' }}>
+            <div style={{ ...col, padding: 8, border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--surface)' }}>
               <p style={hint}>대외비 프로젝트는 외부 전송을 금지하세요. 금지하면 이 프로젝트에서는 유료 엔진, Gemini(구글 서버) 호출이 서버에서 막힙니다. 바꾸려면 프로젝트 비밀번호가 필요합니다.</p>
               <input type="password" value={policyPw} onChange={(e) => setPolicyPw(e.target.value)} placeholder="프로젝트 비밀번호" style={inputBase} autoComplete="off" />
               <div style={{ display: 'flex', gap: 6 }}>
@@ -715,7 +718,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         </div>
 
         {isSdxl && (
-          <div style={col}>
+          <div style={card}>
             <span style={label}>형태 유지 정도: {keepForm}%</span>
             <input type="range" min="50" max="100" step="5" value={keepForm} onChange={(e) => setKeepForm(Number(e.target.value))} disabled={busy} />
             <p style={hint}>높을수록 원본 윤곽을 그대로 두고, 낮을수록 AI가 자유롭게 다시 그립니다(입면·재료가 더 많이 바뀜).</p>
@@ -725,7 +728,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         {paid && (
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
             <input type="checkbox" checked={consent} onChange={(e) => setConsentSaved(e.target.checked)} style={{ marginTop: 3 }} />
-            <span style={{ color: '#C2410C' }}>⚠️ 이 이미지와 설명이 외부 서버(OpenAI/Google)로 전송되는 것에 동의합니다. 대외비 도면은 올리지 마세요. (이번 접속 동안 유지)</span>
+            <span style={{ color: 'var(--warn)' }}>이 이미지와 설명이 외부 서버(OpenAI/Google)로 전송되는 것에 동의합니다. 대외비 도면은 올리지 마세요. (이번 접속 동안 유지)</span>
           </label>
         )}
         {paid && usage && (
@@ -734,7 +737,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
             {usage.total_limit_krw > 0 && <> · <b>누적 약 {(usage.total_krw || 0).toLocaleString()}원 / 총 한도 {usage.total_limit_krw.toLocaleString()}원</b> (남은 약 {(usage.remaining_krw || 0).toLocaleString()}원)</>}
           </p>
         )}
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
+        <label style={{ ...cardPad, display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={autoRetry} onChange={(e) => setAutoRetry(e.target.checked)} style={{ marginTop: 3 }} />
           <span>형태 점수가 낮으면(&lt;{AUTO_RETRY_BELOW}) 1회 자동 재생성하고 더 나은 쪽을 남김{paid ? ' (추가 비용)' : ' (시간이 더 걸림)'}</span>
         </label>

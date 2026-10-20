@@ -9,11 +9,11 @@ import { normalizeCards, cardsAddCard, cardsDelCard, cardsMoveCard, cardsSetSlot
 const st = {
   inp: { padding: '3px 6px', borderRadius: 5, border: '1px solid var(--border-color)', fontSize: 11.5, width: '100%', minWidth: 0, boxSizing: 'border-box', background: 'rgba(255,255,255,0.95)', color: 'var(--text-primary)' },
   lab: { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', minWidth: 0 },
-  box: { display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' },
+  box: { display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' },
   small: { fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 },
   name: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 },
 };
-const btn = (on, danger) => ({ padding: '3px 7px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1px solid ${danger ? '#fca5a5' : on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: danger ? '#fef2f2' : on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: danger ? '#B91C1C' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
+const btn = (on, danger) => ({ padding: '3px 7px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1px solid ${danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--line-strong)'}`, background: danger ? 'var(--err-soft)' : on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: danger ? 'var(--err)' : on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
 
 function IconSelect({ value, onChange, allowNone, testid }) {
   return (
@@ -30,7 +30,7 @@ function ImagePick({ src, fit, onFile, onClear, onFit, testid }) {
   return (
     <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
       <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} data-testid={`${testid}-file`} />
-      <button type="button" style={btn(false)} onClick={() => ref.current?.click()} data-testid={`${testid}-pick`}>{src ? '🖼 이미지 바꾸기' : '🖼 이미지 넣기'}</button>
+      <button type="button" style={btn(false)} onClick={() => ref.current?.click()} data-testid={`${testid}-pick`}>{src ? '이미지 바꾸기' : '이미지 넣기'}</button>
       {src && <button type="button" style={btn(false, true)} onClick={onClear} data-testid={`${testid}-clear`}>지우기</button>}
       {src && <select value={fit || 'cover'} onChange={(e) => onFit(e.target.value)} style={{ ...st.inp, width: 'auto' }} data-testid={`${testid}-fit`}><option value="cover">꽉 채우기(잘라서)</option><option value="contain">전체 보이기</option></select>}
     </div>
@@ -65,7 +65,7 @@ export default function CardBoardForm({ spec: raw, onChange, onImage, onResetHer
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="cb-form">
-      <div style={{ ...st.small, background: 'rgba(242,140,40,0.1)', border: '1px solid #FCD9A8', borderRadius: 6, padding: '6px 8px' }} data-testid="cb-hint">✏️ <b>글자는 오른쪽 그림에서 더블클릭</b>해서 바로 고칩니다. 여기서는 카드·항목을 더하고 빼고 옮기거나 아이콘·이미지를 고릅니다.</div>
+      <div style={{ ...st.small, background: 'var(--primary-soft)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '6px 8px' }} data-testid="cb-hint"><b>글자는 오른쪽 그림에서 더블클릭</b>해서 바로 고칩니다. 여기서는 카드·항목을 더하고 빼고 옮기거나 아이콘·이미지를 고릅니다.</div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ ...st.lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}>강조색
           <input type="color" value={spec.accent} onChange={(e) => set(['accent'], e.target.value, 'accent')} style={{ width: 38, height: 26, padding: 0, border: '1px solid var(--border-color)', borderRadius: 5, background: '#fff' }} data-testid="cb-accent" />
@@ -75,7 +75,7 @@ export default function CardBoardForm({ spec: raw, onChange, onImage, onResetHer
 
       {spec.bands.map((b, bi) => (
         <details key={bi} open={bi === 0 || undefined} style={st.box} data-testid={`cb-band-${bi}`}>
-          <summary style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>
             {bi + 1}. {BAND_NAME[b.kind]}{b.kind === 'cards' ? ` (${b.cards.length}장${b.label ? ` · ${b.label}` : ''})` : b.kind === 'keypoints' ? ` (${b.items.length}개)` : b.kind === 'columns3' ? ` (${b.cols.length}열)` : b.kind === 'process' ? ` (${b.items.length}단계)` : b.kind === 'chips' ? ` (${b.groups.length}분야)` : ''}
           </summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>

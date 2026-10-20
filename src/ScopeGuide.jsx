@@ -23,7 +23,7 @@ export function useThumbs() {
 
 const List = ({ title, items, color }) => (items?.length ? (
   <div style={{ marginTop: 4 }}>
-    <div style={{ fontSize: 10.5, fontWeight: 800, color }}>{title}</div>
+    <div style={{ fontSize: 10.5, fontWeight: 700, color }}>{title}</div>
     <ul style={{ margin: '2px 0 0', paddingLeft: 15, fontSize: 11, lineHeight: 1.5, color: 'var(--text-secondary)' }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>
   </div>
 ) : null);
@@ -32,11 +32,11 @@ const List = ({ title, items, color }) => (items?.length ? (
 function Card({ c, thumbs, open, onToggle, onPick, picked }) {
   const b = BADGE[c.status];
   return (
-    <div style={{ border: `1px solid ${picked ? '#F28C28' : 'var(--border-color)'}`, borderRadius: 8, background: 'rgba(255,255,255,0.8)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4, gridColumn: open ? '1 / 3' : undefined }} data-testid={`scope-card-${c.id}`}>
+    <div style={{ border: `1px solid ${picked ? 'var(--primary)' : 'var(--border-color)'}`, borderRadius: 8, background: 'var(--surface)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4, gridColumn: open ? '1 / 3' : undefined }} data-testid={`scope-card-${c.id}`}>
       {thumbs[c.id] ? <img src={thumbs[c.id]} alt={c.label} style={{ width: '100%', height: open ? 130 : 70, objectFit: 'contain', background: '#fff', borderRadius: 4, border: '1px solid #eef0f3' }} /> : <div style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#9aa1a9', background: '#f6f7f9', borderRadius: 4 }}>✕</div>}
       <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.35 }}>{c.label}</span>
-        <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: b.bg, color: b.fg, whiteSpace: 'nowrap' }}>{STATUS_LABEL[c.status]}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35 }}>{c.label}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: b.bg, color: b.fg, whiteSpace: 'nowrap' }}>{STATUS_LABEL[c.status]}</span>
       </div>
       <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.45 }}>{c.summary}</span>
       {open && (
@@ -51,8 +51,8 @@ function Card({ c, thumbs, open, onToggle, onPick, picked }) {
         </div>
       )}
       <div style={{ display: 'flex', gap: 4 }}>
-        <button style={{ flex: 1, padding: '3px 6px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.9)', color: 'var(--text-secondary)' }} onClick={onToggle} data-testid={`scope-toggle-${c.id}`}>{open ? '접기' : '자세히'}</button>
-        {onPick && c.group === 'text' && <button style={{ flex: 1, padding: '3px 6px', fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: '1px solid #F28C28', background: picked ? 'rgba(242,140,40,0.2)' : 'rgba(242,140,40,0.08)', color: '#B45309' }} onClick={() => onPick(c.id)} data-testid={`scope-pick-${c.id}`}>{picked ? '선택됨' : '이 종류로'}</button>}
+        <button style={{ flex: 1, padding: '3px 6px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-secondary)' }} onClick={onToggle} data-testid={`scope-toggle-${c.id}`}>{open ? '접기' : '자세히'}</button>
+        {onPick && c.group === 'text' && <button style={{ flex: 1, padding: '3px 6px', fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--primary)', background: picked ? 'var(--primary-soft)' : 'var(--primary-soft)', color: 'var(--warn)' }} onClick={() => onPick(c.id)} data-testid={`scope-pick-${c.id}`}>{picked ? '선택됨' : '이 종류로'}</button>}
       </div>
     </div>
   );
@@ -62,12 +62,12 @@ function Card({ c, thumbs, open, onToggle, onPick, picked }) {
 export default function ScopeGuide({ forcedType, onPick }) {
   const thumbs = useThumbs(); const [open, setOpen] = useState('');
   return (
-    <details style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '6px 8px', background: 'rgba(255,255,255,0.5)' }} data-testid="scope-guide">
-      <summary style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', cursor: 'pointer' }}>📘 만들 수 있는 것 · 없는 것 (종류 안내)</summary>
+    <details style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '6px 8px', background: 'var(--surface)' }} data-testid="scope-guide">
+      <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>만들 수 있는 것 · 없는 것 (종류 안내)</summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
         {GROUPS.map(([g, title]) => (
           <div key={g}>
-            <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>{title}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{title}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {CATALOG.filter((c) => c.group === g).map((c) => <Card key={c.id} c={c} thumbs={thumbs} open={open === c.id} onToggle={() => setOpen(open === c.id ? '' : c.id)} onPick={onPick} picked={forcedType === c.id} />)}
             </div>
@@ -83,12 +83,12 @@ export default function ScopeGuide({ forcedType, onPick }) {
 export function TypeNote({ id }) {
   const thumbs = useThumbs(); const c = catalogById(id); if (!c || c.group !== 'text') return null;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 8, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="type-note">
+    <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 8, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' }} data-testid="type-note">
       {thumbs[c.id] && <img src={thumbs[c.id]} alt={c.label} style={{ width: 96, height: 64, objectFit: 'contain', background: '#fff', borderRadius: 4, border: '1px solid #eef0f3' }} />}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45 }}>{c.summary}</div>
-        <div style={{ fontSize: 10.5, color: '#166534', marginTop: 2 }}>✔ {c.can[0]}</div>
-        <div style={{ fontSize: 10.5, color: '#991B1B' }}>✕ {c.cannot[0]}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--ok)', marginTop: 2 }}>{c.can[0]}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--err)' }}>✕ {c.cannot[0]}</div>
         <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)' }}>입력: {c.needs}</div>
       </div>
     </div>

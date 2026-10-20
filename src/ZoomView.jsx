@@ -3,15 +3,15 @@ import { anchorScroll, clampZoom, stepZoom, wheelZoom } from './conceptDiagram/v
 
 // 편집 그림을 확대하고 옮겨 보는 틀(손스케치 편집기·구조형 편집기가 함께 쓴다).
 //  - 확대: 아래 버튼 또는 Ctrl+휠(터치패드는 두 손가락 벌리기). 마우스가 가리키는 곳이 그 자리에 남도록 확대한다.
-//  - 이동: 확대한 뒤 Space 를 누른 채 끌기, 마우스 가운데 버튼 끌기, 또는 ✋ 이동 버튼을 켜고 끌기. 휠로도 스크롤된다.
+//  - 이동: 확대한 뒤 Space 를 누른 채 끌기, 마우스 가운데 버튼 끌기, 또는 이동 버튼을 켜고 끌기. 휠로도 스크롤된다.
 // 그림은 CSS 크기만 키우므로 편집기의 좌표 계산(getBoundingClientRect 기반)은 그대로 맞는다.
 const typingEl = (t) => /INPUT|TEXTAREA|SELECT/.test(t?.tagName || '') || !!t?.isContentEditable;
-const barBtn = (on) => ({ padding: '2px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: 1.5, border: `1px solid ${on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
+const barBtn = (on) => ({ padding: '2px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: 1.5, border: `1px solid ${on ? 'var(--accent-cyan)' : 'var(--line-strong)'}`, background: on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
 
 export default function ZoomView({ children, testid = 'zv', baseWidth }) {
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1); zoomRef.current = zoom;
-  const [hand, setHand] = useState(false);       // ✋ 이동 버튼
+  const [hand, setHand] = useState(false);       // 이동 버튼
   const [spaceDown, setSpaceDown] = useState(false);
   const [panning, setPanning] = useState(false);
   const scrollRef = useRef(null); const pend = useRef(null); const overRef = useRef(false); const spaceRef = useRef(false);
@@ -69,10 +69,10 @@ export default function ZoomView({ children, testid = 'zv', baseWidth }) {
       <style>{'[data-pan="1"],[data-pan="1"] *{cursor:grab !important}[data-pan="2"],[data-pan="2"] *{cursor:grabbing !important}'}</style>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }} data-testid={`${testid}-bar`}>
         <button style={barBtn(false)} disabled={zoom <= 1} onClick={() => applyZoom(stepZoom(zoomRef.current, -1))} title="축소" data-testid={`${testid}-out`}>−</button>
-        <span style={{ minWidth: 42, textAlign: 'center', fontWeight: 800, color: 'var(--text-secondary)' }} data-testid={`${testid}-pct`}>{Math.round(zoom * 100)}%</span>
+        <span style={{ minWidth: 42, textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)' }} data-testid={`${testid}-pct`}>{Math.round(zoom * 100)}%</span>
         <button style={barBtn(false)} disabled={zoom >= 4} onClick={() => applyZoom(stepZoom(zoomRef.current, 1))} title="확대" data-testid={`${testid}-in`}>＋</button>
         <button style={barBtn(false)} disabled={zoom === 1} onClick={() => applyZoom(1)} title="100%(화면에 맞춤)로 되돌립니다" data-testid={`${testid}-fit`}>맞춤</button>
-        <button style={barBtn(hand)} disabled={!zoomed} onClick={() => setHand((v) => !v)} title="켜 두면 끄는 대로 그림이 옮겨집니다(확대했을 때). 끄면 다시 요소를 끌어 고칩니다" data-testid={`${testid}-hand`}>✋ 이동</button>
+        <button style={barBtn(hand)} disabled={!zoomed} onClick={() => setHand((v) => !v)} title="켜 두면 끄는 대로 그림이 옮겨집니다(확대했을 때). 끄면 다시 요소를 끌어 고칩니다" data-testid={`${testid}-hand`}>이동</button>
         <span>Ctrl+휠: 확대·축소{zoomed ? ' · Space+끌기 / 가운데 버튼 끌기: 이동' : ''}</span>
       </div>
       <div ref={scrollRef} data-testid={`${testid}-scroll`} data-pan={panMode ? (panning ? '2' : '1') : undefined}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { EmptyState } from './Icon';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
@@ -47,13 +48,13 @@ const AI_MODELS = [
 const MAX_REF_EDGE = 1600;
 
 const inputBase = {
-  padding: '7px 9px', borderRadius: '6px', border: '1px solid var(--border-color)',
-  background: 'rgba(255,255,255,0.85)', color: 'var(--text-primary)', fontSize: '12.5px', width: '100%', boxSizing: 'border-box',
+  padding: '7px 9px', borderRadius: '6px', border: '1px solid var(--line-strong)',
+  background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12.5px', width: '100%', boxSizing: 'border-box',
 };
 const btn = (primary, disabled) => ({
   padding: '9px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-  border: primary ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-  background: primary ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.8)',
+  border: primary ? '1px solid var(--accent-cyan)' : '1px solid var(--line-strong)',
+  background: primary ? 'rgba(51,51,153,0.12)' : 'var(--surface)',
   color: primary ? 'var(--accent-cyan)' : 'var(--text-secondary)',
 });
 const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; };
@@ -130,11 +131,11 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
   const del = () => { if (sel && boxes.length > 1) onChange(boxes.filter((_, i) => i !== selected), Math.max(0, selected - 1)); };
   const small = { ...btn(false, disabled), padding: '5px 8px', fontSize: 12 };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>✏️ 읽은 박스 고치기 (오른쪽 그림에 바로 반영)</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>읽은 박스 고치기 (오른쪽 그림에 바로 반영)</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {boxes.map((_, i) => (
-          <button key={i} style={{ ...small, ...(i === selected ? { background: 'rgba(232,131,58,0.22)', borderColor: '#E8833A', color: '#B45309' } : {}) }} disabled={disabled} onClick={() => onSelect(i)}>{i + 1}번</button>
+          <button key={i} style={{ ...small, ...(i === selected ? { background: 'var(--primary-soft)', borderColor: 'var(--primary)', color: 'var(--primary)' } : {}) }} disabled={disabled} onClick={() => onSelect(i)}>{i + 1}번</button>
         ))}
         <button style={small} disabled={disabled} onClick={add} title="새 박스 추가">＋ 추가</button>
       </div>
@@ -204,9 +205,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (rep && rep.scale) {
       const rp = pm.out.report; // 글자 위계 점검용: 목표 pt 와 그림 속 글자가 넘지 말아야 할 윗 위계(칸 제목 → 소제목 → 제목 순으로 가장 낮은 것)
       const upper = rep.caption ? { pt: rep.caption, name: '칸 제목' } : rp.used.sub ? { pt: rp.used.sub, name: '소제목' } : rp.used.title ? { pt: rp.used.title, name: '제목' } : null;
-      return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, tiers: { title: rp.pt.title, sub: rp.pt.sub, label: rp.pt.label, small: rp.pt.small, labelMin: rp.rec.labelMin, upper }, basis: `📐 페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
+      return { ppu: (rep.scale * (rep.textScale || 1)) / PT_MM, tiers: { title: rp.pt.title, sub: rp.pt.sub, label: rp.pt.label, small: rp.pt.small, labelMin: rp.rec.labelMin, upper }, basis: `페이지 ${Math.round(pm.out.page.w)}×${Math.round(pm.out.page.h)}mm에 저장했을 때 크기${rep.textScale && Math.abs(rep.textScale - 1) > 0.005 ? ` (글자 맞춤 ×${Math.round(rep.textScale * 100) / 100} 반영)` : ''}` };
     }
-    return { ppu: 0.75, basis: '저장한 그림 크기(96dpi) 기준 · 📐 페이지 크기를 정하면 그 용지에서의 pt로 보입니다' };
+    return { ppu: 0.75, basis: '저장한 그림 크기(96dpi) 기준 · 페이지 크기를 정하면 그 용지에서의 pt로 보입니다' };
   };
   // ── 이 영역만 다시 그리기(AI 이미지 편집 결과): 고른 영역만 잘라 다시 그리고, 그 영역의 화살표·구역 색만 갈아 끼운다 ──
   const [regionPick, setRegionPick] = useState(false);   // 영역 고르기 모드(그림 위를 끌어 상자를 그린다)
@@ -367,7 +368,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       if (n === 1) {
         const onOther = L.pageOn && startId !== L.selCell;
         title = onOther ? `칸 ${cellNo(startId)}에 내 이미지를 넣었습니다` : '내 이미지를 넣었습니다';
-        msg = filled.length ? `이 칸을 내 이미지로 채웠습니다(${info}). 이 위에 ＋ 화살표·＋ 글자 등을 얹어 고칠 수 있습니다.` : `그림 한가운데에 놓였습니다(${info}). 끌어서 옮기고 모서리 점으로 크기를 바꾸세요. 고른 뒤 오른쪽의 🔄 바꾸기·✂ 자르기도 쓸 수 있습니다.`;
+        msg = filled.length ? `이 칸을 내 이미지로 채웠습니다(${info}). 이 위에 ＋ 화살표·＋ 글자 등을 얹어 고칠 수 있습니다.` : `그림 한가운데에 놓였습니다(${info}). 끌어서 옮기고 모서리 점으로 크기를 바꾸세요. 고른 뒤 오른쪽의 바꾸기·자르기도 쓸 수 있습니다.`;
       } else {
         title = `이미지 ${n}장을 넣었습니다`;
         const parts = [];
@@ -996,22 +997,22 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   return (
     <div ref={rootRef} style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
       {leftHidden && (
-        <div style={{ width: 34, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'rgba(220, 228, 242, 0.35)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 10 }} data-testid="left-rail">
+        <div style={{ width: 34, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 10 }} data-testid="left-rail">
           <button style={{ ...btn(false), padding: '4px 7px', fontSize: 12 }} onClick={() => setLeftHidden(false)} title="설정 패널을 다시 펼칩니다" data-testid="left-open">▶</button>
           <span style={{ writingMode: 'vertical-rl', fontSize: 11.5, fontWeight: 700, color: 'var(--text-tertiary, #64748b)', letterSpacing: 1 }}>설정 열기</span>
         </div>
       )}
-      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: leftHidden ? 'none' : 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }} data-testid="left-panel">
+      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: leftHidden ? 'none' : 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'var(--bg)' }} data-testid="left-panel">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)' }} title="설명만 써도 되고, 소재 이미지(내 건물·도면)와 스타일 참고 이미지(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.">다이어그램 만들기</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)' }} title="설명만 써도 되고, 소재 이미지(내 건물·도면)와 스타일 참고 이미지(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.">다이어그램 만들기</div>
             <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setLeftHidden(true)} title="이 설정 패널을 접어 오른쪽 편집 화면을 넓힙니다(접어도 내용은 그대로이고, 왼쪽 ▶ 로 다시 펼칩니다)" data-testid="left-close">◀ 접기</button>
           </div>
           <div style={{ display: 'flex', gap: 4 }} role="tablist" data-testid="left-tabs">
             {[['make', '① 만들기'], ['page', '② 페이지'], ...(showEditTab ? [['edit', '③ 구성 수정']] : [])].map(([id, label]) => (
               <button key={id} role="tab" aria-selected={leftTab === id} onClick={() => setLeftTab(id)} data-testid={`left-tab-${id}`}
-                style={{ flex: 1, padding: '6px 4px', fontSize: 12, fontWeight: 800, cursor: 'pointer', borderRadius: 7, border: leftTab === id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: leftTab === id ? 'rgba(51,51,153,0.14)' : 'rgba(255,255,255,0.7)', color: leftTab === id ? 'var(--accent-cyan)' : 'var(--text-secondary)', position: 'relative' }}>
-                {label}{id === 'edit' && result && leftTab !== 'edit' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#F28C28' }} /> : null}{id === 'page' && pageOn && leftTab !== 'page' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#2E7D32' }} /> : null}
+                style={{ flex: 1, padding: '6px 4px', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 7, border: leftTab === id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: leftTab === id ? 'rgba(51,51,153,0.14)' : 'var(--surface)', color: leftTab === id ? 'var(--accent-cyan)' : 'var(--text-secondary)', position: 'relative' }}>
+                {label}{id === 'edit' && result && leftTab !== 'edit' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: 'var(--primary)' }} /> : null}{id === 'page' && pageOn && leftTab !== 'page' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#2E7D32' }} /> : null}
               </button>
             ))}
           </div>
@@ -1024,14 +1025,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             placeholder={effKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
           {(effKind === 'axon' || (styleImage && subjectImage)) && (
             <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: userText.trim() ? 'var(--text-tertiary, #64748b)' : '#9a3412', background: userText.trim() ? 'transparent' : '#fff7ed', padding: userText.trim() ? 0 : '6px 8px', borderRadius: 6 }} data-testid="concept-hint">
-              {userText.trim() ? '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' : '⚠️ 설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화'}
+              {userText.trim() ? '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' : '설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화'}
             </p>
           )}
         </div>
 
         {staleText && userText.trim() && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fdba74', background: '#fff7ed' }} data-testid="stale-text">
-            <span style={{ fontSize: 11.5, color: '#9a3412', lineHeight: 1.5 }}>⚠️ 설명이 <b>이전 그림에 쓴 내용 그대로</b>입니다. 이 문장대로 제목과 이름이 붙으니, 새 그림에 맞게 고치거나 지우세요.</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--warn-soft)' }} data-testid="stale-text">
+            <span style={{ fontSize: 11.5, color: 'var(--warn)', lineHeight: 1.5 }}>설명이 <b>이전 그림에 쓴 내용 그대로</b>입니다. 이 문장대로 제목과 이름이 붙으니, 새 그림에 맞게 고치거나 지우세요.</span>
             <button style={btn(false)} onClick={() => { setUserText(''); setStaleText(false); }}>설명 지우기</button>
           </div>
         )}
@@ -1049,11 +1050,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 ))}
               </div>
               {readMode && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
-                  <div style={{ ...slotNote, padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.7)', border: '1px solid var(--border-color)' }} data-testid="auto-kind">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' }}>
+                  <div style={{ ...slotNote, padding: '6px 8px', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border-color)' }} data-testid="auto-kind">
                     {subjectKind === 'auto'
-                      ? (autoKind ? <>🤖 <b>자동 판단</b>: {autoInfo ? SUBJECT_TYPE_LABEL[autoInfo.type] : ''} → <b>{SUBJECT_KINDS[autoKind]}</b> 방식으로 {autoKind === 'edit' ? '그립니다(무료, 약 3~6분).' : '읽습니다.'}</> : <>🤖 <b>자동 판단</b>: 이미지를 올리고 만들기(또는 미리 읽기)를 누르면 AI가 종류를 알아서 정합니다.</>)
-                      : <>✋ <b>직접 지정</b>: {SUBJECT_KINDS[subjectKind]}</>}
+                      ? (autoKind ? <><b>자동 판단</b>: {autoInfo ? SUBJECT_TYPE_LABEL[autoInfo.type] : ''} → <b>{SUBJECT_KINDS[autoKind]}</b> 방식으로 {autoKind === 'edit' ? '그립니다(무료, 약 3~6분).' : '읽습니다.'}</> : <><b>자동 판단</b>: 이미지를 올리고 만들기(또는 미리 읽기)를 누르면 AI가 종류를 알아서 정합니다.</>)
+                      : <><b>직접 지정</b>: {SUBJECT_KINDS[subjectKind]}</>}
                   </div>
                   <details>
                     <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>이미지 종류 직접 지정 (보통은 필요 없습니다)</summary>
@@ -1083,10 +1084,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                         <span>바닥에 내 도면 그림 입히기(가구·바닥 질감·방 이름이 입체 바닥에 그대로 보입니다. 끄면 벽만 있는 단순한 모형)</span>
                       </label>
                       {axonNote && (
-                        <div style={{ ...slotNote, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="axon-note">
+                        <div style={{ ...slotNote, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' }} data-testid="axon-note">
                           <b>참고 이미지에서 읽은 구성</b>: {axonNote.parts.length ? axonNote.parts.join(' · ') : '(참고 이미지 없음)'}<br />
                           <b>이 도구가 못 그리는 것</b>: {axonNote.unsupported.length ? axonNote.unsupported.join(' · ') : '없음'}
-                          {axonNote.empty && <><br /><span style={{ color: '#9a3412' }}>설명이 비어 있어 AI가 개념을 임의로 정했습니다. 설명을 적고 다시 만들어 보세요.</span></>}
+                          {axonNote.empty && <><br /><span style={{ color: 'var(--warn)' }}>설명이 비어 있어 AI가 개념을 임의로 정했습니다. 설명을 적고 다시 만들어 보세요.</span></>}
                         </div>
                       )}
                     </div>
@@ -1094,7 +1095,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   {effKind === 'freeform' && <p style={slotNote}>평면 도면이 아닌 그림(입체·투시·수채·사진 등)용입니다. 틀에 맞추지 않고 그림이 말하는 개념을 이해해서, 고정 요소(회색)와 움직이거나 강조된 요소(노랑), 회전·이동·흐름 화살표로 단순하게 다시 그립니다. 설명(1번)이 읽을 때 쓰이므로 설명을 바꾸면 새로 읽습니다. 결과는 클릭해서 바로 고칠 수 있습니다.</p>}
                   {effKind === 'sketch' && <p style={slotNote}>펜으로 그린 개념 스케치용입니다. 그려진 상자·빗금·선을 있는 그대로 읽어 정돈하고, 설명(1번)에 쓴 개념대로 이름과 화살표 방향을 붙입니다. 결과는 클릭해서 바로 고칠 수 있습니다. ‘다이어그램 만들기’를 다시 누르면 새로 만들어 직접 고친 내용은 사라집니다.</p>}
                   <button style={btn(!read, reading || busy)} disabled={reading || busy} onClick={() => readImage({ fresh: true })}>
-                    {reading ? '읽는 중… (10~30초)' : read ? '🔄 다시 읽기' : '미리 읽어서 확인하기 (선택)'}
+                    {reading ? '읽는 중… (10~30초)' : read ? '다시 읽기' : '미리 읽어서 확인하기 (선택)'}
                   </button>
                   {(effKind === 'sketch' || effKind === 'freeform') && paidVision.available && (
                     <button style={{ ...btn(false, reading || busy), marginTop: 6 }} disabled={reading || busy}
@@ -1103,7 +1104,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)
 누적 사용 약 ${(paidVision.usage_today?.total_krw ?? 0).toLocaleString()}원 / 총 한도 ${(paidVision.usage_today?.total_limit_krw ?? 0).toLocaleString()}원 (오늘 약 $${paidVision.usage_today?.usd ?? 0})
 계속할까요?`)) readImage({ fresh: true, paid: true }); }}>
-                      🔎 정밀 읽기 (유료 · 약 ${paidVision.est_cost_usd})
+                      정밀 읽기 (유료 · 약 ${paidVision.est_cost_usd})
                     </button>
                   )}
                   {read && (
@@ -1131,7 +1132,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           ) : (
             <button style={dropBtn} onClick={() => subjectFileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickSubject(e.dataTransfer.files?.[0]); }}>
-              🏢 건물·도면 올리기
+              건물·도면 올리기
             </button>
           )}
           <input ref={subjectFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSubject(e.target.files?.[0]); e.target.value = ''; }} />
@@ -1147,7 +1148,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           ) : (
             <button style={dropBtn} onClick={() => styleFileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickStyle(e.dataTransfer.files?.[0]); }}>
-              🖼️ 비슷한 느낌 올리기
+              비슷한 느낌 올리기
             </button>
           )}
           <input ref={styleFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickStyle(e.target.files?.[0]); e.target.value = ''; }} />
@@ -1182,12 +1183,12 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {scopeNotice && (
-            <div style={{ border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="scope-notice">
+            <div style={{ border: '1px solid var(--line-strong)', background: 'var(--warn-soft)', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="scope-notice">
               {scopeNotice.kind === 'text' ? (<>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>⚠️ 지원하지 않는 종류일 수 있습니다: {scopeNotice.category.label}</div>
-                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: '#78350F' }}>{scopeNotice.category.alt}</div>
-                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'text').length > 0 && <div style={{ fontSize: 11.5, color: '#78350F' }}>가장 가까운 종류로 만들어 볼까요?</div>}
-                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'image').map((n) => <div key={n.type} style={{ fontSize: 11, color: '#78350F' }}>이미지가 있다면: <b>{n.label}</b> — {n.why}</div>)}
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>지원하지 않는 종류일 수 있습니다: {scopeNotice.category.label}</div>
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--warn)' }}>{scopeNotice.category.alt}</div>
+                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'text').length > 0 && <div style={{ fontSize: 11.5, color: 'var(--warn)' }}>가장 가까운 종류로 만들어 볼까요?</div>}
+                {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'image').map((n) => <div key={n.type} style={{ fontSize: 11, color: 'var(--warn)' }}>이미지가 있다면: <b>{n.label}</b> — {n.why}</div>)}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {scopeNotice.nearest.filter((n) => catalogById(n.type)?.group === 'text').map((n) => (
                     <button key={n.type} style={{ ...btn(true, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => { setForcedType(n.type); setScopeNotice(null); setPendingGen(true); }} data-testid={`scope-nearest-${n.type}`} title={n.why}>{n.label.split(' (')[0]}(으)로 만들기</button>
@@ -1196,8 +1197,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   <button style={{ ...btn(false, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => setScopeNotice(null)} data-testid="scope-close">설명 고치기</button>
                 </div>
               </>) : (<>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>⚠️ 이 이미지는 지원하는 종류로 판단되지 않았습니다{scopeNotice.reason ? ` (${scopeNotice.reason})` : ''}</div>
-                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: '#78350F' }}>평면도·배치도·건물 사진·손스케치·입체 스케치가 아니면 결과가 기대와 다를 수 있습니다. 표·조직도·문서 스캔은 이 탭에서 만들지 않습니다(“만들 수 있는 것 · 없는 것” 참고). 가장 가까운 방식으로 진행하려면 고르세요.</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>이 이미지는 지원하는 종류로 판단되지 않았습니다{scopeNotice.reason ? ` (${scopeNotice.reason})` : ''}</div>
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--warn)' }}>평면도·배치도·건물 사진·손스케치·입체 스케치가 아니면 결과가 기대와 다를 수 있습니다. 표·조직도·문서 스캔은 이 탭에서 만들지 않습니다(“만들 수 있는 것 · 없는 것” 참고). 가장 가까운 방식으로 진행하려면 고르세요.</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {IMAGE_OTHER_NEAREST.map((n) => (
                     <button key={n.kind} style={{ ...btn(n.kind === 'freeform', false), padding: '5px 9px', fontSize: 11.5 }} title={n.why} data-testid={`scope-image-${n.kind}`}
@@ -1208,32 +1209,32 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               </>)}
             </div>
           )}
-          <p style={{ fontSize: 11, color: '#C2410C', margin: 0, lineHeight: 1.5 }}>⚠️ 설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
+          <p style={{ fontSize: 11, color: 'var(--warn)', margin: 0, lineHeight: 1.5 }}>설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
-            {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '✨ 다이어그램 만들기'}
+            {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '다이어그램 만들기'}
           </button>
-          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note">🖼️ <b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(평면 다이어그램·건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
+          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note"><b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(평면 다이어그램·건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
           {editProg && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
-              <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, #e2e8f0)', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: '#F28C28', transition: 'width .6s' }} /></div>
+              <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, var(--line-strong))', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: 'var(--primary)', transition: 'width .6s' }} /></div>
               <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{editProg.stage} · {Math.floor(editProg.sec / 60)}분 {editProg.sec % 60}초 경과</span>
             </div>
           )}
           {(((effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb' }} data-testid="paid-box">
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>유료 옵션 (선택 · 누르는 때만 호출 · 누적 총 한도 적용)</span>
-              {(paidImg.usage || paidVision.usage_today) && <span style={{ fontSize: 11, color: '#92400e' }} data-testid="paid-usage">누적 약 {((paidImg.usage || paidVision.usage_today).total_krw ?? 0).toLocaleString()}원 / 총 한도 {((paidImg.usage || paidVision.usage_today).total_limit_krw ?? 0).toLocaleString()}원</span>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--warn-soft)' }} data-testid="paid-box">
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>유료 옵션 (선택 · 누르는 때만 호출 · 누적 총 한도 적용)</span>
+              {(paidImg.usage || paidVision.usage_today) && <span style={{ fontSize: 11, color: 'var(--warn)' }} data-testid="paid-usage">누적 약 {((paidImg.usage || paidVision.usage_today).total_krw ?? 0).toLocaleString()}원 / 총 한도 {((paidImg.usage || paidVision.usage_today).total_limit_krw ?? 0).toLocaleString()}원</span>}
               {(effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available && (
                 <button style={btn(false, !canGenerate)} disabled={!canGenerate} data-testid="paid-generate" title={`상위 모델(${paidVision.model})로 AI 단계를 한 번 실행합니다.`}
                   onClick={() => { if (window.confirm(`유료로 만들기를 1회 실행합니다.\nAI 단계(${effKind === 'axon' ? '바람·일조·문구 정하기' : '이름·설명·바람 방향 붙이기'})를 상위 모델(${paidVision.model})로 호출합니다.\n예상 비용 약 $${paidVision.est_cost_usd}(약 ${Math.round((paidVision.est_cost_usd || 0) * (paidVision.usage_today?.usd_krw || 1400)).toLocaleString()}원)\n계속할까요?`)) generate(undefined, { paid: true }); }}>
-                  🔎 유료로 만들기 (AI 단계를 상위 모델로 · 약 ${paidVision.est_cost_usd})
+                  유료로 만들기 (AI 단계를 상위 모델로 · 약 ${paidVision.est_cost_usd})
                 </button>
               )}
               {result?.spec?.layout === 'axon' && paidImg.providers.length > 0 && (
                 <>
                   {paidImg.providers.length > 1 && <select value={paidProvider} onChange={(e) => setPaidProvider(e.target.value)} style={inputBase} disabled={paidImgBusy} data-testid="paid-provider">{paidImg.providers.map((p) => <option key={p.id} value={p.id}>{p.label} · 약 ${(p.est_cost_usd || 0).toFixed(2)}/장</option>)}</select>}
                   <button style={btn(false, paidImgBusy || busy)} disabled={paidImgBusy || busy} data-testid="paid-polish" onClick={polishAxon}>
-                    {paidImgBusy ? '유료 이미지 생성 중… (약 1분)' : `🎨 유료로 매끈하게 다시 그리기 (이미지 생성 · 약 $${((paidImg.providers.find((p) => p.id === paidProvider) || paidImg.providers[0])?.est_cost_usd || 0).toFixed(2)})`}
+                    {paidImgBusy ? '유료 이미지 생성 중… (약 1분)' : `유료로 매끈하게 다시 그리기 (이미지 생성 · 약 $${((paidImg.providers.find((p) => p.id === paidProvider) || paidImg.providers[0])?.est_cost_usd || 0).toFixed(2)})`}
                   </button>
                   {axonVector && result?.spec?.base?.isImage && <button style={btn(false, paidImgBusy)} disabled={paidImgBusy} data-testid="paid-restore" onClick={() => { setResult({ type: 'sketch', spec: axonVector, ver: Date.now() }); setAxonVector(null); }}>↩ 벡터 버전으로 되돌리기</button>}
                 </>
@@ -1255,7 +1256,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>요청 반영 점검</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {coverage.map((c) => (
-                <span key={c.item} style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 999, border: `1px solid ${c.ok ? '#86efac' : '#fca5a5'}`, background: c.ok ? '#f0fdf4' : '#fef2f2', color: c.ok ? '#15803D' : '#B91C1C' }}>
+                <span key={c.item} style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 999, border: `1px solid ${c.ok ? '#86efac' : '#fca5a5'}`, background: c.ok ? 'var(--ok-soft)' : '#fef2f2', color: c.ok ? 'var(--ok)' : '#B91C1C' }}>
                   {c.ok ? '✓' : '✗'} {c.item}
                 </span>
               ))}
@@ -1267,7 +1268,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => generate(coverage.filter((c) => !c.ok).map((c) => c.item))}>빠진 항목 넣어서 다시 만들기</button>
                 </>
               )
-              : <p style={{ fontSize: 11, color: '#15803D', margin: 0 }}>요청한 항목이 모두 결과에 들어 있습니다.</p>}
+              : <p style={{ fontSize: 11, color: 'var(--ok)', margin: 0 }}>요청한 항목이 모두 결과에 들어 있습니다.</p>}
           </div>
         )}
 
@@ -1279,7 +1280,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           selRaw={pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw || null} onCellMm={onCellMm} onSplit={onSplit} onRemove={onRemove} onResetLayout={onResetLayout}
           onMoveContent={moveCellContent} selMeta={pg.cellMeta?.[selCell] || {}} autoLabel={autoCellLabels(getCells(pg.layoutId, pg.custom), pg.labelPrefix)[selCell] || ''} onCellMeta={onCellMeta} onExample={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} setLayout={setLayout} />
         </div>
-        {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: '#B91C1C', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
+        {pageOn && pageModel?.error && <p style={{ fontSize: 11.5, color: 'var(--err)', margin: 0 }} data-testid="page-error">페이지 크기·칸을 적용하지 못했습니다: {pageModel.error}</p>}
 
         </div>
 
@@ -1288,7 +1289,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           <details data-testid="table-form-details">
             <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }}>표 구성 (행·열·스타일·엑셀 붙여넣기)</summary>
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5, background: 'rgba(242,140,40,0.1)', border: '1px solid #FCD9A8', borderRadius: 6, padding: '6px 8px' }} data-testid="td-hint">✏️ <b>표 안의 글자는 오른쪽 그림에서 더블클릭</b>해서 바로 고칩니다. 여기서는 행·열·스타일을 바꾸거나 엑셀 표를 붙여넣습니다.</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5, background: 'var(--primary-soft)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '6px 8px' }} data-testid="td-hint"><b>표 안의 글자는 오른쪽 그림에서 더블클릭</b>해서 바로 고칩니다. 여기서는 행·열·스타일을 바꾸거나 엑셀 표를 붙여넣습니다.</div>
               <TableEditor table={td.table} onChange={(tb, key) => tableDocEdit({ table: tb }, key)} testid="td" compact />
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--text-tertiary, #64748b)' }}>글자 크기 {td.size}
                 <input type="range" min="10" max="40" step="1" value={td.size} onChange={(e) => tableDocEdit({ size: Number(e.target.value) }, 'size')} data-testid="td-size" />
@@ -1314,37 +1315,39 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
           <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
-          <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>🖼️ 내 이미지 넣기</button>
+          <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>내 이미지 넣기</button>
           <input ref={myImgFileRef} type="file" accept="image/*" multiple hidden data-testid="my-image-input" onChange={(e) => { insertMyImages(e.target.files, ''); e.target.value = ''; }} />
           <select value={imgQ} onChange={(e) => { setImgQ(e.target.value); setImgQuality(e.target.value); }} style={{ ...inputBase, width: 'auto', fontSize: 11.5, padding: '5px 6px' }} data-testid="img-quality" title="큰 사진을 줄여 담는 정도. 선명하게는 화질이 좋은 대신 큰 이미지가 여러 장이면 편집이 느려질 수 있습니다">
             {Object.entries(IMG_QUALITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
         </div>
-        <div ref={paneRef} style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fff', position: 'relative', outline: dropCell === 'pane' ? '3px dashed #F28C28' : 'none', outlineOffset: -6 }} data-testid="drop-pane"
+        <div ref={paneRef} style={{ flex: 1, overflow: 'auto', padding: 16, background: 'var(--bg)', position: 'relative', outline: dropCell === 'pane' ? '3px dashed var(--primary)' : 'none', outlineOffset: -6 }} data-testid="drop-pane"
           onDragEnter={onPaneDrag} onDragOver={onPaneDrag} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCell(''); }} onDrop={onPaneDrop}>
           {dropCell && (
             <div style={{ position: 'sticky', top: 0, zIndex: 30, height: 0, overflow: 'visible', pointerEvents: 'none' }} data-testid="drop-hint">
-              <div style={{ margin: '0 auto', width: 'fit-content', padding: '8px 16px', borderRadius: 999, background: '#F28C28', color: '#fff', fontSize: 13, fontWeight: 800, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
-                🖼️ 여기에 놓으면 {dropCell !== 'pane' ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(dropCell) + 1)}에` : (pageOn ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}에` : result ? '이 다이어그램 안에' : '')} 내 이미지가 들어갑니다
+              <div style={{ margin: '0 auto', width: 'fit-content', padding: '8px 16px', borderRadius: 999, background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
+                여기에 놓으면 {dropCell !== 'pane' ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(dropCell) + 1)}에` : (pageOn ? `칸 ${Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}에` : result ? '이 다이어그램 안에' : '')} 내 이미지가 들어갑니다
               </div>
             </div>
           )}
           {!result && !pageOn && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-              <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
-              <button style={{ ...btn(false), fontSize: 12 }} onClick={() => setResult({ type: 'site', spec: EXAMPLE_SPECS.site })}>예시 먼저 보기</button>
+              <EmptyState title="아직 만든 다이어그램이 없습니다">
+                <div>왼쪽에 설명과 이미지를 넣고 <b>다이어그램 만들기</b>를 누르면<br />결과가 여기에 나타납니다.</div>
+                <button style={{ ...btn(false), fontSize: 12 }} onClick={() => setResult({ type: 'site', spec: EXAMPLE_SPECS.site })}>예시 먼저 보기</button>
+              </EmptyState>
             </div>
           )}
           {genError && (
-            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fef2f2', color: '#B91C1C', fontSize: 12.5, lineHeight: 1.5 }} data-testid="gen-error">
-              ⚠️ {genError}{result ? ' — 아래에 보이는 그림은 이번 결과가 아니라 이전 결과입니다.' : ''}
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--err)', background: 'var(--err-soft)', color: 'var(--err)', fontSize: 12.5, lineHeight: 1.5 }} data-testid="gen-error">
+              {genError}{result ? ' — 아래에 보이는 그림은 이번 결과가 아니라 이전 결과입니다.' : ''}
             </div>
           )}
-          {rendered?.error && <div style={{ color: '#B91C1C', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
+          {rendered?.error && <div style={{ color: 'var(--err)', fontSize: 13 }}>그릴 수 없는 결과입니다: {rendered.error}</div>}
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
-              <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>📐 페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
               {pageModel?.preview && (
                 <button style={{ ...btn(focusOn, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setFocusEdit((v) => !v)} data-testid="focus-toggle"
                   title={focusOn ? '편집기를 줄이고 페이지 배치를 다시 크게 봅니다 (단축키 F)' : '편집기를 전체 폭으로 크게 키웁니다. 페이지는 위쪽 띠로 줄고, 칸은 띠에서 고릅니다 (단축키 F)'}>
@@ -1378,10 +1381,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', height: '100%', display: 'block' }} />
                   {pm.cells.map((c) => { const [x, y, w, h] = c.rect; const on = c.id === selCell; const n = ids.indexOf(c.id) + 1; return (
                     <div key={c.id} onClick={() => selectCell(c.id)} data-testid={`focus-cell-${c.id}`} title={`칸 ${n} 고르기`}
-                      style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: 'pointer', outline: on ? '2px solid #F28C28' : 'none', background: on ? 'rgba(242,140,40,0.14)' : 'transparent' }} />); })}
+                      style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: 'pointer', outline: on ? '2px solid var(--primary)' : 'none', background: on ? 'var(--primary-soft)' : 'transparent' }} />); })}
                 </div>
                 <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)' }}>📄 칸</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>칸</span>
                   {ids.length > 1 && <button style={{ ...btn(false, false), padding: '4px 8px', fontSize: 12 }} onClick={() => go(-1)} title="이전 칸" data-testid="focus-prev">◀</button>}
                   {ids.map((id, i) => (
                     <button key={id} style={{ ...btn(id === selCell, false), padding: '4px 10px', fontSize: 12 }} onClick={() => selectCell(id)} data-testid={`focus-chip-${id}`} title={has(id) ? `칸 ${i + 1}의 그림 고치기` : `칸 ${i + 1}은 비어 있습니다`}>{i + 1}{has(id) ? ' ●' : ''}</button>
@@ -1393,28 +1396,28 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             );
           })()}
           {focusOn && !result && (
-            <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 10, color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7 }} data-testid="focus-empty">
-              칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 위 <b>🖼️ 내 이미지 넣기</b>로 채우세요(이미지를 이 화면에 끌어다 놓아도 됩니다).
+            <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--r-btn)', color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7 }} data-testid="focus-empty">
+              칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 위 <b>내 이미지 넣기</b>로 채우세요(이미지를 이 화면에 끌어다 놓아도 됩니다).
             </div>
           )}
           {pageOn && result && (
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
-              ✏️ <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {focusOn ? '위쪽 띠에서 다른 칸을 누르면(◀ ▶ 도 됩니다)' : `${sideOn ? '오른쪽' : '아래'} “📄 페이지 배치”에서 다른 칸을 누르면`} 그 칸의 그림으로 바뀝니다.
+              <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {focusOn ? '위쪽 띠에서 다른 칸을 누르면(◀ ▶ 도 됩니다)' : `${sideOn ? '오른쪽' : '아래'} “페이지 배치”에서 다른 칸을 누르면`} 그 칸의 그림으로 바뀝니다.
             </p>
           )}
           {result?.aiEdit && result.type === 'sketch' && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', margin: '0 0 10px', borderRadius: 8, border: '1px solid #FDBA74', background: '#FFF7ED' }} data-testid="region-bar">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', margin: '0 0 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--warn-soft)' }} data-testid="region-bar">
               {!regionPick && !regionBox && (<>
-                <button style={btn(false, busy)} disabled={busy} onClick={() => { setRegionPick(true); setRegionBox(null); }} data-testid="region-start">🔁 이 영역만 다시 그리기</button>
-                <span style={{ fontSize: 11.5, color: '#9A3412' }}>마음에 안 드는 부분만 골라 다시 그립니다(전체를 다시 만들 때의 5~7분 대신 약 2~4분). 영역 밖은 그대로 두고, 이미 손으로 고친 것도 유지됩니다.</span>
+                <button style={btn(false, busy)} disabled={busy} onClick={() => { setRegionPick(true); setRegionBox(null); }} data-testid="region-start">이 영역만 다시 그리기</button>
+                <span style={{ fontSize: 11.5, color: 'var(--warn)' }}>마음에 안 드는 부분만 골라 다시 그립니다(전체를 다시 만들 때의 5~7분 대신 약 2~4분). 영역 밖은 그대로 두고, 이미 손으로 고친 것도 유지됩니다.</span>
               </>)}
               {regionPick && (<>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#9A3412' }} data-testid="region-pick-hint">📐 그림 위에서 다시 그릴 영역을 끌어서 고르세요</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--warn)' }} data-testid="region-pick-hint">그림 위에서 다시 그릴 영역을 끌어서 고르세요</span>
                 <button style={btn(false, false)} onClick={() => setRegionPick(false)} data-testid="region-cancel">취소</button>
               </>)}
               {regionBox && (<>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#9A3412' }} data-testid="region-size">선택한 영역 {regionBox[2] - regionBox[0]}×{regionBox[3] - regionBox[1]}px</span>
-                <input style={{ flex: '1 1 220px', minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid #FDBA74', fontSize: 12.5 }} placeholder="이 영역만의 추가 요청(선택) 예) 화살표를 현관 쪽으로 이어서" value={regionHint} onChange={(e) => setRegionHint(e.target.value)} disabled={busy} data-testid="region-hint" />
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--warn)' }} data-testid="region-size">선택한 영역 {regionBox[2] - regionBox[0]}×{regionBox[3] - regionBox[1]}px</span>
+                <input style={{ flex: '1 1 220px', minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line-strong)', fontSize: 12.5 }} placeholder="이 영역만의 추가 요청(선택) 예) 화살표를 현관 쪽으로 이어서" value={regionHint} onChange={(e) => setRegionHint(e.target.value)} disabled={busy} data-testid="region-hint" />
                 <button style={btn(true, busy)} disabled={busy} onClick={runRegionRedraw} data-testid="region-run">{busy ? '다시 그리는 중…' : '다시 그리기 (약 2~4분)'}</button>
                 <button style={btn(false, busy)} disabled={busy} onClick={() => { setRegionBox(null); setRegionPick(true); }}>다시 고르기</button>
                 <button style={btn(false, busy)} disabled={busy} onClick={() => setRegionBox(null)}>취소</button>
@@ -1440,13 +1443,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             <div role="separator" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={85} aria-valuenow={Math.round(splitEff * 100)} tabIndex={0} data-testid="splitter"
               title="끌어서 편집기와 페이지의 폭을 바꿉니다(더블클릭: 처음 비율, 방향키: 조금씩)" onPointerDown={onSplitDown} onDoubleClick={() => setSplitR(SPLIT_DEFAULT)} onKeyDown={onSplitKey}
               style={{ alignSelf: 'stretch', cursor: 'col-resize', touchAction: 'none', display: 'flex', justifyContent: 'center', outline: 'none' }}>
-              <div style={{ position: 'sticky', top: '38vh', alignSelf: 'flex-start', width: 6, height: 54, borderRadius: 3, background: '#cbd5e1', boxShadow: '0 0 0 1px #94a3b8 inset' }} />
+              <div style={{ position: 'sticky', top: '38vh', alignSelf: 'flex-start', width: 6, height: 54, borderRadius: 3, background: 'var(--line-strong)', boxShadow: '0 0 0 1px #94a3b8 inset' }} />
             </div>
           )}
           {pageOn && pageModel?.preview && !focusOn && (
             <div style={sideOn ? { position: 'sticky', top: 0, minWidth: 0, marginBottom: 14 } : { marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
               <style>{'.pg-slot{outline:1.5px dashed transparent;border-radius:2px}.pg-slot:hover{outline-color:#F28C28;background:rgba(242,140,40,.10)}.pg-slot[data-has="0"]:hover::after{content:attr(data-hint);position:absolute;left:5px;top:50%;transform:translateY(-50%);font:700 12px sans-serif;color:#C2410C;white-space:nowrap;pointer-events:none}'}</style>
-              {result && <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>📄 페이지 배치 · 칸 크기 조절</div>}
+              {result && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>페이지 배치 · 칸 크기 조절</div>}
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
@@ -1458,7 +1461,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     return (
                       <React.Fragment key={c.id}>
                         <div data-cellid={c.id} onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
-                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed #F28C28' : live && sel ? '2px solid #F28C28' : 'none', background: dropCell === c.id ? 'rgba(242,140,40,0.18)' : live && sel ? 'rgba(242,140,40,0.12)' : 'transparent' }}>
+                          style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed var(--primary)' : live && sel ? '2px solid var(--primary)' : 'none', background: dropCell === c.id ? 'var(--primary-soft)' : live && sel ? 'var(--primary-soft)' : 'transparent' }}>
                           {!live && (() => { const cr = pm.cells.find((q) => q.id === c.id); if (!cr) return null;
                             const mk = (kind, rect, value, title, tid) => { if (!rect) return null; const [rx, ry, rw, rh] = rect; return (
                               <div key={kind} className="pg-slot" data-has="1" data-testid={`${tid}-${c.id}`} title={title} onDoubleClick={(e) => { e.stopPropagation(); setPgEdit({ kind, id: c.id, el: e.currentTarget, value }); }}
@@ -1467,7 +1470,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                         </div>
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
-                            style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid #F28C28', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
+                            style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid var(--primary)', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
                         ))}
                         {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
                       </React.Fragment>

@@ -35,6 +35,8 @@ import {
   FolderPlus,
   ZoomIn
 } from 'lucide-react';
+import AppHeader from './AppHeader';
+import { IconSprite } from './Icon';
 
 // 상대경로로 호출 — vite.config.js의 dev 서버 proxy(/v1, /generated → localhost:5000)를 통해
 // 백엔드로 전달된다. 이렇게 하면 LAN이든 터널(ngrok/cloudflared 등 외부 링크)이든 프론트엔드
@@ -210,9 +212,9 @@ function ToastContainer({ toasts, removeToast }) {
           onAnimationEnd={() => t.closing && removeToast(t.id)}
         >
           <div style={{ flexShrink: 0, marginTop: '1px' }}>
-            {t.type === 'error' && <AlertTriangle size={16} style={{ color: 'var(--accent-rose)' }} />}
-            {t.type === 'success' && <Check size={16} style={{ color: '#22c55e' }} />}
-            {t.type === 'info' && <Sparkles size={16} style={{ color: 'var(--accent-cyan)' }} />}
+            {t.type === 'error' && <AlertTriangle size={16} />}
+            {t.type === 'success' && <Check size={16} />}
+            {t.type === 'info' && <Sparkles size={16} />}
           </div>
           <div className="toast-content">
             {t.title && <div className="toast-title">{t.title}</div>}
@@ -451,52 +453,47 @@ function ProjectGate({ onSelected }) {
   };
 
   const cardStyle = {
-    width: '380px', maxWidth: '92vw', padding: '32px',
-    background: 'rgba(255, 255, 255, 0.85)', borderRadius: '20px',
-    boxShadow: '0 20px 60px rgba(30, 27, 75, 0.15)', border: '1px solid rgba(255,255,255,0.6)',
-    backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)'
+    width: '380px', maxWidth: '92vw', padding: '24px',
+    background: 'var(--surface)', borderRadius: 'var(--r-card)',
+    border: '1px solid var(--line)', boxShadow: 'var(--card-shadow)'
   };
   const inputStyle = {
-    width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #e2e8f0',
-    fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px'
+    width: '100%', height: 'var(--h-input)', padding: '0 12px', borderRadius: 'var(--r-input)', border: '1px solid var(--line-strong)',
+    background: 'var(--surface)', color: 'var(--ink)', fontSize: '14px', boxSizing: 'border-box', marginBottom: '10px'
   };
   const primaryBtnStyle = {
-    width: '100%', padding: '12px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-    background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)', color: '#fff',
-    fontWeight: 700, fontSize: '14px', marginTop: '4px'
+    width: '100%', height: '40px', padding: '0 16px', borderRadius: 'var(--r-btn)', border: '1px solid transparent', cursor: 'pointer',
+    background: 'var(--primary)', color: 'var(--on-primary)',
+    fontWeight: 500, fontSize: '14px', marginTop: '4px'
   };
   const ghostBtnStyle = {
-    width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', cursor: 'pointer',
-    background: 'transparent', color: 'var(--text-secondary, #475569)', fontWeight: 600, fontSize: '13.5px', marginTop: '8px'
+    width: '100%', height: '40px', padding: '0 16px', borderRadius: 'var(--r-btn)', border: '1px solid var(--line-strong)', cursor: 'pointer',
+    background: 'var(--surface)', color: 'var(--ink)', fontWeight: 500, fontSize: '14px', marginTop: '8px'
   };
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100vh', background: 'linear-gradient(160deg, #f8fafc 0%, #eef1fb 100%)'
+      height: '100vh', background: 'var(--bg)'
     }}>
-      <img src="/logo.png" alt="로고" style={{ width: '52px', height: '52px', objectFit: 'contain', marginBottom: '18px' }} />
-      <h1 style={{
-        margin: '0 0 4px', fontSize: '20px', fontWeight: 900,
-        background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
-        WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent'
-      }}>
-        상지건축 DX설계본부 AX LAB
+      <span className="logo-crop" style={{ marginBottom: '16px' }}><img src="/axlab-logo-light-transparent.png" alt="AX LAB — SEA DX DIV." /></span>
+      <h1 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 500, color: 'var(--ink)' }}>
+        AI 이미지 스튜디오
       </h1>
-      <p style={{ margin: '0 0 24px', fontSize: '13px', color: 'var(--text-secondary, #64748b)' }}>
-        작업할 프로젝트를 선택하거나 새로 만들어주세요
+      <p style={{ margin: '0 0 24px', fontSize: '13px', color: 'var(--ink-soft)' }}>
+        상지건축 DX설계본부 AX LAB · 작업할 프로젝트를 선택하거나 새로 만들어주세요
       </p>
 
       <div style={cardStyle}>
         {mode === 'pick' && (
           <>
-            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+            <div style={{ fontSize: '13.5px', fontWeight: 500, marginBottom: '12px', color: 'var(--ink)' }}>
               내 프로젝트 선택
             </div>
             {loadingList ? (
-              <div style={{ fontSize: '13px', color: '#94a3b8', padding: '12px 0' }}>불러오는 중...</div>
+              <div style={{ fontSize: '13px', color: 'var(--ink-faint)', padding: '12px 0' }}>불러오는 중...</div>
             ) : projects.length === 0 ? (
-              <div style={{ fontSize: '13px', color: '#94a3b8', padding: '4px 0 14px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--ink-faint)', padding: '4px 0 14px' }}>
                 아직 프로젝트가 없습니다. 아래에서 새로 만들어주세요.
               </div>
             ) : (
@@ -506,9 +503,9 @@ function ProjectGate({ onSelected }) {
                     key={p}
                     onClick={() => openLogin(p)}
                     style={{
-                      textAlign: 'left', padding: '11px 14px', borderRadius: '10px',
-                      border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer',
-                      fontSize: '14px', fontWeight: 600, color: '#1e293b'
+                      textAlign: 'left', padding: '11px 14px', borderRadius: 'var(--r-btn)',
+                      border: '1px solid var(--line-strong)', background: 'var(--surface)', cursor: 'pointer',
+                      fontSize: '14px', fontWeight: 500, color: 'var(--ink)'
                     }}
                   >
                     {p}
@@ -516,14 +513,14 @@ function ProjectGate({ onSelected }) {
                 ))}
               </div>
             )}
-            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginTop: '10px' }}>{error}</div>}
+            {error && <div style={{ color: 'var(--err)', fontSize: '12.5px', marginTop: '10px' }}>{error}</div>}
             <button onClick={openCreate} style={primaryBtnStyle}>+ 새 프로젝트 만들기</button>
           </>
         )}
 
         {mode === 'login' && (
           <form onSubmit={submitLogin}>
-            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+            <div style={{ fontSize: '13.5px', fontWeight: 500, marginBottom: '12px', color: 'var(--ink)' }}>
               "{selectedName}" 비밀번호 입력
             </div>
             <input
@@ -531,7 +528,7 @@ function ProjectGate({ onSelected }) {
               value={password} onChange={e => setPassword(e.target.value)}
               style={inputStyle}
             />
-            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            {error && <div style={{ color: 'var(--err)', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
             <button type="submit" disabled={submitting || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !password) ? 0.6 : 1 }}>
               {submitting ? '확인 중...' : '입장하기'}
             </button>
@@ -543,7 +540,7 @@ function ProjectGate({ onSelected }) {
                 이름 바꾸기
               </button>
             </div>
-            <button type="button" onClick={openDelete} style={{ ...ghostBtnStyle, color: '#e11d48', borderColor: '#fecdd3' }}>
+            <button type="button" onClick={openDelete} style={{ ...ghostBtnStyle, color: 'var(--err)', borderColor: 'var(--err)' }}>
               프로젝트 삭제
             </button>
           </form>
@@ -551,7 +548,7 @@ function ProjectGate({ onSelected }) {
 
         {mode === 'rename' && (
           <form onSubmit={submitRename}>
-            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+            <div style={{ fontSize: '13.5px', fontWeight: 500, marginBottom: '12px', color: 'var(--ink)' }}>
               "{selectedName}" 이름 바꾸기
             </div>
             <input
@@ -564,7 +561,7 @@ function ProjectGate({ onSelected }) {
               value={password} onChange={e => setPassword(e.target.value)}
               style={inputStyle}
             />
-            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            {error && <div style={{ color: 'var(--err)', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
             <button type="submit" disabled={submitting || !newName.trim() || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !newName.trim() || !password) ? 0.6 : 1 }}>
               {submitting ? '바꾸는 중...' : '이름 바꾸고 입장하기'}
             </button>
@@ -576,10 +573,10 @@ function ProjectGate({ onSelected }) {
 
         {mode === 'delete' && (
           <form onSubmit={submitDelete}>
-            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '4px', color: '#e11d48' }}>
+            <div style={{ fontSize: '13.5px', fontWeight: 500, marginBottom: '4px', color: 'var(--err)' }}>
               "{selectedName}" 프로젝트 삭제
             </div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', marginBottom: '12px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '12.5px', color: 'var(--ink-soft)', marginBottom: '12px', lineHeight: 1.5 }}>
               이 프로젝트의 모든 생성 이력과 이미지 파일이 영구적으로 삭제됩니다.
               되돌릴 수 없습니다.
             </div>
@@ -593,11 +590,11 @@ function ProjectGate({ onSelected }) {
               value={deleteConfirmText} onChange={e => setDeleteConfirmText(e.target.value)}
               style={inputStyle}
             />
-            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            {error && <div style={{ color: 'var(--err)', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
             <button
               type="submit" disabled={submitting || !password || deleteConfirmText !== selectedName}
               style={{
-                ...primaryBtnStyle, background: '#e11d48',
+                ...primaryBtnStyle, background: 'var(--err)',
                 opacity: (submitting || !password || deleteConfirmText !== selectedName) ? 0.5 : 1
               }}
             >
@@ -611,7 +608,7 @@ function ProjectGate({ onSelected }) {
 
         {mode === 'create' && (
           <form onSubmit={submitCreate}>
-            <div style={{ fontSize: '13.5px', fontWeight: 700, marginBottom: '12px', color: '#334155' }}>
+            <div style={{ fontSize: '13.5px', fontWeight: 500, marginBottom: '12px', color: 'var(--ink)' }}>
               새 프로젝트 만들기
             </div>
             <input
@@ -629,7 +626,7 @@ function ProjectGate({ onSelected }) {
               value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
               style={inputStyle}
             />
-            {error && <div style={{ color: '#e11d48', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
+            {error && <div style={{ color: 'var(--err)', fontSize: '12.5px', marginBottom: '8px' }}>{error}</div>}
             <button type="submit" disabled={submitting || !name.trim() || !password} style={{ ...primaryBtnStyle, opacity: (submitting || !name.trim() || !password) ? 0.6 : 1 }}>
               {submitting ? '만드는 중...' : '만들고 시작하기'}
             </button>
@@ -894,20 +891,20 @@ function App() {
       '3:2': { label: '사진 (3:2)' }
     },
     styles: {
-      'fooocus_enhance': { label: '🎨 Fooocus 강화' },
-      'sai-cinematic': { label: '🎬 영화 스타일' },
-      'sai-photographic': { label: '📸 사진' },
-      'sai-anime': { label: '🎌 애니메이션' },
-      'sai-pixel-art': { label: '🔲 픽셀 아트' },
-      'sai-3d-model': { label: '🎭 3D 모델' },
-      'sai-line-art': { label: '✏️ 라인 아트' },
-      'sai-watercolor': { label: '🎨 수채화' },
-      'sai-sketch': { label: '🖍️ 스케치' },
-      'sai-neon-punk': { label: '⚡ 네온펑크' },
-      'sai-fantasy-art': { label: '🐉 판타지 아트' },
-      'sai-comic-book': { label: '💭 만화책' },
-      'sai-origami': { label: '📄 종이접기' },
-      'sai-ukiyo-e': { label: '🗾 우키요에' }
+      'fooocus_enhance': { label: 'Fooocus 강화' },
+      'sai-cinematic': { label: '영화 스타일' },
+      'sai-photographic': { label: '사진' },
+      'sai-anime': { label: '애니메이션' },
+      'sai-pixel-art': { label: '픽셀 아트' },
+      'sai-3d-model': { label: '3D 모델' },
+      'sai-line-art': { label: '라인 아트' },
+      'sai-watercolor': { label: '수채화' },
+      'sai-sketch': { label: '스케치' },
+      'sai-neon-punk': { label: '네온펑크' },
+      'sai-fantasy-art': { label: '판타지 아트' },
+      'sai-comic-book': { label: '만화책' },
+      'sai-origami': { label: '종이접기' },
+      'sai-ukiyo-e': { label: '우키요에' }
     },
     samplers: [],
     schedulers: []
@@ -1354,7 +1351,7 @@ function App() {
       setChatMessages(prev => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: reply || '(응답이 비어있습니다)' }]);
     } catch (err) {
       console.error('대화 오류:', err);
-      setChatMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: '⚠️ 응답을 받지 못했습니다. Ollama가 켜져 있는지 확인해주세요.' }]);
+      setChatMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: '응답을 받지 못했습니다. Ollama가 켜져 있는지 확인해주세요.' }]);
     } finally {
       setIsChatting(false);
     }
@@ -1924,7 +1921,7 @@ function App() {
     runKontextEdit(promptAttachedImages[0], instruction);
   };
 
-  // "이미지 수정" 탭의 "✨ AI 정밀 수정" 모드: 이 탭 전용 이미지/지시문 입력을 사용
+  // "이미지 수정" 탭의 "AI 정밀 수정" 모드: 이 탭 전용 이미지/지시문 입력을 사용
   const handleKontextEditFromEditTab = () => {
     runKontextEdit(kontextEditImage, kontextInstruction);
   };
@@ -2272,7 +2269,7 @@ function App() {
 
   const selectStyle = {
     padding: '9px 10px',
-    borderRadius: '10px',
+    borderRadius: 'var(--r-btn)',
     border: '1px solid var(--border-color)',
     background: 'var(--bg-input)',
     color: 'var(--text-primary)',
@@ -2282,22 +2279,6 @@ function App() {
     cursor: 'pointer'
   };
 
-  const tabBtnStyle = (active) => ({
-    flex: 1,
-    padding: '11px',
-    borderRadius: '10px',
-    border: `1px solid ${active ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
-    background: active ? 'rgba(51, 51, 153, 0.14)' : 'transparent',
-    color: active ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-    fontWeight: 700,
-    fontSize: '14.5px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '7px',
-    transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease'
-  });
 
   // 프로젝트를 아직 고르지 않았으면(또는 로그아웃했으면) 본 화면 대신 선택/생성 화면을 띄운다.
   if (!currentProject) {
@@ -2305,129 +2286,41 @@ function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      {/* 백그라운드 오로라 글로우 효과 */}
-      <div className="aurora-bg">
-        <div className="aurora-glow aurora-glow-1"></div>
-        <div className="aurora-glow aurora-glow-2"></div>
-      </div>
-
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative', overflow: 'hidden', background: 'var(--bg)' }}>
+      <IconSprite />
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {/* 상단 헤더 (HEADER_BRAND_GUIDE.md 반영: 로고 + 그라데이션 타이틀 + 소제목 + 우측 상태 뱃지) */}
-      <header style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        height: '80px', padding: '0 28px', borderBottom: '1px solid rgba(255, 255, 255, 0.6)',
-        background: 'rgba(255, 255, 255, 0.45)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)', zIndex: 10
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {/* 로고: public/logo.png (S·E·A 브랜드 로고) */}
-          <div
-            className="app-logo"
-            style={{ width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.3s ease' }}
-          >
-            <img src="/logo.png" alt="로고" style={{ width: '44px', height: '44px', objectFit: 'contain' }} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <h1 style={{
-              margin: 0, fontSize: '21px', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.2,
-              background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
-              WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent'
-            }}>
-              상지건축 DX설계본부 AX LAB
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>
-              AI Image Studio
-            </p>
-          </div>
-        </div>
-
-        {/* 최상위 모듈 스위처: AI 이미지 / 조감도 / 다이어그램 (2026-09-18) */}
-        <div className="glass-card" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '12px' }}>
-          {[
-            { id: 'image', label: 'AI 이미지', emoji: '🖼️' },
-            { id: 'aerial', label: '조감도', emoji: '🏙️' },
-            { id: 'diagram', label: '다이어그램', emoji: '📊' },
-          ].map(m => (
-            <button
-              key={m.id}
-              onClick={() => setAppModule(m.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px',
-                border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap',
-                background: appModule === m.id ? 'linear-gradient(135deg, #333399, #4f46e5)' : 'transparent',
-                color: appModule === m.id ? '#fff' : 'var(--text-secondary)',
-                boxShadow: appModule === m.id ? '0 2px 8px rgba(51,51,153,0.3)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {m.emoji} {m.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {/* 현재 프로젝트 표시 + 전환 — 다른 프로젝트로 바꾸려면 비밀번호를 다시 입력해야 한다. */}
-          <button
-            onClick={switchProject}
-            title="다른 프로젝트로 전환합니다"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
-              borderRadius: '999px', border: '1px solid rgba(51, 51, 153, 0.2)',
-              background: 'rgba(51, 51, 153, 0.08)', color: '#333399',
-              fontSize: '12.5px', fontWeight: 700, cursor: 'pointer'
-            }}
-          >
-            📁 {currentProject}
-          </button>
-          {/* 이지 모드 / 프로 모드 토글 */}
-          <div className="switch-container" onClick={() => setIsEasyMode(v => !v)} title="초보자를 위한 간편 설정 모드와 전문가용 정밀 설정 모드를 전환합니다">
-            <span className={`switch-label ${isEasyMode ? 'active' : ''}`}>이지 모드</span>
-            <div className={`switch-track ${isEasyMode ? '' : 'active'}`}>
-              <div className="switch-thumb" />
-            </div>
-            <span className={`switch-label ${!isEasyMode ? 'active' : ''}`}>프로 모드</span>
-          </div>
-
-          <button
-            onClick={loadStudioGallery}
-            className="btn-ghost"
-            style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 14px', fontSize: '13.5px', fontWeight: 600 }}
-          >
-            <RefreshCw size={14} /> 갤러리 새로고침
-          </button>
-        </div>
-      </header>
+      {/* 상단 앱 헤더: 로고 + 모듈 탭 + 표제란 + 이지/프로 토글 (사내 디자인 · 도구형) */}
+      <AppHeader appModule={appModule} onModule={setAppModule} currentProject={currentProject} onSwitchProject={switchProject}
+        isEasyMode={isEasyMode} onToggleEasy={() => setIsEasyMode(v => !v)} onRefreshGallery={loadStudioGallery} />
 
       {/* 다이어그램 모듈 — 바탕 도면 위에 주석(라벨/화살표/영역/아이콘)을 얹는 편집기.
           기존 스튜디오 레이아웃 위에 덮어 보여주고, 탭을 오가도 작업이 사라지지 않게 항상 마운트해 둔 채 숨기기만 한다. */}
-      <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'diagram' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
+      <div style={{ position: 'absolute', top: 'var(--header-h-live, var(--header-h))', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'diagram' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
         <DiagramModule active={appModule === 'diagram'} addToast={addToast} apiFetch={apiFetch} />
       </div>
 
       {/* 조감도 모듈 — 유료 이미지 API 전용(AI 이미지 탭은 무료 로컬 전용). 탭을 오가도 입력이 유지되게 항상 마운트해 둔다. */}
-      <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'aerial' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
+      <div style={{ position: 'absolute', top: 'var(--header-h-live, var(--header-h))', left: 0, right: 0, bottom: 0, zIndex: 5, display: appModule === 'aerial' ? 'flex' : 'none', overflow: 'hidden', background: 'var(--bg-primary, #eef1f8)' }}>
         <AerialStudio addToast={addToast} apiFetch={apiFetch} onGenerated={loadStudioGallery} isEasyMode={isEasyMode} />
       </div>
 
       {/* 메인 레이아웃: 좌(대화/프롬프트 & 옵션) / 우(갤러리) */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', zIndex: 1 }}>
         {/* 좌측 */}
-        <div style={{ width: 'clamp(380px, 55%, 650px)', flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'hidden', background: 'rgba(220, 228, 242, 0.35)', backdropFilter: 'blur(6px)' }}>
+        <div style={{ width: 'clamp(380px, 55%, 650px)', flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'hidden', background: 'var(--bg)' }}>
 
           {/* 탭 스위처 */}
-          <div className="glass-card" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '12px' }}>
-            <button style={tabBtnStyle(studioTab === 'chat')} onClick={() => setStudioTab('chat')}>
+          <div className="tabs tabs-fill" role="tablist" aria-label="이미지 작업 방식">
+            <button className={`tab${studioTab === 'chat' ? ' active' : ''}`} onClick={() => setStudioTab('chat')}>
               <MessageSquare size={14} /> 대화형
             </button>
-            <button style={tabBtnStyle(studioTab === 'prompt')} onClick={() => setStudioTab('prompt')}>
+            <button className={`tab${studioTab === 'prompt' ? ' active' : ''}`} onClick={() => setStudioTab('prompt')}>
               <Wand2 size={14} /> 프롬프트 입력
             </button>
-            <button style={tabBtnStyle(studioTab === 'edit')} onClick={() => setStudioTab('edit')}>
+            <button className={`tab${studioTab === 'edit' ? ' active' : ''}`} onClick={() => setStudioTab('edit')}>
               <ImageIcon size={14} /> 이미지 수정
             </button>
-            <button style={tabBtnStyle(studioTab === 'blend')} onClick={() => setStudioTab('blend')}>
+            <button className={`tab${studioTab === 'blend' ? ' active' : ''}`} onClick={() => setStudioTab('blend')}>
               <Layers size={14} /> 이미지 블렌딩
             </button>
           </div>
@@ -2442,13 +2335,13 @@ function App() {
                 position: 'relative',
                 outline: isDraggingOverChat ? '2px dashed var(--accent-cyan)' : 'none',
                 outlineOffset: '-4px',
-                borderRadius: '10px'
+                borderRadius: 'var(--r-btn)'
               }}
             >
               {isDraggingOverChat && (
                 <div style={{
                   position: 'absolute', inset: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'rgba(6,182,212,0.1)', borderRadius: '10px', color: 'var(--accent-cyan)',
+                  background: 'rgba(6,182,212,0.1)', borderRadius: 'var(--r-btn)', color: 'var(--accent-cyan)',
                   fontSize: '14.5px', fontWeight: 700, pointerEvents: 'none'
                 }}>
                   여기에 이미지를 놓으면 참고 이미지로 첨부됩니다
@@ -2490,7 +2383,7 @@ function App() {
                       position: 'absolute', top: '34px', left: 0, right: 0, zIndex: 50,
                       maxHeight: '260px', overflowY: 'auto', padding: '10px',
                       display: 'flex', flexDirection: 'column', gap: '6px',
-                      background: 'rgba(15, 20, 32, 0.95)', border: '1px solid var(--border-color-strong)',
+                      background: 'var(--surface)', border: '1px solid var(--line-strong)',
                       boxShadow: 'var(--shadow-pop)'
                     }}
                   >
@@ -2570,7 +2463,7 @@ function App() {
                     fontSize: '14.5px',
                     lineHeight: 1.55,
                     whiteSpace: 'pre-wrap',
-                    background: m.role === 'user' ? 'linear-gradient(135deg, rgba(51, 51, 153, 0.14), rgba(59,130,246,0.10))' : 'var(--bg-elevated)',
+                    background: m.role === 'user' ? 'var(--primary-soft)' : 'var(--bg-elevated)',
                     border: m.role === 'user' ? '1px solid rgba(51, 51, 153, 0.25)' : '1px solid var(--border-color)',
                     color: 'var(--text-primary)',
                     boxShadow: 'var(--shadow-card)'
@@ -2606,14 +2499,14 @@ function App() {
                 disabled={isCompiling || chatMessages.length === 0}
                 className="btn-accent glow-purple"
                 style={{
-                  padding: '12px', fontSize: '14px', borderRadius: '10px'
+                  padding: '12px', fontSize: '14px', borderRadius: 'var(--r-btn)'
                 }}
               >
                 <Compass size={15} /> {isCompiling ? '정리하는 중...' : '이 대화로 생성 준비하기'}
               </button>
 
               {chatAttachedImage && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', borderRadius: 'var(--r-btn)', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <img src={chatAttachedImage} alt="첨부 예정 이미지" style={{ height: '48px', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                   <button
                     onClick={() => setChatAttachedImage(null)}
@@ -2677,7 +2570,7 @@ function App() {
                     className="btn-accent"
                     style={{ fontSize: '13px', padding: '5px 11px' }}
                   >
-                    {isSuggestingPrompt ? '다듬는 중...' : '✍️ 프롬프트 다듬기'}
+                    {isSuggestingPrompt ? '다듬는 중...' : '프롬프트 다듬기'}
                   </button>
                 </div>
 
@@ -2754,8 +2647,8 @@ function App() {
                 </div>
 
                 {promptSuggestion && (
-                  <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255, 94, 54, 0.1)', border: '1px solid rgba(255, 94, 54, 0.3)', fontSize: '13.5px' }}>
-                    <div style={{ color: 'var(--accent-purple)', fontWeight: 700, marginBottom: '6px' }}>💡 추천 프롬프트</div>
+                  <div style={{ padding: '12px', borderRadius: 'var(--r-btn)', background: 'rgba(255, 94, 54, 0.1)', border: '1px solid rgba(255, 94, 54, 0.3)', fontSize: '13.5px' }}>
+                    <div style={{ color: 'var(--accent-purple)', fontWeight: 700, marginBottom: '6px' }}>추천 프롬프트</div>
                     <div style={{ color: 'var(--text-primary)', marginBottom: '10px', lineHeight: 1.5 }}>{promptSuggestion}</div>
                     <button
                       onClick={() => { setDirectPrompt(promptSuggestion); setPromptSuggestion(''); }}
@@ -2767,9 +2660,9 @@ function App() {
 
               {/* AI 추천 옵션 카드 */}
               {autoTuneResult && (
-                <div style={{ padding: '14px', borderRadius: '12px', border: '1px solid rgba(51, 51, 153, 0.35)', background: 'rgba(51, 51, 153, 0.07)', fontSize: '13.5px' }}>
+                <div style={{ padding: '14px', borderRadius: 'var(--r-btn)', border: '1px solid rgba(51, 51, 153, 0.35)', background: 'rgba(51, 51, 153, 0.07)', fontSize: '13.5px' }}>
                   <div style={{ color: 'var(--accent-cyan)', fontWeight: 700, marginBottom: '8px' }}>
-                    🤖 AI 자동 튜닝 결과 ({autoTuneResult.reasoning})
+                    AI 자동 튜닝 결과 ({autoTuneResult.reasoning})
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                     <strong style={{ color: 'var(--text-primary)' }}>영문 정밀 프롬프트:</strong> {autoTuneResult.refined_prompt}
@@ -2809,7 +2702,7 @@ function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       <span style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
                       <span style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--accent-purple)', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                        ⚙️ Pro Mode
+                        Pro Mode
                       </span>
 
                       {/* Fooocus Quality 설정 */}
@@ -2842,7 +2735,7 @@ function App() {
                             style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                           />
                           <label htmlFor="prompt-enhance-check" style={{ cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-primary)' }}>
-                            📝 프롬프트 자동 확장 (GPT-2)
+                            프롬프트 자동 확장 (GPT-2)
                           </label>
                         </div>
 
@@ -2906,7 +2799,7 @@ function App() {
                         onChange={(e) => setCheckpointOverride(e.target.value || null)}
                         style={{ ...selectStyle, width: '100%', minWidth: 0, textOverflow: 'ellipsis' }}
                       >
-                        <option value="">🤖 AI 자동(기본값)</option>
+                        <option value="">AI 자동(기본값)</option>
                         {availableCheckpoints.map(c => (
                           <option key={c.name} value={c.name}>{c.name.replace(/\.safetensors$/, '')}</option>
                         ))}
@@ -3012,7 +2905,7 @@ function App() {
                 onClick={handleGenerate}
                 disabled={!directPrompt.trim() || isGenerating}
                 className="run-btn glow-cyan"
-                style={{ padding: '14px', fontSize: '15px', borderRadius: '10px', position: 'relative', overflow: 'hidden' }}
+                style={{ padding: '14px', fontSize: '15px', borderRadius: 'var(--r-btn)', position: 'relative', overflow: 'hidden' }}
               >
                 {(isGenerating || isUpscaling) && (
                   <div
@@ -3039,7 +2932,7 @@ function App() {
                   title="지시한 부분만 정밀하게 수정 (나머지는 원본 그대로 유지)"
                   className="run-btn"
                   style={{
-                    padding: '12px', fontSize: '13.5px', borderRadius: '10px', marginTop: '8px',
+                    padding: '12px', fontSize: '13.5px', borderRadius: 'var(--r-btn)', marginTop: '8px',
                     background: 'transparent', border: '1px solid var(--accent-cyan)', color: 'var(--accent-cyan)'
                   }}
                 >
@@ -3058,21 +2951,21 @@ function App() {
               {/* 이미지 수정 기능 선택 탭 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                  <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                    🏗️ 건축물
+                  <button onClick={() => setEditMode('architecture')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'architecture' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'architecture' ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)', color: editMode === 'architecture' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    건축물
                   </button>
-                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                    🎨 부분 수정
+                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('inpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)', color: (editMode === 'inpaint' && inpaintSubMode === 'inpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    부분 수정
                   </button>
-                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                    📐 영역 확장
+                  <button onClick={() => { setEditMode('inpaint'); setInpaintSubMode('outpaint'); }} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)', color: (editMode === 'inpaint' && inpaintSubMode === 'outpaint') ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    영역 확장
                   </button>
-                  <button onClick={() => setEditMode('kontext')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'kontext' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'kontext' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'kontext' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                    ✨ AI 정밀 수정
+                  <button onClick={() => setEditMode('kontext')} style={{ padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'kontext' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'kontext' ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)', color: editMode === 'kontext' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                    AI 정밀 수정
                   </button>
                 </div>
-                <button onClick={() => setEditMode('nightBatch')} style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'nightBatch' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'nightBatch' ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)', color: editMode === 'nightBatch' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-                  🌙 퇴근 모드 (야간 대량 배치 생성)
+                <button onClick={() => setEditMode('nightBatch')} style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: editMode === 'nightBatch' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: editMode === 'nightBatch' ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)', color: editMode === 'nightBatch' ? 'var(--accent-cyan)' : 'var(--text-secondary)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+                  퇴근 모드 (야간 대량 배치 생성)
                 </button>
               </div>
 
@@ -3100,7 +2993,7 @@ function App() {
                   style={{
                     flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                     border: isDraggingOverEdit ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                    background: isDraggingOverEdit ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                    background: isDraggingOverEdit ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                     alignItems: 'center', justifyContent: 'center', minHeight: '100px', cursor: 'pointer', transition: 'all 0.15s ease'
                   }}
                 >
@@ -3137,7 +3030,7 @@ function App() {
               {/* 모드별 UI 분기 */}
               {editMode === 'architecture' ? (
                 // ═══════════════════════════════════════════════════════════
-                // 🏗️ 건축물 스타일 모드
+                // 건축물 스타일 모드
                 // ═══════════════════════════════════════════════════════════
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>SketchUp 이미지를 다양한 건축 스타일로 실사화 생성합니다.</p>
@@ -3151,7 +3044,7 @@ function App() {
                           onClick={() => setArchSelectedStyles(archSelectedStyles.includes(key) ? archSelectedStyles.filter(s => s !== key) : [...archSelectedStyles, key])}
                           style={{
                             padding: '8px', borderRadius: '8px', border: '2px solid' + (archSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
-                            background: archSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                            background: archSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                             color: archSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
                           }}
@@ -3172,7 +3065,7 @@ function App() {
                           style={{
                             padding: '10px', borderRadius: '6px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
                             border: archVariationsPerStyle === num ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                            background: archVariationsPerStyle === num ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)',
+                            background: archVariationsPerStyle === num ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)',
                             color: archVariationsPerStyle === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             transition: 'all 0.15s ease'
                           }}
@@ -3197,21 +3090,21 @@ function App() {
                       value={archPrompt}
                       onChange={(e) => setArchPrompt(e.target.value)}
                       placeholder="건축 스타일 추가 설명 (예: 친환경 소재 강조, 현대적 파사드 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     <button
                       onClick={refineArchPrompt}
                       disabled={!archPrompt.trim() || isArchPromptRefining}
                       style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: (!archPrompt.trim() || isArchPromptRefining) ? 'rgba(148, 163, 184, 0.22)' : 'rgba(51, 51, 153, 0.15)', color: (!archPrompt.trim() || isArchPromptRefining) ? 'var(--text-tertiary)' : 'var(--accent-cyan)', fontSize: '12px', fontWeight: 600, cursor: (!archPrompt.trim() || isArchPromptRefining) ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease', opacity: (!archPrompt.trim() || isArchPromptRefining) ? 0.5 : 1 }}
                     >
-                      {isArchPromptRefining ? '다듬는 중...' : '✨ 프롬프트 다듬기'}
+                      {isArchPromptRefining ? '다듬는 중...' : '프롬프트 다듬기'}
                     </button>
                   </div>
 
                   <button
                     onClick={() => {
                       if (!archImage && promptAttachedImages.length === 0) {
-                        alert('⚠️ 이미지를 먼저 업로드해주세요!');
+                        alert('이미지를 먼저 업로드해주세요!');
                         return;
                       }
                       handleArchGenerate();
@@ -3229,7 +3122,7 @@ function App() {
                 </div>
               ) : editMode === 'nightBatch' ? (
                 // ═══════════════════════════════════════════════════════════
-                // 🌙 퇴근 모드 (야간 대량 배치 생성)
+                // 퇴근 모드 (야간 대량 배치 생성)
                 // ═══════════════════════════════════════════════════════════
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -3258,7 +3151,7 @@ function App() {
                               onClick={() => setNightBatchSelectedStyles(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key])}
                               style={{
                                 padding: '8px', borderRadius: '8px', border: '2px solid' + (nightBatchSelectedStyles.includes(key) ? ' var(--accent-cyan)' : ' var(--border-color)'),
-                                background: nightBatchSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                                background: nightBatchSelectedStyles.includes(key) ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                                 color: nightBatchSelectedStyles.includes(key) ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                                 cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s ease'
                               }}
@@ -3275,7 +3168,7 @@ function App() {
                   {/* 2026-09-15: 재질/형태/조명 3개 차원만으로는 "미세한 차이만 있다"는 피드백 —
                       건축가스타일/건축양식/창호/지붕 등 10개 차원을 추가로 조합에 포함할지 여부.
                       기본 꺼짐(프롬프트가 산만해지지 않도록), 켜면 훨씬 다양한 외관이 나온다. */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)' }}>
                     <input
                       type="checkbox"
                       checked={nightBatchExtendedDiversity}
@@ -3284,7 +3177,7 @@ function App() {
                       style={{ cursor: 'pointer', width: '16px', height: '16px', marginTop: '2px' }}
                     />
                     <label htmlFor="nightbatch-extended-diversity" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>✨ 확장 다양성 모드</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>확장 다양성 모드</span>
                       <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                         건축가 스타일·창호·지붕·색채·구조표현·개구부 비율·파사드 패턴·발코니·친환경 요소까지
                         9개 차원을 추가로 무작위 조합합니다(건축 양식은 위 스타일 목록에 포함됨). 결과물이 훨씬
@@ -3307,7 +3200,7 @@ function App() {
                           style={{
                             padding: '10px', borderRadius: '6px', fontSize: '13px', fontWeight: 700, cursor: nightBatchRunning ? 'not-allowed' : 'pointer',
                             border: nightBatchCount === num ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                            background: nightBatchCount === num ? 'rgba(51, 51, 153, 0.15)' : 'rgba(255, 255, 255, 0.6)',
+                            background: nightBatchCount === num ? 'rgba(51, 51, 153, 0.15)' : 'var(--surface)',
                             color: nightBatchCount === num ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                             transition: 'all 0.15s ease', opacity: nightBatchRunning ? 0.5 : 1
                           }}
@@ -3320,7 +3213,7 @@ function App() {
                       type="number" min="1" max="500" value={nightBatchCount}
                       onChange={(e) => setNightBatchCount(Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))}
                       disabled={nightBatchRunning}
-                      style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px' }}
+                      style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px' }}
                     />
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>최대 500장까지 설정할 수 있습니다.</span>
                   </div>
@@ -3340,14 +3233,14 @@ function App() {
                       onChange={(e) => setNightBatchPrompt(e.target.value)}
                       disabled={nightBatchRunning}
                       placeholder="모든 시안에 공통으로 반영할 조건 (예: 4층 규모 복합 건물, 친환경 소재 선호 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     {/* 2026-09-17: 스타일 풀 텍스트에서 층수/용도 단어를 일부러 뺐기 때문에(위
                         NIGHT_BATCH_STYLE_PRESETS 주석 참고), 이걸 안 적어주면 AI가 임의로 추측해서
                         원본과 다른 층수/용도로 나올 수 있다 — 특히 저층/고층처럼 스케일이 뚜렷한
                         건물일수록 직접 적어주는 게 중요하다는 걸 알려준다. */}
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                      💡 건물 층수·용도(예: "3층 단독주택", "4층 복합 건물")를 적어주시면 원본과 다른
+                      건물 층수·용도(예: "3층 단독주택", "4층 복합 건물")를 적어주시면 원본과 다른
                       스케일로 나오는 걸 방지할 수 있습니다.
                     </span>
                   </div>
@@ -3383,7 +3276,7 @@ function App() {
                     <button
                       onClick={() => {
                         if (!archImage && promptAttachedImages.length === 0) {
-                          alert('⚠️ 이미지를 먼저 업로드해주세요!');
+                          alert('이미지를 먼저 업로드해주세요!');
                           return;
                         }
                         handleNightBatchGenerate();
@@ -3395,13 +3288,13 @@ function App() {
                         fontWeight: 600, fontSize: '13px'
                       }}
                     >
-                      🌙 퇴근 모드 시작 ({nightBatchCount}장)
+                      퇴근 모드 시작 ({nightBatchCount}장)
                     </button>
                   )}
                 </div>
               ) : editMode === 'inpaint' && inpaintSubMode === 'inpaint' ? (
                 // ═══════════════════════════════════════════════════════════
-                // 🎨 부분 수정 (Inpaint) 모드
+                // 부분 수정 (Inpaint) 모드
                 // ═══════════════════════════════════════════════════════════
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>이미지의 수정할 부분에 브러시로 표시하고, 수정할 내용을 입력하세요.</p>
@@ -3427,7 +3320,7 @@ function App() {
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: '2px solid var(--border-color)',
-                      background: 'rgba(255, 255, 255, 0.6)',
+                      background: 'var(--surface)',
                       minHeight: '300px'
                     }}
                   >
@@ -3481,7 +3374,7 @@ function App() {
                       value={inpaintPrompt}
                       onChange={(e) => setInpaintPrompt(e.target.value)}
                       placeholder="수정할 부분에 대한 설명 (예: 현대적인 창으로 변경, 벽의 색상을 파란색으로 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     <button
                       onClick={refineInpaintPrompt}
@@ -3494,7 +3387,7 @@ function App() {
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      {isInpaintPromptRefining ? '✨ 다듬는 중...' : '✨ 프롬프트 다듬기'}
+                      {isInpaintPromptRefining ? '다듬는 중...' : '프롬프트 다듬기'}
                     </button>
                   </div>
 
@@ -3516,7 +3409,7 @@ function App() {
                 </div>
               ) : editMode === 'inpaint' && inpaintSubMode === 'outpaint' ? (
                 // ═══════════════════════════════════════════════════════════
-                // 📐 영역 확장 (Outpaint) 모드
+                // 영역 확장 (Outpaint) 모드
                 // ═══════════════════════════════════════════════════════════
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>이미지의 테두리를 확장하여 더 큰 구성을 생성합니다.</p>
@@ -3529,48 +3422,48 @@ function App() {
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.top ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.top ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          background: outpaintDirections.top ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                           color: outpaintDirections.top ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           gridColumn: '1 / -1', transition: 'all 0.15s ease'
                         }}
                       >
-                        ⬆️ 위로 확장
+                        위로 확장
                       </button>
                       <button
                         onClick={() => setOutpaintDirections({ ...outpaintDirections, left: !outpaintDirections.left })}
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.left ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.left ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          background: outpaintDirections.left ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                           color: outpaintDirections.left ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        ⬅️ 왼쪽
+                        왼쪽
                       </button>
                       <button
                         onClick={() => setOutpaintDirections({ ...outpaintDirections, right: !outpaintDirections.right })}
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.right ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.right ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          background: outpaintDirections.right ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                           color: outpaintDirections.right ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        ➡️ 오른쪽
+                        오른쪽
                       </button>
                       <button
                         onClick={() => setOutpaintDirections({ ...outpaintDirections, bottom: !outpaintDirections.bottom })}
                         style={{
                           padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
                           border: outpaintDirections.bottom ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                          background: outpaintDirections.bottom ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          background: outpaintDirections.bottom ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                           color: outpaintDirections.bottom ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                           gridColumn: '1 / -1', transition: 'all 0.15s ease'
                         }}
                       >
-                        ⬇️ 아래로 확장
+                        아래로 확장
                       </button>
                     </div>
                   </div>
@@ -3589,7 +3482,7 @@ function App() {
                       value={inpaintPrompt}
                       onChange={(e) => setInpaintPrompt(e.target.value)}
                       placeholder="확장된 부분의 스타일 설명 (예: 같은 건축 스타일 유지, 자연 경관 추가 등)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                     {inpaintPrompt.trim() && (
                       <button
@@ -3603,7 +3496,7 @@ function App() {
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        {isInpaintPromptRefining ? '✨ 다듬는 중...' : '✨ 프롬프트 다듬기'}
+                        {isInpaintPromptRefining ? '다듬는 중...' : '프롬프트 다듬기'}
                       </button>
                     )}
                   </div>
@@ -3626,7 +3519,7 @@ function App() {
                 </div>
               ) : editMode === 'kontext' ? (
                 // ═══════════════════════════════════════════════════════════
-                // ✨ AI 정밀 수정 (FLUX Kontext) 모드 — 위 "부분 수정"과 달리 브러시로
+                // AI 정밀 수정 (FLUX Kontext) 모드 — 위 "부분 수정"과 달리 브러시로
                 // 영역을 칠할 필요 없이, 문장으로 지시한 부분만 바뀌고 나머지 구도/인물/배경은
                 // ReferenceLatent로 그대로 유지된다. 한글로 입력해도 전송 직전 자동으로
                 // 영어로 번역돼 모델에 전달된다(runKontextEdit 참고).
@@ -3642,7 +3535,7 @@ function App() {
                       value={kontextInstruction}
                       onChange={(e) => setKontextInstruction(e.target.value)}
                       placeholder="무엇을 바꿀지만 짧게 입력 (한글 입력 시 자동 번역됩니다)..."
-                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                      style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                     />
                   </div>
 
@@ -3656,7 +3549,7 @@ function App() {
                       fontWeight: 600, fontSize: '13px', opacity: (!kontextEditImage || !kontextInstruction.trim()) ? 0.5 : 1
                     }}
                   >
-                    {isKontextEditing ? '편집 중... (2~3분 소요)' : '✨ AI 정밀 수정 실행'}
+                    {isKontextEditing ? '편집 중... (2~3분 소요)' : 'AI 정밀 수정 실행'}
                   </button>
                 </div>
               ) : null}
@@ -3700,7 +3593,7 @@ function App() {
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                       border: isDraggingOverBlend ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                      background: isDraggingOverBlend ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                      background: isDraggingOverBlend ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                       alignItems: 'center', justifyContent: 'center', minHeight: '120px', cursor: 'pointer', transition: 'all 0.15s ease'
                     }}
                   >
@@ -3780,7 +3673,7 @@ function App() {
                         style={{
                           flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px',
                           border: isDraggingOverBlendRef ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                          background: isDraggingOverBlendRef ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255, 255, 255, 0.6)',
+                          background: isDraggingOverBlendRef ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                           alignItems: 'center', justifyContent: 'center', minHeight: '80px', cursor: 'pointer', transition: 'all 0.15s ease'
                         }}
                       >
@@ -3820,7 +3713,7 @@ function App() {
                       style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                     />
                     <label htmlFor="blend-structure-check" style={{ cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-primary)' }}>
-                      🔒 기존 이미지 형태 유지
+                      기존 이미지 형태 유지
                     </label>
                   </div>
                   {!blendStructureEnabled && (
@@ -3867,7 +3760,7 @@ function App() {
                   {/* 기존 이미지도 슬롯과 똑같은 카드 형태로 — 슬롯과 동일하게 Stop At/Weight를 갖고
                       (블렌딩 시 PyraCanny 구조 슬롯으로 자동 포함됨), 추가로 감도(=denoise)까지 조절 */}
                   {blendBaseImage && (
-                    <div style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
+                    <div style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)' }}>
                       <img src={blendBaseImage} alt="기존 이미지" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                         <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>기존 이미지 (구조 기준)</span>
@@ -3905,7 +3798,7 @@ function App() {
                     <ImageIcon size={12} /> 슬롯 ({blendSlots.length}/4) — Image Prompt 방식
                   </span>
                   {blendSlots.map((slot, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.6)' }}>
+                    <div key={idx} style={{ display: 'flex', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)' }}>
                       <img src={slot.image} alt={`슬롯 ${idx + 1}`} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -3981,7 +3874,7 @@ function App() {
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '8px',
                         border: isDraggingOverBlendSlot ? '2px solid var(--accent-cyan)' : '1px dashed var(--border-color)',
-                        background: isDraggingOverBlendSlot ? 'rgba(51, 51, 153, 0.1)' : 'rgba(255,255,255,0.6)',
+                        background: isDraggingOverBlendSlot ? 'rgba(51, 51, 153, 0.1)' : 'var(--surface)',
                         cursor: 'pointer', minHeight: '44px', transition: 'all 0.15s ease'
                       }}
                     >
@@ -4019,7 +3912,7 @@ function App() {
                     value={blendPrompt}
                     onChange={(e) => setBlendPrompt(e.target.value)}
                     placeholder="결과물에서 강조하고 싶은 내용 (예: 야간 조명, 따뜻한 색감 등). 비워두면 이미지만으로 블렌딩합니다."
-                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.6)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '12px', minHeight: '60px', resize: 'vertical' }}
                   />
                   {blendPrompt.trim() && (
                     <button
@@ -4031,7 +3924,7 @@ function App() {
                         cursor: isBlendPromptRefining ? 'not-allowed' : 'pointer', opacity: isBlendPromptRefining ? 0.6 : 1
                       }}
                     >
-                      {isBlendPromptRefining ? '✨ 다듬는 중...' : '✨ 프롬프트 다듬기'}
+                      {isBlendPromptRefining ? '다듬는 중...' : '프롬프트 다듬기'}
                     </button>
                   )}
                 </div>
@@ -4041,8 +3934,8 @@ function App() {
               <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
                   {isEasyMode
-                    ? '🎨 Image Prompt 방식: 참조 이미지들을 IP-Adapter로 인코딩해 재질·분위기·색감을 입히고, 구조 유지를 켜면 기존 이미지의 형태(엣지)는 ControlNet으로 그대로 고정합니다.'
-                    : '🎨 슬롯마다 PyraCanny/CPDS(형태 고정)와 ImagePrompt(재질/분위기)를 자유롭게 조합할 수 있습니다.'}
+                    ? 'Image Prompt 방식: 참조 이미지들을 IP-Adapter로 인코딩해 재질·분위기·색감을 입히고, 구조 유지를 켜면 기존 이미지의 형태(엣지)는 ControlNet으로 그대로 고정합니다.'
+                    : '슬롯마다 PyraCanny/CPDS(형태 고정)와 ImagePrompt(재질/분위기)를 자유롭게 조합할 수 있습니다.'}
                 </p>
               </div>
 
@@ -4072,13 +3965,13 @@ function App() {
         <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
           <div
             style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '9px', whiteSpace: 'nowrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '9px', whiteSpace: 'nowrap' }}>
               <ImageIcon size={19} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} /> 보관함 <span style={{ color: 'var(--text-tertiary)', fontWeight: 600 }}>({studioGallery.length}개)</span>
             </span>
             <button
               onClick={() => setShowFavoritesOnly(v => !v)}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: '20px',
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: 'var(--r-lg)',
                 border: `1px solid ${showFavoritesOnly ? 'var(--accent-amber)' : 'var(--border-color)'}`,
                 background: showFavoritesOnly ? 'rgba(251,191,36,0.14)' : 'transparent',
                 color: showFavoritesOnly ? 'var(--accent-amber)' : 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
@@ -4095,7 +3988,7 @@ function App() {
             <button
               onClick={() => setActiveFolderId(null)}
               style={{
-                padding: '5px 11px', borderRadius: '16px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                padding: '5px 11px', borderRadius: 'var(--r-lg)', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
                 border: activeFolderId === null ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
                 background: activeFolderId === null ? 'rgba(51, 51, 153, 0.12)' : 'transparent',
                 color: activeFolderId === null ? 'var(--accent-cyan)' : 'var(--text-secondary)'
@@ -4108,7 +4001,7 @@ function App() {
                 key={folder.id}
                 onClick={() => setActiveFolderId(folder.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 8px 5px 11px', borderRadius: '16px',
+                  display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 8px 5px 11px', borderRadius: 'var(--r-lg)',
                   fontSize: '12px', fontWeight: 600, cursor: 'pointer',
                   border: activeFolderId === folder.id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
                   background: activeFolderId === folder.id ? 'rgba(51, 51, 153, 0.12)' : 'transparent',
@@ -4140,16 +4033,16 @@ function App() {
                     if (e.key === 'Escape') { setIsCreatingFolder(false); setNewFolderName(''); }
                   }}
                   placeholder="폴더 이름"
-                  style={{ padding: '4px 8px', borderRadius: '14px', border: '1px solid var(--accent-cyan)', fontSize: '12px', width: '110px' }}
+                  style={{ padding: '4px 8px', borderRadius: 'var(--r-lg)', border: '1px solid var(--accent-cyan)', fontSize: '12px', width: '110px' }}
                 />
-                <button onClick={createGalleryFolder} style={{ padding: '4px 9px', borderRadius: '14px', border: 'none', background: 'var(--accent-cyan)', color: 'white', fontSize: '12px', cursor: 'pointer' }}>추가</button>
-                <button onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }} style={{ padding: '4px 9px', borderRadius: '14px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}>취소</button>
+                <button onClick={createGalleryFolder} style={{ padding: '4px 9px', borderRadius: 'var(--r-lg)', border: 'none', background: 'var(--accent-cyan)', color: 'white', fontSize: '12px', cursor: 'pointer' }}>추가</button>
+                <button onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }} style={{ padding: '4px 9px', borderRadius: 'var(--r-lg)', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}>취소</button>
               </div>
             ) : (
               <button
                 onClick={() => setIsCreatingFolder(true)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 11px', borderRadius: '16px',
+                  display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 11px', borderRadius: 'var(--r-lg)',
                   border: '1px dashed var(--border-color)', background: 'transparent', color: 'var(--text-secondary)',
                   fontSize: '12px', fontWeight: 600, cursor: 'pointer'
                 }}
@@ -4179,7 +4072,7 @@ function App() {
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                   style={{
-                    borderRadius: '10px', cursor: 'grab',
+                    borderRadius: 'var(--r-btn)', cursor: 'grab',
                     border: '1px solid var(--border-color)',
                     background: 'var(--bg-elevated)', position: 'relative',
                     boxShadow: 'var(--shadow-card)', transition: 'transform 0.15s ease, border-color 0.15s ease',
@@ -4225,7 +4118,7 @@ function App() {
                       onClick={(e) => { e.stopPropagation(); downloadImage(item); }}
                       title="다운로드"
                       className="overlay-chip"
-                      style={{ position: 'absolute', top: '46px', left: '8px', color: '#e2e8f0' }}
+                      style={{ position: 'absolute', top: '46px', left: '8px', color: 'var(--line-strong)' }}
                     >
                       <Download size={14} />
                     </button>
@@ -4290,7 +4183,7 @@ function App() {
         <div
           onClick={() => setSelectedImage(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(6,9,15,0.88)', backdropFilter: 'blur(2px)',
+            position: 'fixed', inset: 0, background: 'rgba(6,9,15,0.88)',
             display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '24px',
             overflowY: 'auto'
           }}
@@ -4368,9 +4261,9 @@ function App() {
                 title="4K 초고화질 업스케일"
                 style={{
                   flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
-                  border: 'none', background: 'linear-gradient(135deg, #1e1b4b 0%, #333399 100%)',
+                  border: 'none', background: 'var(--primary)',
                   color: '#fff', fontWeight: 700, cursor: isUpscaling ? 'default' : 'pointer',
-                  opacity: isUpscaling ? 0.6 : 1, boxShadow: '0 2px 10px rgba(51,51,153,0.35)',
+                  opacity: isUpscaling ? 0.6 : 1, boxShadow: 'none',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease'
                 }}
               >

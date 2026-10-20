@@ -58,12 +58,15 @@ export { rebaseEdits } from ${fwd(svgeditJs)};
 export { northSvg, scaleBarSvg, normalizeScale, scaleLabel, scaleBarHeight, NORTH_STYLES, SCALE_UNITS } from ${fwd(symbolsJs)};
 export { editAddNorth, editAddScale } from ${fwd(svgeditJs)};
 export { editRotate, editRotateAdd } from ${fwd(svgeditJs)};
+export { editScale, addScalePatch, opTransformStr, SCALE_MIN, SCALE_MAX } from ${fwd(svgeditJs)};
+export { scaleLineSpacing, editLineSpacing, LH_MIN, LH_MAX } from ${fwd(svgeditJs)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
+export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
 export { hueOf, bandOf, mergeRegionWinds, featherMap, blendMasks } from ${fwd(regionJs)};
 export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD, editAddImage, editUpdateAdd, editRemoveAdd, SHAPE_FONT, shapeSvg, appendShapes, newShape, editAddShape, editUpdateShape, editRemoveShape, rawShift, rawSetText } from ${fwd(svgeditJs)};`);
@@ -1120,6 +1123,104 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     expect(!('rot' in m.editRotateAdd(R, 'a1', 0).adds[0]), '0° 로 되돌리면 각도 항목이 사라짐');
     const rep = m.editReplaceImage(R, 'a1', { href: 'data:image/png;base64,BBBB', w: 100, h: 100 }); expect(rep.adds[0].rot === 90 && !/NaN/.test(JSON.stringify(rep)), '이미지를 바꿔도 각도는 유지');
     const cr = m.editCropImage(R, 'a1', { crop: [0.1, 0.1, 0.9, 0.9], orig: 'data:image/png;base64,AAAA', href: 'data:image/png;base64,CCCC', w: 80, h: 40 }); expect(cr.adds[0].rot === 90 && cr.adds[0].crop && !/NaN/.test(JSON.stringify(cr)), '자르기 해도 각도는 유지'); }
+}
+// 전체 크기 조절(R10): 구조형 편집(svgedit) — 요소는 transform 배율, 넣은 것(adds)은 크기 값
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`전체 크기 조절: ${label}`); };
+  const near = (a, b, e = 0.06) => Math.abs(a - b) <= e;
+  const nearPt = (p, q, e = 0.06) => near(p[0], q[0], e) && near(p[1], q[1], e);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><rect x="10" y="10" width="40" height="20" fill="#ccc" stroke="#000" stroke-width="2"/><g transform="translate(100 50)"><rect x="0" y="0" width="20" height="10"/></g></svg>';
+  const sc = m.scanSvg(svg); const sig = sc.sig; const E0 = m.emptyEdits(svg);
+  const trOf = (edits, id) => { const o = m.applyEdits(svg, edits, { ids: true }).svg; const mm = new RegExp(`<rect[^>]*data-eid="${id}"[^>]*>`).exec(o); const t = mm && /\stransform="([^"]*)"/.exec(mm[0]); return t ? t[1] : ''; };
+  const visual = (edits, id, p) => m.applyMat(m.parseTransform(trOf(edits, id)), p);
+  const G = { bbox: [10, 10, 40, 20], t0: '' };
+  const E1 = m.editScale(E0, 'e0', [2, 2], [0, 0], G, sig);
+  expect(E1.ops.e0.s.join() === '2,2' && E1.ops.e0.sc.join() === '30,20', '배율 s 와 키우는 중심 sc 가 저장됨');
+  expect(nearPt(visual(E1, 'e0', [30, 20]), [60, 40]), '기준점(0,0) 둘레로 2배: 가운데 (30,20) → (60,40)');
+  expect(nearPt(visual(E1, 'e0', [10, 10]), [20, 20]) && nearPt(visual(E1, 'e0', [50, 30]), [100, 60]), '모서리가 기준점에서 2배 떨어진 자리로(크기도 2배)');
+  expect(/^translate\(30 20\) translate\(30 20\) scale\(2 2\) translate\(-30 -20\)$/.test(trOf(E1, 'e0')), '그릴 때 이동(바깥) → 가운데 둘레 scale 순서');
+  { const o = m.applyEdits(svg, E1).svg; expect(!/NaN|undefined/.test(o) && /scale\(2 2\)/.test(o), '저장용 그림에도 배율이 들어감(손잡이 없이)'); }
+  { const Ec = m.editScale(E0, 'e0', [0.5, 0.5], [30, 20], G, sig); expect(!Ec.ops.e0 || !Ec.ops.e0.t, '자기 가운데 둘레로 줄이면 이동 없음'); expect(nearPt(visual(Ec, 'e0', [30, 20]), [30, 20]) && nearPt(visual(Ec, 'e0', [10, 10]), [20, 15]), '자기 가운데 둘레로 0.5배: 가운데 제자리·모서리는 안쪽으로'); }
+  { const Eb = m.editScale(E1, 'e0', [0.5, 0.5], [0, 0], G, sig); expect(!Eb.ops.e0 && !m.hasEdits(Eb), '2배 했다가 같은 기준점으로 0.5배: 수정 항목이 사라짐'); }
+  { const E3 = m.editScale(E1, 'e0', [1.5, 1.5], [10, 10], G, sig); expect(E3.ops.e0.s.join() === '3,3' && nearPt(visual(E3, 'e0', [30, 20]), [10 + (60 - 10) * 1.5, 10 + (40 - 10) * 1.5]), '여러 번 조절하면 배율은 곱해지고 보이는 가운데는 마지막 기준점 둘레로'); }
+  { const Em = m.editMove(E1, 'e0', 15, 5, sig); expect(/^translate\(\S+ \S+\) translate\(30 20\) scale\(2 2\)/.test(trOf(Em, 'e0')) && nearPt(visual(Em, 'e0', [30, 20]), [75, 45]), '크기를 바꾼 뒤 옮기면 옮긴 양 그대로(15,5)만큼 간다(안쪽 배율의 영향을 받지 않음)'); }
+  { const Er = m.editRotate(E1, 'e0', 90, G, sig); expect(Er.ops.e0.r === 90 && Er.ops.e0.s.join() === '2,2' && nearPt(visual(Er, 'e0', [30, 20]), [60, 40]), '크기를 바꾼 뒤 돌려도 보이는 가운데(60,40) 제자리'); expect(nearPt(visual(Er, 'e0', [10, 10]), (() => { const c = [60, 40]; const v = [-40, -20]; return [c[0] - v[1], c[1] + v[0]]; })()), '크기를 바꾼 뒤 돌리면 2배 크기로 돈다(왼쪽 위 모서리가 가운데 둘레 90°)');
+    const Es = m.editScale(Er, 'e0', [0.5, 0.5], [60, 40], G, sig); expect(nearPt(visual(Es, 'e0', [30, 20]), [60, 40]) && Es.ops.e0.r === 90, '돌린 뒤 다시 크기를 바꿔도 가운데 제자리·각도 유지'); }
+  { const Eh = m.editRotate(E0, 'e0', 90, G, sig); const Ehs = m.editScale(Eh, 'e0', [2, 2], [0, 0], G, sig); expect(nearPt(visual(Ehs, 'e0', [30, 20]), [60, 40]) && Ehs.ops.e0.r === 90 && Ehs.ops.e0.s.join() === '2,2', '돌린 요소의 크기 조절: 각도 유지·가운데는 기준점 둘레로'); }
+  { const En = m.editScale(E0, 'e0', [2, 1], [0, 0], G, sig); expect(nearPt(visual(En, 'e0', [10, 10]), [20, 10]) && nearPt(visual(En, 'e0', [50, 30]), [100, 30]), '가로·세로를 따로(2×1): 가로만 늘어남'); }
+  { const Ex = m.editScale(E0, 'e0', [0, 100], [0, 0], G, sig); expect(Ex.ops.e0.s[0] === m.SCALE_MIN && Ex.ops.e0.s[1] === m.SCALE_MAX, '배율은 0.05~20 배로 제한됨(0 이나 뒤집힘 없음)'); expect(!/NaN|Infinity/.test(JSON.stringify(Ex)), '극단값에도 NaN 이 생기지 않음'); }
+  { const G2 = { bbox: [0, 0, 20, 10], t0: 'translate(100 50)' }; const Eg = m.editScale(E0, 'e1', [3, 3], [0, 0], G2, sig);
+    expect(Eg.ops.e1.sc.join() === '110,55' && nearPt(visual(Eg, 'e1', [110, 55]), [330, 165]), '원래 변환이 있는 요소: 변환을 적용한 가운데(110,55) 기준으로 3배 → (330,165)'); }
+  expect(m.opTransformStr(null) === '' && m.opTransformStr({ s: [1, 1], sc: [3, 4] }) === '' && m.opTransformStr({ t: [1, 2] }) === 'translate(1 2)', 'opTransformStr: 빈 수정·배율 1 은 빈 글자');
+  { const sh = m.editRestore(E1, 'e0', sig); expect(!sh.ops.e0, '원래대로(restore)하면 크기도 되돌아감'); }
+  // 넣은 것(adds)
+  const P = (a, k, about) => m.addScalePatch(a, k, about);
+  { const bd = { id: 'a1', kind: 'badge', shape: 'circle', x: 10, y: 10, w: 20, h: 20, text: '1', fill: '#111', auto: true };
+    const q = P(bd, [2, 2], [0, 0]); expect(q.w === 40 && q.h === 40 && q.x === 20 && q.y === 20, '번호 마커: 가운데 (20,20)→(40,40), 지름 2배');
+    const q2 = P(bd, [2, 1], [0, 0]); expect(q2.w === 20 && q2.h === 20 && q2.x === 30 && q2.y === 10, '번호 마커: 가로·세로가 다르면 작은 쪽 배율로 모양(원)을 지킴, 자리는 따로');
+    const q3 = P(bd, [0.5, 0.5], [20, 20]); expect(q3.x === 15 && q3.y === 15 && q3.w === 10, '자기 가운데 둘레로 줄이면 가운데 제자리'); }
+  { const im = { id: 'a2', kind: 'image', href: 'data:image/png;base64,AAAA', x: 10, y: 10, w: 40, h: 20, opacity: 1, behind: false };
+    const q = P(im, [2, 1], [0, 0]); expect(q.w === 80 && q.h === 20 && q.x === 20 && q.y === 10, '이미지: 가로·세로 따로 늘어남(가운데는 기준점 둘레)'); }
+  { const co = { id: 'a3', kind: 'callout', x: 40, y: 20, tx: 10, ty: 10, title: 'T', desc: 'd', size: 12, fill: '#111', line: 'straight', end: 'dot' };
+    const q = P(co, [2, 2], [0, 0]); expect(q.x === 80 && q.y === 40 && q.tx === 20 && q.ty === 20 && q.size === 24, '리더선 라벨: 글 상자·끝점·글자 크기가 함께 2배'); }
+  { const tb = { id: 'a4', kind: 'table', x: 20, y: 30, size: 10, fill: '#222', table: m.normalizeTable(m.SAMPLE_TABLE) };
+    const q = P(tb, [0.5, 0.5], [0, 0]); expect(q.x === 10 && q.y === 15 && q.size === 5, '표: 왼쪽 위 자리와 글자 크기가 함께 0.5배'); }
+  { const nb = { id: 'a5', kind: 'north', style: 'circle', x: 10, y: 10, w: 30, h: 30, rot: 0, fill: '#111' }; const q = P(nb, [2, 2], [0, 0]); expect(q.w === 60 && q.h === 60 && q.x === 20 && q.y === 20, '방위표: 지름 2배(가운데 기준)'); }
+  { const sb = { id: 'a6', kind: 'scale', x: 10, y: 50, w: 100, segs: 4, total: 50, unit: 'm', size: 10, fill: '#111' }; const q = P(sb, [2, 2], [0, 0]); expect(q.w === 200 && q.size === 20 && q.x === 20 && Number.isFinite(q.y), '축척 막대: 길이·글자 2배(가운데 기준)'); }
+  { const bd = { id: 'a1', kind: 'badge', x: 10, y: 10, w: 20, h: 20 }; const q = P(bd, [0, 99], [0, 0]); expect(!/NaN|Infinity/.test(JSON.stringify(q)), 'adds 도 극단 배율에 NaN 이 생기지 않음'); }
+  { const bd = { id: 'a1', kind: 'badge', shape: 'circle', x: 10, y: 10, w: 20, h: 20, text: '1', fill: '#111', auto: true }; const Ea = { sig, ops: {}, adds: [bd] }; const Eb = m.editUpdateAdd(Ea, 'a1', P(bd, [2, 2], [0, 0]));
+    const o = m.applyEdits(svg, Eb, { ids: true }).svg; expect(/<circle[^>]*cx="40"[^>]*cy="40"[^>]*r="20"/.test(o), '크기를 바꾼 번호 마커가 그림에 그 크기로 그려짐'); }
+}
+// 전체 크기 조절(R10): 손스케치 — 내용 전체를 transform 한 겹으로
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`전체 크기 조절(손스케치): ${label}`); };
+  const near = (a, b, e = 0.02) => Math.abs(a - b) <= e;
+  const nearPt = (p, q, e = 0.02) => near(p[0], q[0], e) && near(p[1], q[1], e);
+  const base = () => m.normalizeSketch({ style: 'concept', title: '제목', blocks: [{ id: 'b1', rect: [10, 10, 60, 50], name: '판' }], lines: [{ id: 'p1', pts: [[10, 70], [90, 70]], width: 3 }], memos: [{ id: 'm1', x: 40, y: 30, text: '글자', size: 16 }] });
+  const sp = base();
+  expect(!('gscale' in sp) && !/data-gscale/.test(m.renderSketch(sp).svg), '크기를 안 바꾼 그림은 예전과 같음(묶음 <g> 없음)');
+  const about = [100, 200];
+  const s1 = m.sketchComposeScale(sp, 0.5, about);
+  expect(s1.gscale.k === 0.5 && nearPt(s1.gscale.t, [50, 100]), '0.5배: 합성 값 k=0.5, t = about·(1−k) = (50,100)');
+  expect(nearPt(m.sketchZoomPt(s1, about), about), '기준점은 제자리');
+  expect(nearPt(m.sketchZoomPt(s1, [300, 400]), [200, 300]) && nearPt(m.sketchUnzoomPt(s1, [200, 300]), [300, 400]), '앞뒤 변환이 서로 되돌림');
+  const o1 = m.renderSketch(s1).svg;
+  expect(/<g data-gscale="1" transform="translate\(50\.00 100\.00\) scale\(0\.5000\)">/.test(o1) && (o1.match(/<\/g>/g) || []).length >= 1, '그릴 때 내용 묶음에 translate·scale 이 붙음');
+  const iTitle = o1.indexOf('>제목<'); const iG = o1.indexOf('data-gscale'); expect(iTitle >= 0 && iTitle < iG, '제목은 묶음 바깥(그대로)');
+  expect(o1.indexOf('>글자<') > iG && o1.indexOf('stroke-width="3"') > iG, '메모 글자와 선은 묶음 안(같이 줄어듦)');
+  { const back = m.sketchComposeScale(s1, 2, about); expect(!('gscale' in back), '같은 기준점으로 되돌리면 크기 변환이 사라짐'); }
+  { const s3 = m.sketchComposeScale(m.sketchComposeScale(sp, 2, [0, 0]), 1.5, [100, 50]); const g = s3.gscale; expect(near(g.k, 3) && nearPt(g.t, [1.5 * 0 + 100 * (1 - 1.5), 50 * (1 - 1.5)]), '여러 번: 배율은 곱, 이동은 합성'); }
+  { const big = m.sketchComposeScale(sp, 1000, [0, 0]); const tiny = m.sketchComposeScale(sp, 0, [0, 0]); expect(big.gscale.k === m.GSCALE_MAX && tiny.gscale.k === m.GSCALE_MIN, '배율은 0.05~20 배로 제한'); }
+  { const big = m.sketchComposeScale(m.sketchComposeScale(sp, 10, [0, 0]), 10, [0, 0]); expect(big.gscale.k === m.GSCALE_MAX, '합친 배율도 20 배를 넘지 않음'); }
+  { const n = m.normalizeSketch({ blocks: [], gscale: { k: 'abc', t: [1, 2] } }); const n2 = m.normalizeSketch({ blocks: [], gscale: { k: 1, t: [1, 2] } }); const n3 = m.normalizeSketch({ blocks: [], gscale: { k: 9999, t: [1, 2] } }); const n4 = m.normalizeSketch({ blocks: [], gscale: { k: 2, t: [1] } });
+    expect(!n.gscale && !n2.gscale && n3.gscale.k === m.GSCALE_MAX && !n4.gscale, '잘못된 값(숫자 아님·배율 1·t 모자람)은 버리고 큰 값은 제한'); }
+  { const edited = m.sketchMoveBy(s1, 'b1', 5, 0); expect(edited.gscale && edited.gscale.k === 0.5, '요소를 옮겨도 크기 변환은 그대로'); const nn = m.normalizeSketch(JSON.parse(JSON.stringify(s1))); expect(nn.gscale.k === 0.5, '저장했다 불러와도 유지'); }
+  { const sel = m.renderSketch(s1, { interactive: true, selected: 'b1' }).svg; const iG2 = sel.indexOf('data-gscale'); const iHandle = sel.indexOf('data-handle'); expect(iHandle > iG2 && iG2 > 0, '선택 상자·손잡이도 같은 묶음 안(같이 줄어듦)'); }
+  { const side = m.normalizeSketch({ style: 'line', blocks: [{ id: 'b1', rect: [10, 10, 60, 50], name: '판' }] }); const z = m.sketchComposeScale(side, 0.5, [0, 0]); const o = m.renderSketch(z).svg; const iG3 = o.indexOf('data-gscale'); const iEnd = (() => { let d = 0; const re = /<g[\s>]|<\/g>/g; re.lastIndex = o.lastIndexOf('<g', iG3); let mm; while ((mm = re.exec(o))) { d += mm[0].startsWith('</') ? -1 : 1; if (d === 0) return mm.index; } return -1; })(); const marks = [...o.matchAll(/<circle cx="[\d.]+" cy="[\d.]+" r="12"/g)].map((q) => q.index); expect(marks.length >= 2 && marks.some((x) => x > iG3 && x < iEnd) && marks.some((x) => x > iEnd), '도면용: 도형 위 번호 표식은 묶음 안, 오른쪽 설명 칸의 표식은 묶음 밖'); }
+  { const o = m.renderSketch(s1).svg; expect(!/NaN|undefined/.test(o), '그림에 NaN 이 없음'); }
+}
+// 글자 정렬·자간·행간(R11): 구조형 편집 — 정렬·자간은 속성, 행간은 여러 줄 글자 안쪽 줄 간격 배수
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`글자 정렬·자간·행간: ${label}`); };
+  const near = (a, b, e = 0.02) => Math.abs(a - b) <= e;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><text x="10" y="20" font-size="10"><tspan x="10" dy="0">가</tspan><tspan x="10" dy="12">나</tspan><tspan x="10" dy="12">다</tspan></text><text x="100" y="20"><tspan x="100" y="20">하나</tspan><tspan x="100" y="32">둘</tspan><tspan x="100" y="44">셋</tspan></text><text x="10" y="80">글 <tspan fill="#f00" font-weight="700">강조</tspan> 끝</text><rect x="150" y="10" width="20" height="10"/></svg>';
+  const sig = m.scanSvg(svg).sig; const E0 = m.emptyEdits(svg);
+  const dys = (o, k = 0) => { const t = [...o.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)][k][1]; return [...t.matchAll(/ dy="([^"]*)"/g)].map((q) => parseFloat(q[1])); };
+  const ys = (o, k) => { const t = [...o.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)][k][1]; return [...t.matchAll(/ y="([^"]*)"/g)].map((q) => parseFloat(q[1])); };
+  const E1 = m.editLineSpacing(E0, 'e0', 1.5, sig);
+  expect(E1.ops.e0.lh === 1.5 && m.hasEdits(E1), '행간 배율 1.5 가 저장됨');
+  const o1 = m.applyEdits(svg, E1).svg;
+  expect(dys(o1, 0).join() === '0,18,18', '줄 간격(dy 12) 이 1.5배 = 18, 첫 줄(0)은 그대로');
+  expect(dys(o1, 1).length === 0 && ys(o1, 1).join() === '20,32,44', '다른 글자는 그대로');
+  { const E2 = m.editLineSpacing(E0, 'e1', 2, sig); const o2 = m.applyEdits(svg, E2).svg; expect(ys(o2, 1).join() === '20,44,68', 'y 로 줄을 놓은 글자: 첫 줄에서 떨어진 거리가 2배 → 20,44,68'); }
+  { const E3 = m.editLineSpacing(m.editLineSpacing(E0, 'e0', 0.5, sig), 'e0', 0.5, sig); const o3 = m.applyEdits(svg, E3).svg; expect(dys(o3, 0).join() === '0,6,6', '0.5배: 줄 간격 12 → 6(배율은 원본 기준이라 겹쳐 곱해지지 않음)'); }
+  expect(!m.editLineSpacing(E1, 'e0', 1, sig).ops.e0 && !m.hasEdits(m.editLineSpacing(E1, 'e0', 1, sig)), '배율 1 로 되돌리면 수정 항목이 사라짐');
+  expect(m.editLineSpacing(E0, 'e0', 99, sig).ops.e0.lh === m.LH_MAX && m.editLineSpacing(E0, 'e0', 0, sig).ops.e0.lh === m.LH_MIN && m.editLineSpacing(E0, 'e0', NaN, sig).ops.e0 === undefined, '배율은 0.5~3 으로 제한, 숫자가 아니면 1');
+  { const o = m.applyEdits(svg, m.editLineSpacing(E0, 'e2', 2, sig)).svg; expect(o === m.applyEdits(svg, E0).svg || !/dy=/.test(o), '줄 사이 tspan 이 없는 글자(강조만 있음)는 바뀌지 않음'); }
+  { const E4 = m.editMove(m.editLineSpacing(E0, 'e0', 1.5, sig), 'e3', 5, 5, sig); const o4 = m.applyEdits(svg, E4, { ids: true }).svg; expect(/<rect(?=[^>]*data-eid="e3")(?=[^>]*transform="translate\(5 5\)")/.test(o4) && dys(o4, 0).join() === '0,18,18', '행간을 고친 글자 뒤의 요소 수정도 제대로 입혀짐'); }
+  { const E5 = m.editSet(E0, 'e0', { 'text-anchor': 'middle', 'letter-spacing': '2' }, sig); const o5 = m.applyEdits(svg, E5).svg; expect(/<text[^>]*text-anchor="middle"[^>]*letter-spacing="2"|<text[^>]*letter-spacing="2"[^>]*text-anchor="middle"/.test(o5), '정렬(text-anchor)·자간(letter-spacing)은 속성으로 그려짐'); const E6 = m.editSet(E5, 'e0', { 'letter-spacing': null }, sig); expect(!/letter-spacing/.test(m.applyEdits(svg, E6).svg), '자간을 0 으로 하면 속성이 빠짐(null)'); }
+  { const f = m.scaleLineSpacing('<tspan x="1" dy="1.2em">a</tspan><tspan x="1" dy="1.2em">b</tspan>', 1.5); expect(/dy="1.8em"/.test(f) && (f.match(/dy="1.8em"/g) || []).length === 2, 'em 단위 줄 간격도 배수(1.2em → 1.8em)'); expect(m.scaleLineSpacing('', 2) === '' && m.scaleLineSpacing('글자만', 2) === '글자만', '빈 안쪽·tspan 없는 안쪽은 그대로'); }
+  { const o = m.applyEdits(svg, E1, { ids: true }).svg; expect(!/NaN|undefined/.test(o) && (o.match(/<text/g) || []).length === 3, '편집 화면용 그림에도 NaN 이 없고 글자 수가 그대로'); }
 }
 // 번호 마커(R3-2)
 {

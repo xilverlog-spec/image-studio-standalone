@@ -523,6 +523,9 @@ export function makeAxonSpec(read) {
 }
 
 // ── 3) 정규화(편집 중 잘못된 값이 들어와도 그려지게) ─────────────
+// 전체 크기 조절: 그림 속 내용 전체를 transform 한 겹(translate · scale)으로 키우고 줄인다 — 선 굵기·글자·점선·화살촉이 한꺼번에 같은 비율로 바뀐다.
+// 제목·범례·메모 칸은 그대로. 편집할 때 화면 좌표 ↔ 다이어그램 좌표 변환은 sketchUnzoomPt 로 이 변환을 먼저 되돌린다.
+export const GSCALE_MIN = 0.05; export const GSCALE_MAX = 20;
 export function normalizeSketch(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
   const seen = new Set();
@@ -545,7 +548,10 @@ export function normalizeSketch(raw) {
     via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
   }));
-  const memos = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60).map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) }));
+  const memoRaw = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60);
+  const tfmt = (m) => ({ ...(m.align === 'start' || m.align === 'end' ? { align: m.align } : m.align === 'middle' && m.callout ? { align: 'middle' } : {}), ...(Number(m.ls) ? { ls: num(m.ls, 0, -3, 30) } : {}) }); // 글자 정렬(왼쪽 start·오른쪽 end, 리더선은 가운데도)·자간
+  const lhfmt = (m) => (Number(m.lh) > 0 && Math.abs(Number(m.lh) - 1) > 0.01 ? { lh: num(m.lh, 1, 0.6, 2.5) } : {}); // 리더선 설명 행간 배율
+  const memos = memoRaw.map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) })).map((mm, i) => { const m0 = memoRaw[i]; const plain = !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun'; return plain ? { ...mm, ...tfmt(m0) } : mm.callout ? { ...mm, ...tfmt(m0), ...lhfmt(m0) } : mm; });
   // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
   const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: String(z.band).slice(0, 12) } : {}) }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
@@ -555,13 +561,14 @@ export function normalizeSketch(raw) {
   const tbs = s.textBlock && typeof s.textBlock === 'object' ? s.textBlock : null;
   const textBlock = tbs ? { title: String(tbs.title ?? ''), subs: (Array.isArray(tbs.subs) ? tbs.subs : []).slice(0, 4).map(String), accent: isHex(tbs.accent) ? tbs.accent : '#F0B000' } : null;
   const f = Array.isArray(s.frame) && s.frame.length === 4 ? s.frame.map((v) => num(v, 0)) : null;
+  const gk = Number(s.gscale?.k); const gscale = Number.isFinite(gk) && Math.abs(gk - 1) > 1e-4 && Array.isArray(s.gscale?.t) && s.gscale.t.length === 2 ? { k: num(gk, 1, GSCALE_MIN, GSCALE_MAX), t: [num(s.gscale.t[0], 0, -1e5, 1e5), num(s.gscale.t[1], 0, -1e5, 1e5)] } : null;
   const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...lines.flatMap((l) => l.pts), ...(base ? [[base.rect[0], base.rect[1]], [base.rect[2], base.rect[3]]] : [])];
   const frame = f && f[2] > f[0] && f[3] > f[1] ? f : (all.length ? bbox(all) : [0, 0, 100, 100]);
   if (frame[2] - frame[0] < 1) frame[2] = frame[0] + 1;
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, zones, base, textBlock,
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, zones, base, textBlock, ...(gscale ? { gscale } : {}),
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
@@ -758,6 +765,7 @@ export function renderSketch(raw, opts = {}) {
   }
   if (pres && spec.title) o.push('<rect x="0" y="36" width="12" height="22" fill="#1E88C8"/>');
 
+  const gStart = o.length; const zmarks = []; const zput = spec.gscale ? (x) => zmarks.push(x) : (x) => o.push(x); // 전체 크기 조절 때 내용 묶음 안에 들어갈 것들
   if (spec.base) { // 입체 바탕: 평면에서 뽑은 벽체. 클릭·끌기에 반응하지 않는다
     const bb = spec.base; const a = P([bb.rect[0], bb.rect[1]]); const z = P([bb.rect[2], bb.rect[3]]); const sx = (z[0] - a[0]) / bb.vb[2]; const sy = (z[1] - a[1]) / bb.vb[3];
     const tf = `translate(${(a[0] - bb.vb[0] * sx).toFixed(2)} ${(a[1] - bb.vb[1] * sy).toFixed(2)}) scale(${sx.toFixed(5)} ${sy.toFixed(5)})`;
@@ -902,7 +910,7 @@ export function renderSketch(raw, opts = {}) {
       return;
     }
     if (m.callout) { // 리더선 라벨: (x, y) = 글 상자 왼쪽 위, (tx, ty) = 가리키는 끝점. 선택하면 글 상자에 점선 틀, 끝점에 손잡이
-      const [tx, ty] = P([m.tx, m.ty]); const cc = { x, y, tx, ty, title: m.text, desc: m.desc, size: m.size, line: m.line, end: m.end, color: m.color };
+      const [tx, ty] = P([m.tx, m.ty]); const cc = { x, y, tx, ty, title: m.text, desc: m.desc, size: m.size, line: m.line, end: m.end, color: m.color, align: m.align, ls: m.ls, lh: m.lh };
       o.push(calloutSvg(cc, { id: m.id, interactive, font: FONT, halo: concept ? C.bg : '#fff' }));
       if (selected === m.id) { const L = calloutLayout(cc); sel.push(`<rect x="${(L.x - 6).toFixed(1)}" y="${(L.y - 6).toFixed(1)}" width="${(L.w + 12).toFixed(1)}" height="${(L.h + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`); if (interactive) dot(m.id, 'tip', tx, ty); }
       return;
@@ -914,14 +922,15 @@ export function renderSketch(raw, opts = {}) {
       return;
     }
     const yc = y - m.size * 0.32; const MT = m.rot ? ` transform="rotate(${m.rot} ${x.toFixed(1)} ${yc.toFixed(1)})"` : ''; // 글자의 보이는 가운데를 중심으로 돈다
-    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="${m.size}" font-weight="${concept ? 600 : 700}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${MT}${eid(m.id)}>${esc(m.text)}</text>`);
+    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${m.align || 'middle'}"${m.ls ? ` letter-spacing="${m.ls}"` : ''} font-family="${FONT}" font-size="${m.size}" font-weight="${concept ? 600 : 700}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${MT}${eid(m.id)}>${esc(m.text)}</text>`);
     if (selected === m.id) {
-      const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58), 0) + 12; sel.push(wrapG(MT, `<rect x="${(x - wd / 2).toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`));
+      const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58) + (m.ls || 0), 0) + 12; const fx = m.align === 'start' ? x - 6 : m.align === 'end' ? x - wd + 6 : x - wd / 2; sel.push(wrapG(MT, `<rect x="${fx.toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`));
       if (interactive) handles.push(wrapG(MT, rotHandle(m.id, x, y - m.size - 28, y - m.size - 2)));
     }
   });
   o.push(...sel);
   o.push(...handles);
+  const gEnd = o.length;
   // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다(도면용). 개념도는 도형 안에 이름을 쓰므로 칼럼이 없다
   let ry = 170; let n = 0;
   const side = !concept && spec.layout !== 'image'; // 오른쪽 설명 칸(번호·화살표·개구부·코어 범례): 그림 한 장이 영역을 채우는 'image' 배치에서는 그림 위에 겹쳐 그려지므로 쓰지 않는다
@@ -939,7 +948,7 @@ export function renderSketch(raw, opts = {}) {
     n += 1; const dark = b.kind === 'core'; const [x, y, w, h] = R(b);
     let [mx, my] = dark ? [x + w / 2, y + h / 2] : [x + 20, y + 20]; if (b.rot) [mx, my] = rotPt([mx, my], b.rot, [x + w / 2, y + h / 2]);
     const mark = (cx, cy) => `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="12" fill="${dark ? '#fff' : C.text}" stroke="${dark ? C.core : '#fff'}" stroke-width="2"/><text x="${cx.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="13" font-weight="800" fill="${dark ? C.core : '#fff'}">${n}</text>`;
-    o.push(mark(mx, my)); o.push(mark(860, ry));
+    zput(mark(mx, my)); o.push(mark(860, ry));
     o.push(`<text x="884" y="${ry + 1}" font-family="${FONT}" font-size="15" font-weight="800" fill="${C.text}">${esc(b.name)}</text>`);
     if (b.desc) o.push(`<text x="884" y="${ry + 21}" font-family="${FONT}" font-size="12.5" fill="${C.sub}">${esc(b.desc)}</text>`);
     ry += 58;
@@ -967,8 +976,22 @@ export function renderSketch(raw, opts = {}) {
     const ly = ty + 6; o.push(`<line x1="805" y1="${ly}" x2="1165" y2="${ly}" stroke="${tb.accent}" stroke-width="2.6"/><polygon points="${cxm - 14},${ly} ${cxm + 14},${ly} ${cxm},${ly + 13}" fill="${tb.accent}"/>`);
     let sy2 = ly + 58; tb.subs.forEach((t) => { const sfs = Math.max(18, Math.min(26, 372 / wlen(t))); o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="${sfs.toFixed(1)}" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${o.join('')}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${(spec.gscale ? [...o.slice(0, gStart), `<g data-gscale="1" transform="translate(${spec.gscale.t[0].toFixed(2)} ${spec.gscale.t[1].toFixed(2)}) scale(${spec.gscale.k.toFixed(4)})">`, ...o.slice(gStart, gEnd), ...zmarks, '</g>', ...o.slice(gEnd)] : o).join('')}</svg>`;
   return { svg, width: W, height: H };
+}
+
+// ── 전체 크기 조절 도우미 ──────────────────────────────────
+export const sketchGScale = (spec) => (spec && spec.gscale ? spec.gscale : { k: 1, t: [0, 0] });
+// 그림 좌표(1200x760) 점 ← 전체 크기 조절을 거친 화면의 점 (편집할 때 마우스 위치를 되돌린다) / 그 반대
+export function sketchUnzoomPt(spec, p) { const g = sketchGScale(spec); return [(p[0] - g.t[0]) / g.k, (p[1] - g.t[1]) / g.k]; }
+export function sketchZoomPt(spec, p) { const g = sketchGScale(spec); return [p[0] * g.k + g.t[0], p[1] * g.k + g.t[1]]; }
+// 지금 화면에서 보이는 점 about(그림 좌표 1200x760, 이 점은 제자리)을 기준으로 전체를 k 배. 합성: p'' = about + k·(p' − about), p' = K·p + T
+export function sketchComposeScale(spec, k, about) {
+  const g = sketchGScale(spec); const kk = Math.min(GSCALE_MAX / g.k, Math.max(GSCALE_MIN / g.k, Number.isFinite(k) ? k : 1)); // 합친 배율이 0.05~20 안에 있게
+  const K = g.k * kk; const T = [kk * g.t[0] + about[0] * (1 - kk), kk * g.t[1] + about[1] * (1 - kk)];
+  const { gscale, ...rest } = spec; // eslint-disable-line no-unused-vars
+  if (Math.abs(K - 1) < 1e-4 && Math.abs(T[0]) < 0.01 && Math.abs(T[1]) < 0.01) return rest;
+  return { ...rest, gscale: { k: Math.round(K * 10000) / 10000, t: [Math.round(T[0] * 100) / 100, Math.round(T[1] * 100) / 100] } };
 }
 
 // ── 5) 편집 도우미(모두 새 spec 을 돌려준다) ──────────────────

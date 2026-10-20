@@ -10,7 +10,7 @@ export default function IconPicker({ value, onPick, testid = 'icon-picker' }) {
     if (key) return ICON_GROUPS.flatMap((x) => x.names).filter((n) => n.includes(key) || (ICON_LABEL[n] || '').toLowerCase().includes(key));
     return (ICON_GROUPS.find((x) => x.id === g) || ICON_GROUPS[0]).names;
   }, [g, key]);
-  const tab = (on) => ({ padding: '3px 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: on ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.85)', color: on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
+  const tab = (on) => ({ padding: '3px 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: on ? 'rgba(51,51,153,0.12)' : 'var(--surface)', color: on ? 'var(--accent-cyan)' : 'var(--text-secondary)' });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid={testid}>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="아이콘 찾기 (예: 주차, 태양, bus)" style={{ padding: '4px 7px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: 12, width: '100%', boxSizing: 'border-box' }} data-testid={`${testid}-search`} />
@@ -22,7 +22,7 @@ export default function IconPicker({ value, onPick, testid = 'icon-picker' }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3, maxHeight: 168, overflowY: 'auto', padding: 2 }}>
         {names.map((n) => (
           <button key={n} type="button" title={`${ICON_LABEL[n]} (${n})`} onClick={() => onPick(n)} data-testid={`icon-${n}`}
-            style={{ aspectRatio: '1', padding: 2, borderRadius: 6, cursor: 'pointer', border: `1.5px solid ${n === value ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: n === value ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            style={{ aspectRatio: '1', padding: 2, borderRadius: 6, cursor: 'pointer', border: `1.5px solid ${n === value ? 'var(--accent-cyan)' : 'var(--border-color)'}`, background: n === value ? 'rgba(51,51,153,0.12)' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg viewBox="0 0 20 20" width="22" height="22" dangerouslySetInnerHTML={{ __html: iconGlyph(n, '#334155') }} />
           </button>
         ))}

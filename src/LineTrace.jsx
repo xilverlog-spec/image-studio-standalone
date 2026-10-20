@@ -8,11 +8,11 @@ import { parseJsonLoose } from './conceptDiagram/spec';
 
 const MAX_EDGE = 2400;
 
-const inputBase = { padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.85)', fontSize: 12.5 };
+const inputBase = { padding: '7px 9px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontSize: 12.5 };
 const btn = (primary, disabled) => ({
   padding: '9px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-  border: primary ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-  background: primary ? 'rgba(51,51,153,0.12)' : 'rgba(255,255,255,0.8)',
+  border: primary ? '1px solid var(--accent-cyan)' : '1px solid var(--line-strong)',
+  background: primary ? 'rgba(51,51,153,0.12)' : 'var(--surface)',
   color: primary ? 'var(--accent-cyan)' : 'var(--text-secondary)',
 });
 const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; };
@@ -144,9 +144,9 @@ export default function LineTrace({ addToast, apiFetch }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
-      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'rgba(220, 228, 242, 0.35)' }}>
+      <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--border-color)', padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', background: 'var(--surface)' }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>이미지 → 깔끔한 선</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 4 }}>이미지 → 깔끔한 선</div>
           <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>
             이미지를 보고 알아서 방식을 고릅니다. <b>선으로 그린 도식</b>(아이소메트릭 등)은 선을 찾아 반듯한 단선으로, <b>색 면으로 칠한 도식·평면도</b>는 색 영역 그대로 벡터로, <b>원근 모델 캡처·렌더</b>는 AI가 선 도면으로 다시 그려 벡터로 바꿉니다.
           </p>
@@ -162,7 +162,7 @@ export default function LineTrace({ addToast, apiFetch }) {
           ) : (
             <button style={{ ...btn(false), padding: '22px 10px', borderStyle: 'dashed' }} onClick={() => fileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files?.[0]); }}>
-              🖼️ 도식 이미지 선택 (또는 끌어다 놓기)
+              도식 이미지 선택 (또는 끌어다 놓기)
             </button>
           )}
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
@@ -182,12 +182,12 @@ export default function LineTrace({ addToast, apiFetch }) {
           <span>
             글자를 읽어서 편집 가능한 텍스트로 변환 (선택)
             <br />
-            <span style={{ fontSize: 11, color: '#C2410C' }}>켜면 이미지가 외부(Google Gemini)로 전송됩니다. 끄면 글자는 모양 그대로 윤곽선이 되고, 모든 처리가 이 PC 안에서만 이루어집니다.</span>
+            <span style={{ fontSize: 11, color: 'var(--warn)' }}>켜면 이미지가 외부(Google Gemini)로 전송됩니다. 끄면 글자는 모양 그대로 윤곽선이 되고, 모든 처리가 이 PC 안에서만 이루어집니다.</span>
           </span>
         </label>
 
         <button style={btn(true, !source || busy)} disabled={!source || busy} onClick={run}>
-          {busy ? '처리 중…' : '✨ 깨끗한 선으로 변환'}
+          {busy ? '처리 중…' : '깨끗한 선으로 변환'}
         </button>
         {busy && (
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -203,7 +203,7 @@ export default function LineTrace({ addToast, apiFetch }) {
           변환하면 자동으로 AI(이 PC의 무료 모델)가 먼저 깨끗한 선화로 다시 그리고, 그 결과에서 선을 추출합니다. 칸 하나당 약 3분이 걸립니다.
           AI가 형태를 바꾼 칸은 원본에서 직접 추출합니다. 글자는 원본 그대로 옮깁니다.
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.7)' }} data-testid="smooth-box">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--surface)' }} data-testid="smooth-box">
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>색 그림 변환 스타일</span>
           <select value={colorStyle} onChange={(e) => { setColorStyle(e.target.value); if (e.target.value === 'smooth') setMethod('color'); }} style={inputBase} data-testid="color-style">
             <option value="precise">정밀 — 원본 색과 질감을 최대한 따라감 (기존)</option>
@@ -243,11 +243,11 @@ export default function LineTrace({ addToast, apiFetch }) {
           {result && (
             <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>
               {result.stats.method === 'color'
-                ? '🎨 색 면 도식으로 인식 → 색 영역 그대로 벡터 변환 (글자는 윤곽선 모양)'
+                ? '색 면 도식으로 인식 → 색 영역 그대로 벡터 변환 (글자는 윤곽선 모양)'
                 : result.stats.method === 'perspective'
-                  ? '🏢 원근 모델 캡처·렌더로 인식 → AI가 선화로 다시 그린 것을 벡터로 변환'
+                  ? '원근 모델 캡처·렌더로 인식 → AI가 선화로 다시 그린 것을 벡터로 변환'
                   : <>
-                  {'📐 선 도식으로 인식 · '}{result.stats.panels}칸 · 선 {result.stats.lines}개 · 화살촉 {result.stats.arrows} · 글자줄 {result.stats.text_lines}
+                  {'선 도식으로 인식 · '}{result.stats.panels}칸 · 선 {result.stats.lines}개 · 화살촉 {result.stats.arrows} · 글자줄 {result.stats.text_lines}
                   {result.stats.text_editable ? ` (편집 가능 ${result.stats.text_editable})` : ''}
                   {result.stats.redraw_used ? ` · AI 재생성 ${result.stats.ai_panels}칸 / 원본 직접 ${result.stats.fallback_panels}칸` : ' · AI 재생성 안 함'}
                 </>}
@@ -257,11 +257,11 @@ export default function LineTrace({ addToast, apiFetch }) {
             <button key={p.i} style={{ ...btn(false, simplifying !== null), padding: '6px 10px', fontSize: 12 }} disabled={simplifying !== null}
               title="나무·사람 같은 디테일이 많아 선이 불완전할 수 있는 칸입니다. AI가 건물 구조를 읽어 박스 단선으로 단순하게 다시 그립니다(Gemini로 이미지 전송)."
               onClick={() => simplifyPanel(p)}>
-              {simplifying === p.i ? `칸 ${p.i + 1} 단순화 중…` : `🧱 칸 ${p.i + 1}: AI가 구조를 읽어 단순화`}
+              {simplifying === p.i ? `칸 ${p.i + 1} 단순화 중…` : `칸 ${p.i + 1}: AI가 구조를 읽어 단순화`}
             </button>
           ))}
           {result?.warnings?.length > 0 && (
-            <span title={result.warnings.join('\n')} style={{ fontSize: 11.5, color: '#C2410C', cursor: 'help' }}>⚠ 안내 {result.warnings.length}건(마우스를 올려보세요)</span>
+            <span title={result.warnings.join('\n')} style={{ fontSize: 11.5, color: 'var(--warn)', cursor: 'help' }}>안내 {result.warnings.length}건(마우스를 올려보세요)</span>
           )}
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 14, background: '#fff' }}>
