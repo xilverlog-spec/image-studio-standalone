@@ -440,14 +440,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined } } })); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pageModel = useMemo(() => {
+  const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
+  const composeAll = (layoutId, custom, wantOut) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치)
     if (!pageOn) return null;
     try {
       const page = { w: Number(pg.w) || 0, h: Number(pg.h) || 0, medium: pg.medium };
       const sizes = Object.fromEntries(Object.entries(pg.sizes).map(([k, v]) => [k, Number(v) > 0 ? Number(v) : null]));
-      const ids = cellIds(pg.layoutId, pg.custom);
+      const ids = cellIds(layoutId, custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
-      const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId: pg.layoutId, custom: pg.custom, gap: Number(pg.gap) || 0, measure: domMeasure,
+      const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId, custom, gap: Number(pg.gap) || 0, measure: domMeasure,
         margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
@@ -462,11 +463,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0 };
       });
       const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
-      const out = composePage(page, items, base); // 저장용(칸 테두리·빈 칸 표시 없음)
+      const out = wantOut ? composePage(page, items, base) : null; // 저장용(칸 테두리·빈 칸 표시 없음)
       return { preview, out, error: null };
     } catch (e) { return { preview: null, out: null, error: e.message }; }
-  }, [pageOn, pg, cells, selCell]);
-  const pageSrc = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]); // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다)
+  };
+  const pageModel = useMemo(() => composeAll(pg.layoutId, pg.custom, true), [pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
+  const livePage = useMemo(() => (live && pageOn ? composeAll('custom', live.cells, false) : null), [live, pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps — 칸 가장자리를 끄는 동안의 미리보기(저장용은 놓을 때 한 번만 다시 만든다)
+  const livePageSrc = useMemo(() => (livePage?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(livePage.preview.svg)}` : ''), [livePage]);
+  const pageSrc0 = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]);
+  const pageSrc = livePageSrc || pageSrc0; // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다). 칸 가장자리를 끄는 동안에는 바뀌는 크기가 그림에 바로 보인다
   const focusOn = pageOn && !!pageModel?.preview && focusEdit; // 편집 집중: 편집기가 전체 폭이고 페이지는 위쪽 띠로 줄어든다
   const sideOn = !focusOn && pageOn && !!result && !!pageModel?.preview && (viewMode === 'side' || (viewMode === 'auto' && paneW >= SIDE_MIN_W));
   const splitAvail = Math.max(0, paneW - 32 - SPLIT_DIV_W); // 오른쪽 화면 안쪽 폭(여백 16×2)에서 분할선을 뺀 폭
@@ -498,7 +503,6 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   // ── 칸을 직접 끌어서 크기 조절(프리셋은 끌면 'custom' 배치로 바뀐다) ──
   const previewRef = useRef(null);
-  const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
   const commitCustom = (cs, tag = '') => { pushHistory(tag); setPg((p) => ({ ...p, layoutId: 'custom', custom: cs, basePreset: p.layoutId === 'custom' ? p.basePreset : p.layoutId })); };
   const minOf = (box) => ({ x: Math.min(0.45, 25 / box.w), y: Math.min(0.45, 25 / box.h) }); // 칸 최소 크기 25mm
   const startDrag = (e, id, mode) => {
@@ -520,13 +524,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       if (mode.includes('n')) cs = dragEdge(cs, id, 'n', t.r[1] + dy, { group, min, tol });
       return cs;
     };
+    let raf = 0; let pending = null; // 포인터 이동은 초당 여러 번 오므로, 화면 프레임마다 마지막 것만 그려 부드럽게 한다
+    const flush = () => { raf = 0; if (pending) { setLive(pending); pending = null; } };
     const onMove = (ev) => {
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
       moved = true; last = compute(ev);
       const t = last.find((c) => c.id === id);
-      setLive({ cells: last, id, label: `${Math.round((t.r[2] - t.r[0]) * box.w)}×${Math.round((t.r[3] - t.r[1]) * box.h)}mm` });
+      pending = { cells: last, id, label: `${Math.round((t.r[2] - t.r[0]) * box.w)}×${Math.round((t.r[3] - t.r[1]) * box.h)}mm` };
+      if (!raf) raf = requestAnimationFrame(flush);
     };
-    const stop = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); dragCancelRef.current = null; setLive(null); };
+    const stop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); dragCancelRef.current = null; setLive(null); };
     const onUp = () => { stop(); if (moved) commitCustom(last); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
     dragCancelRef.current = stop; // Esc 로 끌던 것을 취소(원래대로)
