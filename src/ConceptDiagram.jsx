@@ -404,6 +404,24 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     insertMyImages(files, pageOn ? e.target.closest?.('[data-cellid]')?.getAttribute('data-cellid') : '');
   };
   // 칸의 그림을 다른 칸으로 옮긴다(도착 칸이 비어 있으면 이동, 그림이 있으면 서로 맞바꿈). 페이지 되돌리기(Ctrl+Z)로 되돌린다
+  // 칸 복사·붙여넣기: 고른 칸의 그림(편집 내용 포함)을 복사해 다른 칸에 붙여넣거나 빈 칸에 복제한다. 붙여넣기는 페이지 되돌리기(Ctrl+Z)로 취소된다
+  const [clipFilled, setClipFilled] = useState(false);
+  const srcOfCell = () => result || cells[selCell] || null; // 고른 칸의 그림은 result 가 원본이다
+  const copyCell = () => {
+    const src = srcOfCell(); if (!src) { addToast?.('info', '복사할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return false; }
+    cellClip.current = src; setClipFilled(true); addToast?.('success', '칸 내용을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"를 누르세요(Ctrl+V 도 됩니다).'); return true;
+  };
+  const placeCell = (id) => { if (!cellClip.current) return; const copy = { ...cellClip.current, ver: Date.now() }; pushHistory(); setCells((c) => ({ ...c, [id]: copy })); setSelCell(id); setResult(copy); setGenError(''); };
+  const pasteCell = () => {
+    if (!cellClip.current) { addToast?.('info', '붙여넣을 그림이 없습니다', '먼저 그림이 있는 칸에서 "칸 복사"를 눌러 주세요.'); return; }
+    const had = !!srcOfCell(); placeCell(selCell); if (had) addToast?.('info', '이 칸의 그림을 바꿨습니다', '이전 그림은 Ctrl+Z 로 되돌릴 수 있습니다.');
+  };
+  const duplicateCell = () => {
+    const src = srcOfCell(); if (!src) { addToast?.('info', '복제할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return; }
+    const ids = cellIds(pg.layoutId, pg.custom); const free = ids.find((id) => id !== selCell && !cells[id]);
+    cellClip.current = src; setClipFilled(true);
+    if (free) placeCell(free); else addToast?.('info', '빈 칸이 없습니다', '칸을 나누거나 비운 뒤 다시 시도하세요.');
+  };
   const moveCellContent = (fromId, toId) => {
     const ids = cellIds(pg.layoutId, pg.custom);
     const m = moveItems({ ...cells, ...(result ? { [selCell]: result } : {}) }, ids, fromId, toId); // 고른 칸의 그림은 result 가 원본이다
@@ -981,10 +999,9 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const ids = cellIds(pg.layoutId, pg.custom);
     if (e.key === 'Tab') { e.preventDefault(); const i = Math.max(0, ids.indexOf(selCell)); selectCell(ids[(i + (e.shiftKey ? ids.length - 1 : 1)) % ids.length]); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (e.shiftKey) onRemove(); else clearCell(); return; }
-    if (mod && k === 'c') { if (cells[selCell]) { e.preventDefault(); cellClip.current = cells[selCell]; addToast?.('success', '칸 내용을 복사했습니다', 'Ctrl+V 로 다른 칸에 붙여넣거나 Ctrl+D 로 빈 칸에 복제하세요.'); } return; }
-    const place = (id) => { const copy = { ...cellClip.current, ver: Date.now() }; pushHistory(); setCells((c) => ({ ...c, [id]: copy })); setSelCell(id); setResult(copy); };
-    if (mod && k === 'v') { if (cellClip.current) { e.preventDefault(); place(selCell); } return; }
-    if (mod && k === 'd') { e.preventDefault(); if (!cells[selCell]) return; cellClip.current = cells[selCell]; const free = ids.find((id) => !cells[id]); if (free) place(free); else addToast?.('info', '빈 칸이 없습니다', '칸을 나누거나 비운 뒤 다시 시도하세요.'); return; }
+    if (mod && k === 'c') { if (srcOfCell()) { e.preventDefault(); copyCell(); } return; }
+    if (mod && k === 'v') { if (cellClip.current) { e.preventDefault(); pasteCell(); } return; }
+    if (mod && k === 'd') { e.preventDefault(); duplicateCell(); return; }
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { // 방향키: 칸 이동 1mm(Shift 10mm), Alt+방향키: 크기 1mm(Shift 10mm)
       const raw = pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw; const box = pageModel?.preview?.box; if (!raw || !box) return;
       e.preventDefault(); const st = e.shiftKey ? 10 : 1; const dx = e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0; const dy = e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0;
@@ -1449,7 +1466,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           {pageOn && pageModel?.preview && !focusOn && (
             <div style={sideOn ? { position: 'sticky', top: 0, minWidth: 0, marginBottom: 14 } : { marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
               <style>{'.pg-slot{outline:1.5px dashed transparent;border-radius:2px}.pg-slot:hover{outline-color:#F28C28;background:rgba(242,140,40,.10)}.pg-slot[data-has="0"]:hover::after{content:attr(data-hint);position:absolute;left:5px;top:50%;transform:translateY(-50%);font:700 12px sans-serif;color:#C2410C;white-space:nowrap;pointer-events:none}'}</style>
-              {result && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>페이지 배치 · 칸 크기 조절</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }} data-testid="cell-clip-bar">
+                {result && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>페이지 배치 · 칸 크기 조절</span>}
+                <span style={{ marginLeft: result ? 'auto' : 0, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button style={{ ...btn(false, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={copyCell} data-testid="cell-copy" title="고른 칸의 그림(고친 내용 포함)을 복사합니다 (Ctrl+C)">칸 복사</button>
+                  <button style={{ ...btn(false, !clipFilled), padding: '3px 10px', fontSize: 11.5 }} disabled={!clipFilled} onClick={pasteCell} data-testid="cell-paste" title="복사한 그림을 지금 고른 칸에 붙여넣습니다. 그 칸에 그림이 있으면 바뀌고 Ctrl+Z 로 되돌릴 수 있습니다 (Ctrl+V)">칸에 붙여넣기</button>
+                  <button style={{ ...btn(false, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={duplicateCell} data-testid="cell-dup" title="고른 칸의 그림을 비어 있는 다른 칸에 복제합니다 (Ctrl+D)">빈 칸에 복제</button>
+                </span>
+              </div>
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {

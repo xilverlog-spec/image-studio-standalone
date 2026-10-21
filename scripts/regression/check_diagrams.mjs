@@ -19,6 +19,7 @@ const scopeJs = path.resolve(here, '../../src/conceptDiagram/scope.js');
 const rotateJs = path.resolve(here, '../../src/conceptDiagram/rotate.js');
 const markerJs = path.resolve(here, '../../src/conceptDiagram/marker.js');
 const calloutJs = path.resolve(here, '../../src/conceptDiagram/callout.js');
+const dimJs = path.resolve(here, '../../src/conceptDiagram/dim.js');
 const iconsJs = path.resolve(here, '../../src/conceptDiagram/icons.js');
 const tableJs = path.resolve(here, '../../src/conceptDiagram/table.js');
 const imgfxJs = path.resolve(here, '../../src/conceptDiagram/imgfx.js');
@@ -61,6 +62,9 @@ export { editRotate, editRotateAdd } from ${fwd(svgeditJs)};
 export { editScale, addScalePatch, opTransformStr, SCALE_MIN, SCALE_MAX } from ${fwd(svgeditJs)};
 export { scaleLineSpacing, editLineSpacing, LH_MIN, LH_MAX } from ${fwd(svgeditJs)};
 export { HEAD_ALIGNS, HEAD_LS_MIN, HEAD_LS_MAX } from ${fwd(pageJs)};
+export { dimLayout, dimBox, dimSvg, DIM_COLOR, DIM_DEFAULT_TEXT } from ${fwd(dimJs)};
+export { editAddDim } from ${fwd(svgeditJs)};
+export { sketchSetDimStart } from ${fwd(sketch)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
@@ -1284,6 +1288,45 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const x = mk({ headLs: 99, headAlign: 'zz' }); expect(/letter-spacing/.test(tx(x, '내 제목')) && !/text-anchor/.test(tx(x, '내 제목')) && Number(/letter-spacing="([\d.]+)"/.exec(tx(x, '내 제목'))[1]) <= 0.4 * Number(/font-size="([\d.]+)"/.exec(tx(x, '내 제목'))[1]) + 0.01, '잘못된 정렬은 왼쪽, 자간은 최대 0.4em 로 제한'); }
   { const long = mk({ title: '아주 긴 제목 '.repeat(20), headLs: 0.3, headAlign: 'center' }); expect(long.report.warnings.some((w) => /제목이 길어/.test(w.text)) && !/NaN/.test(long.svg), '글자가 길면 자간을 포함해 폭에 맞춰 줄이고 NaN 이 없음'); }
   expect(m.HEAD_ALIGNS.join() === 'left,center,right' && m.HEAD_LS_MIN === -0.05 && m.HEAD_LS_MAX === 0.4, '정렬 목록·자간 범위 상수');
+}
+// 치수선(R12): 공용 그림·구조형·손스케치
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`치수선: ${label}`); };
+  const near = (a, b, e = 0.06) => Math.abs(a - b) <= e;
+  const nearPt = (p, q, e = 0.06) => near(p[0], q[0], e) && near(p[1], q[1], e);
+  const H = { x: 10, y: 50, tx: 110, ty: 50, text: '10m', size: 14 };
+  const L = m.dimLayout(H);
+  expect(near(L.len, 100) && near(L.deg, 0) && nearPt(L.mid, [60, 50]) && L.text[1] < 50 && near(L.text[0], 60), '가로 치수선: 길이 100, 각도 0, 글자는 가운데 위쪽');
+  { const R = m.dimLayout({ ...H, x: 110, tx: 10 }); expect(near(R.deg, 0) && R.text[1] < 50, '오른쪽→왼쪽으로 그려도 글자는 뒤집히지 않고 선 위쪽'); }
+  { const V = m.dimLayout({ x: 50, y: 10, tx: 50, ty: 110, size: 14 }); expect(near(V.deg, 90) && near(V.text[0], 50 + Math.sin(Math.PI / 2) * 14 * 0.75), '세로 치수선: 글자 각도 90°(아래로 읽힘 방지), 선의 오른쪽에 놓임'); }
+  { const D = m.dimLayout({ x: 0, y: 0, tx: 100, ty: 100, size: 14 }); expect(near(D.deg, 45) && D.text[1] < 50 && D.text[0] > 50, '45° 선: 글자가 선 위쪽(오른쪽 위)으로'); }
+  { const Z = m.dimLayout({ x: 5, y: 5, tx: 5, ty: 5, size: 14 }); expect(Number.isFinite(Z.deg) && Z.len === 0 && !/NaN/.test(m.dimSvg({ x: 5, y: 5, tx: 5, ty: 5, text: '0' })), '두 끝점이 같아도 NaN 없이 그려짐'); }
+  const svg = m.dimSvg(H, { id: 'a1', interactive: true });
+  expect((svg.match(/<line/g) || []).length === 6 && /data-eid="a1"/.test(svg) && />10m</.test(svg) && /text-anchor="middle"/.test(svg), '그림: 본선 1 + 끝마다 직각 눈금·사선 눈금 2개씩 + 누름 영역 1, 글자 10m');
+  expect(!/data-eid/.test(m.dimSvg(H)) && (m.dimSvg(H).match(/<line/g) || []).length === 5, '저장용(편집 아님)에는 누름 영역이 없음');
+  expect(!/<text/.test(m.dimSvg({ ...H, text: '' })) && /&lt;&amp;/.test(m.dimSvg({ ...H, text: '<&' })), '글자가 비면 글자 없이 선만, 특수문자는 이스케이프');
+  { const b = m.dimBox(H); expect(b[0] < 10 && b[2] > 110 && b[1] < 50 - 10 && b[3] > 50, '바깥 상자는 끝점과 글자를 모두 감쌈'); }
+  expect(/stroke="#222222"/.test(svg) && /stroke="#aa0000"/.test(m.dimSvg({ ...H, color: '#aa0000' })) && /stroke="#222222"/.test(m.dimSvg({ ...H, color: 'red' })), '색: 기본 #222222, 잘못된 색은 기본');
+  // 구조형 adds
+  const sv = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect x="0" y="0" width="10" height="10"/></svg>'; const sig = m.scanSvg(sv).sig;
+  const A = m.editAddDim({ sig, ops: {} }, sig, { box: [0, 0, 400, 300] }); const d = A.edits.adds[0];
+  expect(d.kind === 'dim' && d.text === m.DIM_DEFAULT_TEXT && d.ty === d.y && d.tx > d.x && d.size >= 10, '구조형 추가: 가로 한 줄, 기본 글자');
+  { const o = m.applyEdits(sv, A.edits, { ids: true }).svg; expect(new RegExp(`data-eid="${d.id}"`).test(o) && />10m</.test(o), '구조형: 편집 화면 그림에 치수선이 그려짐'); const o2 = m.applyEdits(sv, A.edits).svg; expect(/>10m</.test(o2) && !/data-eid/.test(o2), '구조형: 저장용에도 들어감'); }
+  { const A2 = m.editAddDim(A.edits, sig, { box: [0, 0, 400, 300] }); expect(A2.edits.adds.length === 2 && A2.id !== A.id && A2.edits.adds[1].y > A2.edits.adds[0].y, '두 번째 치수선은 번호가 다르고 조금 비껴 놓임'); }
+  { const p = m.addShiftPatch(d, 5, -3); expect(near(p.x, d.x + 5) && near(p.tx, d.tx + 5) && near(p.ty, d.ty - 3), '옮기면 두 끝점이 함께 옮겨 감'); }
+  { const q = m.addScalePatch(d, [0.5, 0.5], [0, 0]); expect(near(q.x, d.x / 2) && near(q.tx, d.tx / 2) && near(q.size, d.size / 2, 0.02), '크기 조절: 두 끝점은 기준점 둘레로, 글자는 같은 비율로'); }
+  { expect(m.editRotateAdd(A.edits, d.id, 90).adds[0].x === d.x, '치수선 하나는 돌리지 않음'); const R = m.editRotateAdd(A.edits, d.id, 90, [d.x, d.y]).adds[0]; expect(near(R.x, d.x) && near(R.y, d.y) && near(R.tx, d.x) && R.ty > d.y, '묶음으로 돌릴 때는 기준점 둘레로 두 끝점이 돎'); }
+  // 손스케치
+  const base = () => m.normalizeSketch({ style: 'concept', blocks: [{ id: 'b1', rect: [10, 10, 60, 50] }] });
+  const SA = m.sketchAdd(base(), 'dim'); const dm = SA.spec.memos.find((q) => q.id === SA.id);
+  expect(dm.dim === true && dm.text === m.DIM_DEFAULT_TEXT && Number.isFinite(dm.tx) && dm.ty === dm.y, '손스케치 추가: dim 메모, 가로 한 줄');
+  { const N = m.normalizeSketch(JSON.parse(JSON.stringify(SA.spec))).memos[0]; expect(N.dim === true && N.tx === dm.tx && !('rot' in N) && !('align' in N), '저장했다 불러와도 유지, 회전·정렬은 붙지 않음'); }
+  { const o = m.renderSketch(SA.spec).svg; expect(/>10m</.test(o) && !/NaN/.test(o), '손스케치 그림에 치수선이 그려짐'); const s2 = m.renderSketch(SA.spec, { interactive: true, selected: SA.id }).svg; expect((s2.match(/data-handle="dim1"/g) || []).length >= 1 && (s2.match(/data-handle="tip"/g) || []).length >= 1, '선택하면 두 끝점 손잡이(dim1·tip)가 나옴'); }
+  { const mv = m.sketchMoveBy(SA.spec, SA.id, 2, 3).memos.find((q) => q.id === SA.id); expect(near(mv.x, dm.x + 2) && near(mv.tx, dm.tx + 2) && near(mv.ty, dm.ty + 3), '옮기면 두 끝점이 함께'); }
+  { const t = m.sketchSetTip(SA.spec, SA.id, [70, 70]).memos.find((q) => q.id === SA.id); const st = m.sketchSetDimStart(SA.spec, SA.id, [20, 30]).memos.find((q) => q.id === SA.id); expect(t.tx === 70 && t.ty === 70 && t.x === dm.x && st.x === 20 && st.y === 30 && st.tx === dm.tx, '끝점 손잡이: 둘째(tip)·첫째(dim1) 끝점을 따로 옮김'); }
+  expect(m.sketchCanRotate(SA.spec, SA.id) === false, '치수선은 돌리지 않음');
+  { const bx = m.sketchBox(SA.spec, SA.id); expect(bx[0] === Math.min(dm.x, dm.tx) && bx[2] === Math.max(dm.x, dm.tx), '선택 상자(스냅 기준)는 두 끝점을 감쌈'); }
+  { const T = m.sketchTextTargets ? m.sketchTextTargets(SA.spec) : null; expect(!T || T.some((q) => q.value === '10m'), '더블클릭으로 고칠 글자 목록에 치수 글자가 들어 있음'); }
 }
 // 번호 마커(R3-2)
 {
