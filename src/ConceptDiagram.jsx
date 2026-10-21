@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EmptyState } from './Icon';
 import { toIllustratorSvg, externalImageRefs } from './conceptDiagram/svgexport';
-import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
+import { DIAGRAM_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
@@ -33,6 +33,11 @@ const skCachePut = (k, v) => {
     localStorage.setItem(SK_CACHE_KEY, JSON.stringify(out));
   } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
 };
+// AI 이미지 편집(도면 위 표시) 작업 번호: 새로고침·탭 이동으로 화면이 사라져도 서버 작업은 계속되므로, 번호를 적어 두었다가 돌아오면 이어서 받는다(서버가 작업을 기억하는 시간 1시간보다 조금 짧게)
+const EDIT_JOB_KEY = 'cd_edit_job'; const EDIT_JOB_TTL_MS = 55 * 60 * 1000;
+const editJobSave = (v) => { try { localStorage.setItem(EDIT_JOB_KEY, JSON.stringify(v)); } catch { /* 저장 없이 진행 */ } };
+const editJobLoad = () => { try { const v = JSON.parse(localStorage.getItem(EDIT_JOB_KEY) || 'null'); return v && v.jobId && Date.now() - v.t0 < EDIT_JOB_TTL_MS ? v : null; } catch { return null; } };
+const editJobClear = () => { try { localStorage.removeItem(EDIT_JOB_KEY); } catch { /* 저장 없이 진행 */ } };
 import SketchEditor from './SketchEditor';
 import SvgEditor from './SvgEditor';
 import { applyEdits, hasEdits, scanSvg, editAddImage, emptyEdits, rebaseEdits } from './conceptDiagram/svgedit';
@@ -185,7 +190,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const [autoKind, setAutoKind] = useState(null);     // 자동 판단이 정한 읽기 방식(손스케치·분석 축측도 …)
   const [autoInfo, setAutoInfo] = useState(null);     // 자동 판단 근거 { type, reason }
   const [read, setRead] = useState(null); // 소재 이미지에서 읽은 구조
-  const effKind = subjectKind === 'auto' ? (autoKind || (read?.kind && SUBJECT_KINDS[read.kind] ? read.kind : '')) : subjectKind; // 화면 안내에 쓰는 '지금 적용되는' 종류
+  const effKind = subjectImage && subjectUse === 'ref' && REF_TYPES.includes(forcedType) ? '' : subjectKind === 'auto' ? (autoKind || (read?.kind && SUBJECT_KINDS[read.kind] ? read.kind : '')) : subjectKind; // 화면 안내에 쓰는 '지금 적용되는' 종류(내용 읽기 모드에서는 이미지 종류가 없다)
   const [reading, setReading] = useState(false);
   // 분석 축측도 옵션: 남쪽 방향(도면에서 어느 쪽인지), 벽 높이, 시점(평면을 돌리는 각도)
   const [axonSouth, setAxonSouth] = useState('bottom'); const [axonHeight, setAxonHeight] = useState(0.04); const [axonRot, setAxonRot] = useState(-15); const [axonTexture, setAxonTexture] = useState(true);
@@ -544,8 +549,11 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   useEffect(() => { if (result && (result.type === 'cards' || result.type === 'table')) setLeftTab((t) => (t === 'make' ? 'edit' : t)); }, [result?.ver]); // eslint-disable-line react-hooks/exhaustive-deps — 카드 보드·개요표는 만든 다음이 폼 수정이다(① 에서 만들었을 때만 자동으로 넘어간다)
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
-  const readMode = !!subjectImage && subjectUse === 'read';
-  const asisMode = !!subjectImage && subjectUse === 'asis';
+  const refMode = !!subjectImage && subjectUse === 'ref' && REF_TYPES.includes(forcedType); // 이미지에 보이는 글자·항목을 읽어 개요표·층별 조닝도·프로그램 버블도·카드 보드를 채운다
+  const useEff = refMode ? 'ref' : subjectUse === 'ref' ? 'read' : subjectUse; // 고른 종류가 내용 읽기를 못 하는 것이면 형태 읽기로 본다
+  const readMode = !!subjectImage && useEff === 'read';
+  const asisMode = !!subjectImage && useEff === 'asis';
+  const textUI = !subjectImage || refMode; // 설명 종류(개요표·카드 보드 폼 등)를 보여 주는 때
   const canGenerate = !busy && !reading && !!(userText.trim() || subjectImage || styleImage);
 
   // 소재 이미지를 바꾸거나 지우면, 이전 이미지로 만든 그림은 지우고 설명이 이전 그림용으로 남았다고 알린다
@@ -814,8 +822,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 소재 이미지 없음(글/스타일 참고만) 또는 이미지 그대로 바탕
   const generateFromText = async () => {
     const type0 = asisMode ? 'site' : (forcedType === 'auto' && looksLikeCards(userText) ? 'cards' : forcedType === 'auto' && looksLikeTable(userText) ? 'table' : forcedType);
-    const images = [...(subjectImage && asisMode ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
-    const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, style: !!styleImage }, { preset: cardsPreset }), images);
+    const images = [...(subjectImage && (asisMode || refMode) ? [subjectImage] : []), ...(styleImage ? [styleImage] : [])];
+    const parsed = await callAI(buildConceptPrompt(type0, askText(), { asis: asisMode, ref: refMode, style: !!styleImage }, { preset: cardsPreset }), images);
     const guessed = parsed.bands ? 'cards' : parsed.table ? 'table' : parsed.steps ? 'massing' : parsed.floors ? 'stack' : parsed.nodes ? 'program' : 'site';
     const type = asisMode ? 'site' : type0 !== 'auto' ? type0 : (DIAGRAM_TYPES[parsed.type] ? parsed.type : guessed);
     const { type: _drop, ...spec } = parsed;
@@ -830,6 +838,58 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const askText = () => [userText.trim(), mustRef.current.length ? `[반드시 결과의 제목·칩·주석 글자에 그대로 포함할 표현] ${mustRef.current.join(', ')}` : ''].filter(Boolean).join('\n');
 
   // 도면 위에 표시(AI 이미지 편집): 서버가 (지시문 작성 → 로컬 AI 편집 → 원본 위 합성)을 하는 동안 진행 상황을 보여 주고, 끝나면 그림을 바탕으로 깔고 제목·범례를 편집 가능한 글자로 얹는다
+  // 서버의 AI 이미지 편집 작업이 끝날 때까지 3초마다 묻는다. 화면이 사라졌으면 null. 서버가 모르는 작업(재시작·만료)이나 실패한 작업이면 작업 번호를 지우고 오류를 던진다
+  const pollEditJob = async (jobId, t0) => {
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 3000));
+      if (!aliveRef.current) return null;
+      const sr = await apiFetch(`/v1/image/diagram-edit/status/${jobId}`);
+      if (!sr.ok) { editJobClear(); throw new Error((await sr.json().catch(() => ({}))).detail || `HTTP ${sr.status}`); }
+      const job = await sr.json();
+      setEditProg({ stage: job.stage, percent: job.percent || 0, sec: Math.round((Date.now() - t0) / 1000), resumable: true });
+      if (job.status === 'done') return job;
+      if (job.status === 'error') { editJobClear(); throw new Error(job.error || 'AI 이미지 편집에 실패했습니다.'); }
+    }
+  };
+  // 끝난 작업의 결과를 받아 그림으로 만든다. srcImg(올렸던 원본)가 없으면(이어받기) 결과의 바탕 그림을 원본 대신 쓴다
+  const finishEdit = async (result0, ask, srcImg) => {
+      const r = result0; let spec = null; let layered = false; let baseUrl = null;
+      if (r.layers) { // 화살표는 편집 가능한 선으로, 구역 색은 색 바꿀 수 있는 층으로 받는다. 어느 하나라도 못 받으면 합성된 그림 한 장으로 돌아간다
+        try {
+          const L = r.layers; const base = await urlToJpegDataUrl(L.base, 2000); baseUrl = base.url; const k = base.w / (r.width || base.w);
+          const zones = await Promise.all((L.zones || []).map(async (z) => ({ color: z.color, label: z.label, blend: z.blend, maskUrl: await urlToDataUrl(z.mask) })));
+          const arrows = (L.arrows || []).map((a) => ({ ...a, pts: a.pts.map((p) => [p[0] * k, p[1] * k]), width: a.width * k }));
+          spec = makeEditSpec({ imageUrl: base.url, w: base.w, h: base.h, title: r.title || '', legend: r.legend, layers: { arrows, zones } }); layered = true;
+        } catch (e) { console.warn('층 불러오기 실패, 합성 그림으로 대체', e); spec = null; }
+      }
+      if (!spec) { const img = await urlToJpegDataUrl(r.image, 2000); spec = makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }); }
+      setResult({ type: 'sketch', spec, ver: Date.now(), ...(layered ? { aiEdit: { ask, legend: r.legend || [], w: r.width, h: r.height, src: srcImg || baseUrl, undoSpec: null } } : {}) });
+      addToast?.('success', '다이어그램 생성 완료', layered ? `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 화살표(${spec.winds.length}개)는 선으로, 구역 색(${spec.zones.length}개)은 층으로 나눠 색·위치·곡선을 고칠 수 있습니다` : `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
+      if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
+      if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
+  };
+  // 새로고침·탭 이동 전에 시작한 작업이 있으면 돌아왔을 때 자동으로 이어서 받는다
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return; resumedRef.current = true;
+    const saved = editJobLoad(); if (!saved) { editJobClear(); return; }
+    (async () => {
+      setBusy(true); setEditProg({ stage: '이전에 시작한 작업을 확인하는 중', percent: 1, sec: Math.round((Date.now() - saved.t0) / 1000), resumable: true });
+      try {
+        const job = await pollEditJob(saved.jobId, saved.t0); if (!job) return;
+        editJobClear(); await finishEdit(job.result, saved.ask, null);
+      } catch (e) { addToast?.('error', '이전에 시작한 작업을 이어받지 못했습니다', e.message); }
+      finally { setBusy(false); setEditProg(null); }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 만들거나 읽는 중에 새로고침·탭 닫기를 하면 브라우저가 한 번 물어본다
+  useEffect(() => {
+    if (!busy && !reading) return undefined;
+    const h = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [busy, reading]);
+
   const runDiagramEdit = async () => {
     setBusy(true); setEditProg({ stage: '시작하는 중', percent: 1, sec: 0 });
     const t0 = Date.now();
@@ -837,31 +897,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const res = await apiFetch('/v1/image/diagram-edit/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_base64: toB64(subjectImage), text: askText() }) });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
       const { job_id: jobId } = await res.json();
-      let job = null;
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 3000));
-        if (!aliveRef.current) return;
-        const sr = await apiFetch(`/v1/image/diagram-edit/status/${jobId}`);
-        if (!sr.ok) throw new Error((await sr.json().catch(() => ({}))).detail || `HTTP ${sr.status}`);
-        job = await sr.json();
-        setEditProg({ stage: job.stage, percent: job.percent || 0, sec: Math.round((Date.now() - t0) / 1000) });
-        if (job.status === 'done') break;
-        if (job.status === 'error') throw new Error(job.error || 'AI 이미지 편집에 실패했습니다.');
-      }
-      const r = job.result; let spec = null; let layered = false;
-      if (r.layers) { // 화살표는 편집 가능한 선으로, 구역 색은 색 바꿀 수 있는 층으로 받는다. 어느 하나라도 못 받으면 합성된 그림 한 장으로 돌아간다
-        try {
-          const L = r.layers; const base = await urlToJpegDataUrl(L.base, 2000); const k = base.w / (r.width || base.w);
-          const zones = await Promise.all((L.zones || []).map(async (z) => ({ color: z.color, label: z.label, blend: z.blend, maskUrl: await urlToDataUrl(z.mask) })));
-          const arrows = (L.arrows || []).map((a) => ({ ...a, pts: a.pts.map((p) => [p[0] * k, p[1] * k]), width: a.width * k }));
-          spec = makeEditSpec({ imageUrl: base.url, w: base.w, h: base.h, title: r.title || '', legend: r.legend, layers: { arrows, zones } }); layered = true;
-        } catch (e) { console.warn('층 불러오기 실패, 합성 그림으로 대체', e); spec = null; }
-      }
-      if (!spec) { const img = await urlToJpegDataUrl(r.image, 2000); spec = makeEditSpec({ imageUrl: img.url, w: img.w, h: img.h, title: r.title || '', legend: r.legend }); }
-      setResult({ type: 'sketch', spec, ver: Date.now(), ...(layered ? { aiEdit: { ask: askText(), legend: r.legend || [], w: r.width, h: r.height, src: subjectImage, undoSpec: null } } : {}) });
-      addToast?.('success', '다이어그램 생성 완료', layered ? `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 화살표(${spec.winds.length}개)는 선으로, 구역 색(${spec.zones.length}개)은 층으로 나눠 색·위치·곡선을 고칠 수 있습니다` : `AI 이미지 편집 · ${(r.seconds / 60).toFixed(1)}분 · 도면의 선·글자는 원본 그대로, 색과 동선만 얹었습니다`);
-      if (r.legend_verified === false && (r.legend || []).some((l) => l.kind === 'zone')) addToast?.('info', '범례의 뜻을 결과 그림으로 확인하지 못했습니다', 'AI가 방마다 색을 지시와 다르게 칠할 때가 있어, 범례의 뜻이 그림과 다를 수 있습니다. 확인하고 고쳐 주세요.');
-      if (r.instruction_source === 'fallback') addToast?.('info', '도면을 읽는 AI(Gemini)가 혼잡해 일반 지시문으로 그렸습니다', '방 색칠·동선이 덜 정확할 수 있습니다. 잠시 뒤 다시 만들면 더 좋아집니다.');
+      editJobSave({ jobId, ask: askText(), t0 }); // 새로고침해도 이 작업을 이어서 받을 수 있게 작업 번호를 적어 둔다
+      const job = await pollEditJob(jobId, t0); if (!job) return;
+      editJobClear(); // 받았으니 더 기억할 필요 없다(받은 뒤 그리기에 실패해도 같은 작업을 되풀이해 받지 않는다)
+      await finishEdit(job.result, askText(), subjectImage);
     } catch (e) { addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`); }
     finally { setBusy(false); setEditProg(null); }
   };
@@ -889,7 +928,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const next = readMode ? await generateFromRead(readNow) : await generateFromText();
       renderSpec(next.type, next.spec, next.baseImage ? { baseImage: next.baseImage } : undefined); // 그릴 수 있는지 먼저 검증
       setResult(next.ver ? next : { ...next, ver: Date.now() });
-      const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : (DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램');
+      const what = readMode ? `${SUBJECT_KINDS[readNow.kind]} 기반` : `${DIAGRAM_TYPES[next.type]?.label.split(' (')[0] || '다이어그램'}${refMode ? '(이미지 내용 반영)' : ''}`;
       addToast?.('success', '다이어그램 생성 완료', `${what}${styleImage ? ' + 참고 이미지 스타일' : ''}`);
     } catch (e) {
       addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`);
@@ -1063,8 +1102,8 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               <img src={subjectImage} alt="소재 이미지" style={thumb} />
               <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => { setSubjectImage(null); setRead(null); dropOldResult(); }}>소재 이미지 제거</button>
               <div style={{ display: 'flex', gap: 6 }}>
-                {[['read', '형태를 읽어서'], ['asis', '이미지 그대로 바탕']].map(([id, label]) => (
-                  <button key={id} style={{ ...btn(subjectUse === id, busy || reading), flex: 1, padding: '7px 6px', fontSize: 12 }} disabled={busy || reading} onClick={() => setSubjectUse(id)}>{label}</button>
+                {[['read', '형태를 읽어서', '건물·평면·배치의 형태를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다'], ['asis', '그대로 바탕', '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다'], ['ref', '내용 읽기', '이미지에 보이는 글자·항목을 읽어 개요표·층별 조닝도·프로그램 버블도·카드 보드를 채웁니다']].map(([id, label, tip]) => (
+                  <button key={id} style={{ ...btn(useEff === id, busy || reading), flex: 1, padding: '7px 4px', fontSize: 12 }} disabled={busy || reading} title={tip} data-testid={`subject-use-${id}`} onClick={() => { setSubjectUse(id); if (id === 'ref' && !REF_TYPES.includes(forcedType)) setForcedType('table'); }}>{label}</button>
                 ))}
               </div>
               {readMode && (
@@ -1144,7 +1183,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 </div>
               )}
               <p style={slotNote}>
-                {readMode ? '형태(건물·평면·배치)를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다. 이미지는 바뀌지 않습니다.'}
+                {readMode ? '형태(건물·평면·배치)를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다.' : refMode ? '이미지에 보이는 글자·항목을 읽어 아래에서 고른 종류(개요표·층별 조닝도·프로그램 버블도·카드 보드)로 채웁니다. 보이지 않는 값은 지어내지 않으며, 설명(1번)에 강조하거나 뺄 것을 적을 수 있습니다. 결과는 클릭해서 고칩니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다. 이미지는 바뀌지 않습니다.'}
               </p>
             </div>
           ) : (
@@ -1174,21 +1213,21 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
         </div>
 
-        {!subjectImage && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {textUI && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ ...slotTitle, whiteSpace: 'nowrap' }}>종류</span>
-          <select value={forcedType} onChange={(e) => setForcedType(e.target.value)} style={inputBase}>
-            <option value="auto">자동 (내용 보고 AI가 선택)</option>
-            {Object.entries(DIAGRAM_TYPES).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+          <select value={forcedType} onChange={(e) => setForcedType(e.target.value)} style={inputBase} data-testid="forced-type">
+            {!refMode && <option value="auto">자동 (내용 보고 AI가 선택)</option>}
+            {Object.entries(DIAGRAM_TYPES).filter(([id]) => !refMode || REF_TYPES.includes(id)).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
         </div>}
-        {!subjectImage && forcedType !== 'auto' && <TypeNote id={forcedType} />}
-        {!subjectImage && forcedType === 'table' && (
+        {textUI && forcedType !== 'auto' && <TypeNote id={forcedType} />}
+        {textUI && forcedType === 'table' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} data-testid="table-start-row">
             <button style={btn(false, busy)} disabled={busy} onClick={loadTableExample} data-testid="table-load-example">예시 표로 시작</button>
             <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.45, flex: 1, minWidth: 160 }}>엑셀·한글 표는 만든 뒤 "표 내용 수정"의 붙여넣기 칸에 붙여넣으세요.</span>
           </div>
         )}
-        {!subjectImage && forcedType === 'cards' && (
+        {textUI && forcedType === 'cards' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} data-testid="cards-preset-row">
             <span style={{ ...slotTitle, whiteSpace: 'nowrap' }}>시작 틀</span>
             <select value={cardsPreset} onChange={(e) => setCardsPreset(e.target.value)} style={{ ...inputBase, flex: 1, minWidth: 140 }} data-testid="cards-preset">
@@ -1197,7 +1236,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             <button style={btn(false, busy)} disabled={busy} onClick={() => loadCardsPreset(cardsPreset)} title={CARD_PRESETS[cardsPreset].hint} data-testid="cards-load-example">예시 내용으로 시작</button>
           </div>
         )}
-        <ScopeGuide forcedType={forcedType} onPick={subjectImage ? null : (id) => setForcedType(id)} />
+        <ScopeGuide pickedText={refMode ? forcedType : subjectImage ? (asisMode || effKind === 'site' ? 'site' : effKind === 'form' ? 'massing' : '') : (forcedType === 'auto' ? '' : forcedType)} withImage={!!subjectImage} onPick={(id) => {
+          if (!subjectImage) { setForcedType(id); return; }
+          if (REF_TYPES.includes(id)) { // 이미지에 보이는 글자·항목을 읽어 채운다
+            setSubjectUse('ref'); setForcedType(id); setRead(null); setAutoKind(null); setAutoInfo(null);
+            addToast?.('info', `올린 이미지의 내용으로 ${DIAGRAM_TYPES[id].label.split(' (')[0]}를 만듭니다`, '이미지에 보이는 글자·항목을 읽어 채웁니다. 설명(1번)에 강조하거나 뺄 것을 적을 수 있습니다.'); return;
+          }
+          if (id === 'site') { // 올린 이미지가 배치도: 읽어서 그 위에 개념을 얹거나(읽기) 그대로 바탕에 깐다(그대로)
+            if (useEff !== 'asis') { setSubjectUse('read'); setSubjectKind('site'); setRead(null); setAutoKind(null); setAutoInfo(null); }
+            addToast?.('info', '올린 이미지로 배치 개념도를 만듭니다', useEff !== 'asis' ? '이미지의 배치(건물·도로·녹지)를 읽어 그 위에 개념을 얹습니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 개념을 얹습니다.'); return;
+          }
+          if (id === 'massing') { setSubjectUse('read'); setSubjectKind('form'); setRead(null); setAutoKind(null); setAutoInfo(null); addToast?.('info', '올린 이미지로 매스 과정도를 만듭니다', '건물 형태를 덩어리로 읽어 단계별 매스 과정도로 만듭니다.'); }
+        }} subjectKind={subjectKind} onPickImage={(id) => { if (subjectUse === 'ref') setSubjectUse('read'); setSubjectKind(id); setRead(null); setAutoKind(null); setAutoInfo(null); addToast?.('info', id === 'auto' ? '이미지 종류를 자동 판단으로 되돌렸습니다' : '이미지 읽기 방식을 직접 골랐습니다', id === 'auto' ? '이미지를 올리면 AI가 종류를 판단합니다.' : `${SUBJECT_KINDS[id]} 방식으로 읽습니다.`); }} />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {scopeNotice && (
@@ -1236,6 +1286,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
               <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, var(--line-strong))', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: 'var(--primary)', transition: 'width .6s' }} /></div>
               <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{editProg.stage} · {Math.floor(editProg.sec / 60)}분 {editProg.sec % 60}초 경과</span>
+              {editProg.resumable && <span style={slotNote} data-testid="edit-resume-note">새로고침해도 괜찮습니다. 작업은 서버에서 계속되고, 다이어그램 화면을 다시 열면 이어서 받습니다(최대 약 1시간).</span>}
             </div>
           )}
           {(((effKind === 'sketch' || effKind === 'axon') && readMode && paidVision.available) || (result?.spec?.layout === 'axon' && paidImg.providers.length > 0)) && (

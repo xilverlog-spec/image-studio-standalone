@@ -193,14 +193,14 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     if (whole && wbox) { // 전체 크기 조절 모드에서 그림을 끌면 내용 전체가 함께 움직인다. 끌지 않고 누르기만 하면 모드를 끝내고 그 요소를 고른다
       const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
       const hitEl = e.target.closest?.('[data-eid]');
-      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: hitEl ? hitEl.getAttribute('data-eid') : '' };
+      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: hitEl ? hitEl.getAttribute('data-eid') : '', fromBlank: !hitEl, wasWhole: true };
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
     }
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
     if (!el) { // 빈 곳(바탕 그림 위 포함)을 끌면 그림 전체가 함께 움직인다. 그냥 눌렀다 떼면 선택 해제
       setSelected(''); const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
-      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '' };
+      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '', fromBlank: true, wasWhole: false };
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
     }
     e.preventDefault();
@@ -219,7 +219,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     if (d.kind === 'wholemove') { // 전체 이동(Shift: 수평·수직 고정)
       const m = toCanvas(e.clientX, e.clientY); if (!m) return; let dx = m[0] - d.start[0]; let dy = m[1] - d.start[1];
       if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
-      onChange(sketchTranslateAll(d.orig, dx, dy)); tick((n) => n + 1); return;
+      if (!whole) setWhole(true); onChange(sketchTranslateAll(d.orig, dx, dy)); tick((n) => n + 1); return;
     }
     if (d.kind === 'whole') {
       const m = toCanvas(e.clientX, e.clientY); if (!m) return; const vx = d.grab[0] - d.piv[0]; const vy = d.grab[1] - d.piv[1];
@@ -257,7 +257,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     setGuides(gd);
     onChange(next); tick((n) => n + 1);
   };
-  const onUp = () => { window.removeEventListener('pointermove', onMove); const d0 = drag.current; if (d0 && d0.kind === 'wholemove' && !d0.moved) { setWhole(false); setSelected(d0.hitId || ''); } drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
+  const onUp = () => { window.removeEventListener('pointermove', onMove); const d0 = drag.current; if (d0 && d0.kind === 'wholemove' && !d0.moved) { if (d0.fromBlank) { setWhole(!d0.wasWhole); setSelected(''); } else { setWhole(false); setSelected(d0.hitId || ''); } } drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
@@ -361,7 +361,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
         <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
         </div>
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
-        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>빈 곳을 끌면 그림 전체가 움직입니다.</b> 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>(모서리를 끌면 크기, 빈 곳을 끌면 위치가 바뀝니다). 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
       </ZoomView>
       </div>

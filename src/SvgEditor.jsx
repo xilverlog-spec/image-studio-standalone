@@ -368,10 +368,10 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   };
   const onUp = (e) => {
     window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setScaleInfo(null); setTick((n) => n + 1);
-    if (d && d.kind === 'moveMulti' && d.fromBlank && !d.moved) { setMulti([]); setSel(d.bgId || ''); setNode(-1); return; } // 빈 곳을 그냥 눌렀다 뗌: 선택 해제(또는 배경 선택)
+    if (d && d.kind === 'moveMulti' && d.fromBlank && !d.moved) { setMulti([]); setSel(''); setNode(-1); return; } // 선택 상자 안의 빈 곳을 그냥 눌렀다 뗌: 선택 해제
     if (d && d.kind === 'marquee') {
       setMarq(null);
-      if (!d.moved) { if (!d.add) { setMulti([]); setSel(d.bgId); setNode(-1); } return; } // 끌지 않고 놓음: 배경(또는 빈 곳) 클릭
+      if (!d.moved) { if (!d.add) { if (multi.length > 1) { setMulti([]); setSel(''); setNode(-1); } else { selectAll(); } } return; } // 끌지 않고 놓음: 배경(또는 빈 곳)을 누르면 그림 전체가 선택돼 테두리와 모서리 손잡이가 나온다(이미 전체면 선택 해제)
       const x0 = Math.min(d.x0, e.clientX); const x1 = Math.max(d.x0, e.clientX); const y0 = Math.min(d.y0, e.clientY); const y1 = Math.max(d.y0, e.clientY); const ids = [];
       bodyRef.current?.querySelectorAll('[data-eid]:not([data-hit])').forEach((n) => { // 상자 안에 통째로 들어온 도형·글자·이미지(묶음·배경·숨긴 것은 제외)
         const id = n.getAttribute('data-eid'); const info = byId[id]; if (!info || info.kind === 'g' || isBg(id) || n.getAttribute('display') === 'none') return;
@@ -685,7 +685,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           )}
         </div>
         </ZoomView>
-        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>모두 고른 뒤 상자 안쪽을 끌면 그림 전체가 통째로 움직입니다</b>. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>, 모서리를 끌면 크기가, 상자 안쪽을 끌면 위치가 바뀝니다. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
       </div>
 
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sv-side">
@@ -759,6 +759,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
               {[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([t, dx, dy]) => <button key={t} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => nudgeAll(dx * 5, dy * 5)} data-testid={`sv-multi-nudge-${t}`}>{t} 5</button>)}
             </div>
+            {(() => { const bid = els.find((x) => x.kind === 'e' && isBg(x.id))?.id; const bn = bid ? elOf(bid) : null; if (!bn || typeof getComputedStyle !== 'function') return null; return (<div style={lab} data-testid="sv-bg-color">바탕 색<Colors value={hexOf(getComputedStyle(bn).fill)} onChange={(c) => patch(bid, { fill: c }, 'bgfill')} none={false} /></div>); })()}
             {textIds(multi).length > 0 && (
               <div style={{ ...lab, gap: 6 }} data-testid="sv-multi-textfmt">
                 <span>글자 정렬·자간(고른 글자 {textIds(multi).length}개)</span>

@@ -30,7 +30,7 @@ const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
-fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
+fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
@@ -1375,6 +1375,25 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect((out.match(/<marker id="m1__ff0000"/g) || []).length === 1, '같은 색은 복사본을 한 번만 만듦');
   expect(m.toIllustratorSvg(out) === out, '다시 불러도 그대로');
   expect(!/context-stroke/.test(m.toIllustratorSvg('<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="q"><path fill="context-stroke"/></marker></defs><path d="M0 0" marker-end="url(#q)"/></svg>')) && /marker-end="url\(#q__222222\)"/.test(m.toIllustratorSvg('<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="q"><path fill="context-stroke"/></marker></defs><path d="M0 0" marker-end="url(#q)"/></svg>')), '선 색을 못 찾으면 어두운 회색');
+}
+// 이미지 내용 읽기(개요표·층별 조닝도·프로그램 버블도·카드 보드)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`이미지 내용 읽기: ${label}`); };
+  expect(JSON.stringify(m.REF_TYPES) === JSON.stringify(['table', 'stack', 'program', 'cards']), 'REF_TYPES 는 네 종류');
+  const key = { table: '라벨–값을', stack: '층 수와 층별 용도', program: '공간(방·실)의 이름', cards: '이미지에 적힌 항목과 수치' };
+  for (const t of m.REF_TYPES) {
+    const pr = m.buildConceptPrompt(t, '', { ref: true });
+    expect(pr.includes('내용을 읽어 올 자료') && pr.includes(key[t]), `${t}: 이미지에서 내용을 읽는 지시가 들어감`);
+    expect(!pr.includes('바탕으로 쓸 이미지') && !pr.includes('참고 이미지와 같은 구성으로 만든다'), `${t}: 바탕 이미지·스타일 참고 문구가 섞이지 않음`);
+    expect(pr.includes('첨부 이미지의 내용을 읽어 만든다') && pr.includes('스키마'), `${t}: 설명이 비어도 이미지 내용으로 만들라고 안내, 스키마 유지`);
+    const pt = m.buildConceptPrompt(t, '면적표 위주로', { ref: true });
+    expect(pt.includes('요청: 면적표 위주로') && !pt.includes('첨부 이미지의 내용을 읽어 만든다'), `${t}: 설명이 있으면 그대로 요청에 들어감`);
+    const both = m.buildConceptPrompt(t, '시험', { ref: true, style: true });
+    expect(both.includes('[첫 번째 이미지 — 내용을 읽어 올 자료]') && both.includes('[두 번째 이미지 — 스타일 참고]') && both.includes('내용·위치는 첫 번째 이미지와 요청을 따르고'), `${t}: 읽을 자료 + 스타일 참고를 함께 쓰면 첫째/둘째로 나뉨`);
+    expect(!m.buildConceptPrompt(t, '시험', {}).includes('읽어 올 자료'), `${t}: 이미지가 없으면 읽기 지시가 없음`);
+  }
+  expect(m.buildConceptPrompt('site', '시험', { asis: true }).includes('바탕으로 쓸 이미지') && !m.buildConceptPrompt('site', '시험', { asis: true }).includes('읽어 올 자료'), '배치(그대로 바탕)는 그대로: 바탕 이미지 안내만');
+  expect(m.buildConceptPrompt('site', '시험', { style: true }).includes('[첨부 이미지 — 스타일 참고]'), '스타일 참고만 쓰면 기존 표기 그대로');
 }
 // 번호 마커(R3-2)
 {

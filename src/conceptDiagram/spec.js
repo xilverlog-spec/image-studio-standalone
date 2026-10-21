@@ -177,6 +177,16 @@ const STACK_RULES = `- floors 는 아래층부터 순서대로 적는다(지하�
 
 const IMAGE_RULE = `참고 이미지가 첨부되어 있다. 이미지를 먼저 분석해서 칸(패널/단계) 수, 각 칸이 보여주는 개념, 사용된 요소(흐름선·구역·아이콘 칩·매스 변화)와 전체 구성을 파악하고, 같은 구성과 흐름으로 만들되 내용은 아래 요청 문장을 우선 반영한다. 이미지 안의 글자는 그대로 베끼지 말고 요청에 맞게 새로 쓴다.`;
 
+// 소재 이미지를 '바탕'이 아니라 '내용을 읽어 올 자료'로 쓰는 종류(imgs.ref): 이미지에 보이는 글자·항목만 옮기고 지어내지 않는다
+export const REF_TYPES = ['table', 'stack', 'program', 'cards'];
+const REF_RULES = {
+  table: '이미지는 표(건축개요·면적표·일람표 등)를 찍거나 캡처한 것이다. 보이는 라벨–값을 위에서 아래 순서대로 rows 에 옮긴다. cols 는 보이는 열 수에 맞추되 최대 4(열이 더 많으면 핵심 4열만), 숫자 열이 많은 표(면적표 등)는 style 을 "stripe" 로 한다. 표 제목이 보이면 table.title 에 쓰고, 글자가 흐려 읽지 못한 칸은 비워 둔다.',
+  stack: '이미지는 단면도·입면도·층별 면적표·층 구성표 중 하나다. 층 수와 층별 용도(프로그램)를 읽어 floors 를 아래층부터 채운다(지하층은 B1 처럼 쓰고, 8층을 넘으면 비슷한 층을 묶는다). 층 안의 구획이 보이면 programs 로, 비어 있는 높은 공간(보이드)과 코어가 보이면 voids·cores 로 넣는다. 글자로 적힌 용도만 쓰고 적히지 않은 프로그램을 지어내지 않는다.',
+  program: '이미지는 평면도·공간 목록·면적표·기능 관계 스케치 중 하나다. 보이는 공간(방·실)의 이름을 nodes 로 옮기고, 면적이 적혀 있으면 면적에 비례해 size 를 정한다(없으면 중요도로). 성격이 같은 공간을 묶어 groups 로 나누고, 평면에서 서로 붙어 있거나 문·복도로 이어진 공간, 또는 선으로 이어진 공간은 links 로 연결한다. 공간이 25개를 넘으면 큰 공간·중요한 공간 위주로 하고, 이미지에 없는 공간은 지어내지 않는다.',
+  cards: '이미지는 계획 자료(문서·표·도면 설명)다. 이미지에 적힌 항목과 수치를 읽어 핵심 가치 띠와 카드로 나누어 요약한다. 카드 제목과 불릿은 이미지에 적힌 말을 줄여서 쓰고, 이미지에 없는 성능 수치나 주장을 지어내지 않는다.',
+};
+const refRule = (type) => `첨부 이미지는 만들 내용을 읽어 오는 자료이며 그림의 바탕으로 깔리지 않는다. ${REF_RULES[type] || '이미지에 보이는 글자·항목을 읽어 해당 스키마의 값으로 옮긴다.'} 이미지에 실제로 보이는 것만 쓰고, 아래 요청 문장이 있으면 그 지시(강조·제외·정리 방식)를 따른다.`;
+
 const ASIS_RULE = `첨부 이미지(조감도·배치도·항공사진 등)는 그림의 바탕으로 그대로 쓰인다. 프로그램이 모든 패널에 이 이미지를 깔고 그 위에 흐름선·구역·아이콘 칩을 얹는다.
 이미지를 보고 건물·도로·광장·녹지가 실제로 어느 쪽에 있는지 파악한 뒤, 9개 앵커(n=이미지 위쪽, s=아래쪽, e=오른쪽, w=왼쪽, center=가운데 …)를 그 위치에 맞춰 고른다. 이미지에 실제로 없는 곳에 표시를 두지 않는다. 한 패널에는 개념 하나만 얹고, 패널마다 다른 개념을 보여준다. siteShape 는 "rect" 로 한다.`;
 
@@ -221,10 +231,13 @@ const RULES = { site: SITE_RULES, massing: MASSING_RULES, program: PROGRAM_RULES
 export function buildConceptPrompt(type, userText, imgs = {}, extra = {}) {
   const head = `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 요청을 보고 다이어그램의 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).
 좌표를 픽셀로 계산하지 말고 아래 스키마의 값만 채운다. 실제 그리기는 프로그램이 한다.`;
-  const hasAny = !!(imgs.asis || imgs.style);
+  const hasAny = !!(imgs.asis || imgs.ref || imgs.style);
+  const lead = imgs.asis || imgs.ref; // 첫 번째 이미지를 쓰는 경우(바탕 또는 읽어 올 자료)
+  const emptyAsk = imgs.ref ? '(텍스트 없음 — 첨부 이미지의 내용을 읽어 만든다)' : '(텍스트 없음 — 참고 이미지와 같은 구성으로 만든다)';
   const image = !hasAny ? '' : `\n\n${[
     imgs.asis ? `[첫 번째 이미지 — 바탕으로 쓸 이미지]\n${ASIS_RULE}` : '',
-    imgs.style ? `[${imgs.asis ? '두 번째' : '첨부'} 이미지 — 스타일 참고]\n${IMAGE_RULE}${imgs.asis ? ' 단, 내용·위치는 첫 번째 이미지와 요청을 따르고 이 이미지는 칸 구성·요소·표현 방식만 참고한다.' : ''}` : '',
+    imgs.ref && !imgs.asis ? `[첫 번째 이미지 — 내용을 읽어 올 자료]\n${refRule(type)}` : '',
+    imgs.style ? `[${lead ? '두 번째' : '첨부'} 이미지 — 스타일 참고]\n${IMAGE_RULE}${lead ? ' 단, 내용·위치는 첫 번째 이미지와 요청을 따르고 이 이미지는 칸 구성·요소·표현 방식만 참고한다.' : ''}` : '',
   ].filter(Boolean).join('\n\n')}`;
   if (type === 'auto') {
     return `${head}
@@ -274,7 +287,7 @@ ${TABLE_DOC_SCHEMA}
 [table 규칙]
 ${TABLE_DOC_RULES}${image}
 
-요청: ${userText || '(텍스트 없음 — 참고 이미지와 같은 구성으로 만든다)'}`;
+요청: ${userText || emptyAsk}`;
   }
   return `${head}
 
@@ -284,7 +297,7 @@ ${SCHEMAS[type] || SITE_SCHEMA}
 규칙:
 ${type === 'cards' ? cardsRules(extra.preset) : (RULES[type] || SITE_RULES)}${image}
 
-요청: ${userText || '(텍스트 없음 — 참고 이미지와 같은 구성으로 만든다)'}`;
+요청: ${userText || emptyAsk}`;
 }
 export function parseJsonLoose(text) {
   const t = String(text || '').replace(/```json|```/gi, '').trim();
