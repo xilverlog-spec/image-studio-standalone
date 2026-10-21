@@ -562,7 +562,8 @@ export function normalizeSketch(raw) {
   const tbs = s.textBlock && typeof s.textBlock === 'object' ? s.textBlock : null;
   const textBlock = tbs ? { title: String(tbs.title ?? ''), subs: (Array.isArray(tbs.subs) ? tbs.subs : []).slice(0, 4).map(String), accent: isHex(tbs.accent) ? tbs.accent : '#F0B000' } : null;
   const f = Array.isArray(s.frame) && s.frame.length === 4 ? s.frame.map((v) => num(v, 0)) : null;
-  const gk = Number(s.gscale?.k); const gscale = Number.isFinite(gk) && Math.abs(gk - 1) > 1e-4 && Array.isArray(s.gscale?.t) && s.gscale.t.length === 2 ? { k: num(gk, 1, GSCALE_MIN, GSCALE_MAX), t: [num(s.gscale.t[0], 0, -1e5, 1e5), num(s.gscale.t[1], 0, -1e5, 1e5)] } : null;
+  const gk = Number(s.gscale?.k); const gt = Array.isArray(s.gscale?.t) && s.gscale.t.length === 2 ? [num(s.gscale.t[0], 0, -1e5, 1e5), num(s.gscale.t[1], 0, -1e5, 1e5)] : null;
+  const gscale = Number.isFinite(gk) && gt && (Math.abs(gk - 1) > 1e-4 || Math.abs(gt[0]) > 0.01 || Math.abs(gt[1]) > 0.01) ? { k: num(gk, 1, GSCALE_MIN, GSCALE_MAX), t: gt } : null; // 배율이 1 이어도 이동(t)이 있으면 남긴다
   const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...lines.flatMap((l) => l.pts), ...(base ? [[base.rect[0], base.rect[1]], [base.rect[2], base.rect[3]]] : [])];
   const frame = f && f[2] > f[0] && f[3] > f[1] ? f : (all.length ? bbox(all) : [0, 0, 100, 100]);
   if (frame[2] - frame[0] < 1) frame[2] = frame[0] + 1;
@@ -766,7 +767,6 @@ export function renderSketch(raw, opts = {}) {
   }
   if (pres && spec.title) o.push('<rect x="0" y="36" width="12" height="22" fill="#1E88C8"/>');
 
-  const gStart = o.length; const zmarks = []; const zput = spec.gscale ? (x) => zmarks.push(x) : (x) => o.push(x); // 전체 크기 조절 때 내용 묶음 안에 들어갈 것들
   if (spec.base) { // 입체 바탕: 평면에서 뽑은 벽체. 클릭·끌기에 반응하지 않는다
     const bb = spec.base; const a = P([bb.rect[0], bb.rect[1]]); const z = P([bb.rect[2], bb.rect[3]]); const sx = (z[0] - a[0]) / bb.vb[2]; const sy = (z[1] - a[1]) / bb.vb[3];
     const tf = `translate(${(a[0] - bb.vb[0] * sx).toFixed(2)} ${(a[1] - bb.vb[1] * sy).toFixed(2)}) scale(${sx.toFixed(5)} ${sy.toFixed(5)})`;
@@ -937,7 +937,6 @@ export function renderSketch(raw, opts = {}) {
   });
   o.push(...sel);
   o.push(...handles);
-  const gEnd = o.length;
   // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다(도면용). 개념도는 도형 안에 이름을 쓰므로 칼럼이 없다
   let ry = 170; let n = 0;
   const side = !concept && spec.layout !== 'image'; // 오른쪽 설명 칸(번호·화살표·개구부·코어 범례): 그림 한 장이 영역을 채우는 'image' 배치에서는 그림 위에 겹쳐 그려지므로 쓰지 않는다
@@ -955,7 +954,7 @@ export function renderSketch(raw, opts = {}) {
     n += 1; const dark = b.kind === 'core'; const [x, y, w, h] = R(b);
     let [mx, my] = dark ? [x + w / 2, y + h / 2] : [x + 20, y + 20]; if (b.rot) [mx, my] = rotPt([mx, my], b.rot, [x + w / 2, y + h / 2]);
     const mark = (cx, cy) => `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="12" fill="${dark ? '#fff' : C.text}" stroke="${dark ? C.core : '#fff'}" stroke-width="2"/><text x="${cx.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="13" font-weight="800" fill="${dark ? C.core : '#fff'}">${n}</text>`;
-    zput(mark(mx, my)); o.push(mark(860, ry));
+    o.push(mark(mx, my)); o.push(mark(860, ry));
     o.push(`<text x="884" y="${ry + 1}" font-family="${FONT}" font-size="15" font-weight="800" fill="${C.text}">${esc(b.name)}</text>`);
     if (b.desc) o.push(`<text x="884" y="${ry + 21}" font-family="${FONT}" font-size="12.5" fill="${C.sub}">${esc(b.desc)}</text>`);
     ry += 58;
@@ -983,11 +982,17 @@ export function renderSketch(raw, opts = {}) {
     const ly = ty + 6; o.push(`<line x1="805" y1="${ly}" x2="1165" y2="${ly}" stroke="${tb.accent}" stroke-width="2.6"/><polygon points="${cxm - 14},${ly} ${cxm + 14},${ly} ${cxm},${ly + 13}" fill="${tb.accent}"/>`);
     let sy2 = ly + 58; tb.subs.forEach((t) => { const sfs = Math.max(18, Math.min(26, 372 / wlen(t))); o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="${sfs.toFixed(1)}" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${(spec.gscale ? [...o.slice(0, gStart), `<g data-gscale="1" transform="translate(${spec.gscale.t[0].toFixed(2)} ${spec.gscale.t[1].toFixed(2)}) scale(${spec.gscale.k.toFixed(4)})">`, ...o.slice(gStart, gEnd), ...zmarks, '</g>', ...o.slice(gEnd)] : o).join('')}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${(spec.gscale ? [`<g data-gscale="1" transform="translate(${spec.gscale.t[0].toFixed(2)} ${spec.gscale.t[1].toFixed(2)}) scale(${spec.gscale.k.toFixed(4)})">`, ...o, '</g>'] : o).join('')}</svg>`;
   return { svg, width: W, height: H };
 }
 
 // ── 전체 크기 조절 도우미 ──────────────────────────────────
+// 내용 전체를 (dx, dy) 만큼 옮긴다(보이는 그림 좌표 1200x760 기준). 배율은 그대로, 이동만 합친다
+export function sketchTranslateAll(spec, dx, dy) {
+  const g = sketchGScale(spec); const T = [Math.round((g.t[0] + dx) * 100) / 100, Math.round((g.t[1] + dy) * 100) / 100]; const { gscale, ...rest } = spec; // eslint-disable-line no-unused-vars
+  if (Math.abs(g.k - 1) < 1e-4 && Math.abs(T[0]) < 0.01 && Math.abs(T[1]) < 0.01) return rest;
+  return { ...rest, gscale: { k: g.k, t: T } };
+}
 export const sketchGScale = (spec) => (spec && spec.gscale ? spec.gscale : { k: 1, t: [0, 0] });
 // 그림 좌표(1200x760) 점 ← 전체 크기 조절을 거친 화면의 점 (편집할 때 마우스 위치를 되돌린다) / 그 반대
 export function sketchUnzoomPt(spec, p) { const g = sketchGScale(spec); return [(p[0] - g.t[0]) / g.k, (p[1] - g.t[1]) / g.k]; }

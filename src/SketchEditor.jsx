@@ -55,7 +55,7 @@ import TableEditor from './TableEditor';
 import { CONTEXT_FX } from './conceptDiagram/imgfx';
 import { NORTH_STYLE_LABEL, SCALE_UNITS } from './conceptDiagram/symbols';
 import { ICON_LABEL } from './conceptDiagram/icons';
-import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip, sketchSetDimStart, sketchGScale, sketchUnzoomPt, sketchComposeScale } from './conceptDiagram/sketch';
+import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate, sketchRenumber, sketchSetTip, sketchSetDimStart, sketchGScale, sketchUnzoomPt, sketchComposeScale, sketchTranslateAll } from './conceptDiagram/sketch';
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
@@ -74,6 +74,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const [, tick] = useState(0);
   const norm = useMemo(() => normalizeSketch(spec), [spec]);
   const specRef = useRef(norm); specRef.current = norm;
+  // 도면용(흑백) 스타일은 없앴다 — 예전에 도면용으로 바꿔 둔 그림은 개념도로 되돌린다(AI 이미지 편집 결과의 이미지 배치는 그대로)
+  useEffect(() => { if (norm.style === 'line' && norm.layout !== 'image') onChange({ ...norm, style: 'concept' }); }, [norm.style, norm.layout]); // eslint-disable-line react-hooks/exhaustive-deps
   const canvasRef = useRef(null);
   const drag = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -95,7 +97,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const redo = () => { if (!future.current.length) return; const nxt = future.current[future.current.length - 1]; future.current = future.current.slice(0, -1); past.current = [...past.current, spec]; lastKey.current = ''; onChange(nxt); tick((n) => n + 1); };
 
   const svg = useMemo(() => {
-    try { return renderSketch(norm, { interactive: true, selected }).svg.replace(/^<svg([^>]*?) width="\d+" height="\d+"/, '<svg$1 width="100%"'); } catch { return ''; }
+    try { return renderSketch(norm, { interactive: true, selected }).svg.replace(/^<svg([^>]*?) width="\d+" height="\d+"/, '<svg$1 width="100%" style="display:block"'); } catch { return ''; }
   }, [norm, selected]);
 
   const html = useMemo(() => ({ __html: svg }), [svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다
@@ -152,13 +154,13 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     const el = canvasRef.current?.querySelector('svg'); if (!el) return null; const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null;
     return [((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height];
   };
-  // 전체 크기 조절 모드: 그림 속 모든 요소(data-eid)의 보이는 상자를 합쳐 바깥 상자를 구한다(그림이 바뀔 때마다 다시)
+  // 전체 크기 조절 모드: 바탕·정의를 뺀 그림 전체(제목·범례 글자까지)의 보이는 상자를 합쳐 바깥 상자를 구한다(그림이 바뀔 때마다 다시)
   useLayoutEffect(() => {
     if (!whole) { setWbox(null); return; }
     const root = canvasRef.current; const el = root?.querySelector('svg'); if (!el) { setWbox(null); return; }
     const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) { setWbox(null); return; }
     const kx = SKETCH_SIZE[0] / r.width; const ky = SKETCH_SIZE[1] / r.height; let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-    root.querySelectorAll('[data-eid]').forEach((n) => { const q = n.getBoundingClientRect(); if (q.width === 0 && q.height === 0) return; x0 = Math.min(x0, (q.left - r.left) * kx); y0 = Math.min(y0, (q.top - r.top) * ky); x1 = Math.max(x1, (q.right - r.left) * kx); y1 = Math.max(y1, (q.bottom - r.top) * ky); });
+    [...el.children].filter((n) => n.tagName.toLowerCase() !== 'defs' && !n.hasAttribute('data-bg')).forEach((n) => { const q = n.getBoundingClientRect(); if (q.width === 0 && q.height === 0) return; x0 = Math.min(x0, (q.left - r.left) * kx); y0 = Math.min(y0, (q.top - r.top) * ky); x1 = Math.max(x1, (q.right - r.left) * kx); y1 = Math.max(y1, (q.bottom - r.top) * ky); });
     setWbox(x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null);
   }, [whole, svg]); // eslint-disable-line react-hooks/exhaustive-deps
   const startWhole = (e, corner) => { // 모서리 손잡이: 반대쪽 모서리는 고정, 대각선 방향으로 끈 만큼 같은 비율로 키우고 줄인다(선 굵기·글자 포함)
@@ -188,10 +190,19 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       regionDrag.current = { p0, p1: null }; setRegionDraft([p0[0], p0[1], p0[0], p0[1]]);
       window.addEventListener('pointermove', onRegionMove); window.addEventListener('pointerup', onRegionUp, { once: true }); return;
     }
-    if (whole) setWhole(false); // 그림을 직접 누르면 전체 크기 조절 모드는 끝
+    if (whole && wbox) { // 전체 크기 조절 모드에서 그림을 끌면 내용 전체가 함께 움직인다. 끌지 않고 누르기만 하면 모드를 끝내고 그 요소를 고른다
+      const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
+      const hitEl = e.target.closest?.('[data-eid]');
+      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: hitEl ? hitEl.getAttribute('data-eid') : '' };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+    }
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
-    if (!el) { setSelected(''); return; }
+    if (!el) { // 빈 곳(바탕 그림 위 포함)을 끌면 그림 전체가 함께 움직인다. 그냥 눌렀다 떼면 선택 해제
+      setSelected(''); const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
+      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '' };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+    }
     e.preventDefault();
     const id = el.getAttribute('data-eid'); setSelected(id);
     const start = toDiag(e.clientX, e.clientY); if (!start) return;
@@ -204,6 +215,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     if (!d.moved) {
       if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; // 살짝 눌렀다 떼면 선택만
       d.moved = true; past.current = [...past.current.slice(-49), d.orig]; future.current = []; lastKey.current = ''; setDragging(true);
+    }
+    if (d.kind === 'wholemove') { // 전체 이동(Shift: 수평·수직 고정)
+      const m = toCanvas(e.clientX, e.clientY); if (!m) return; let dx = m[0] - d.start[0]; let dy = m[1] - d.start[1];
+      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+      onChange(sketchTranslateAll(d.orig, dx, dy)); tick((n) => n + 1); return;
     }
     if (d.kind === 'whole') {
       const m = toCanvas(e.clientX, e.clientY); if (!m) return; const vx = d.grab[0] - d.piv[0]; const vy = d.grab[1] - d.piv[1];
@@ -241,7 +257,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     setGuides(gd);
     onChange(next); tick((n) => n + 1);
   };
-  const onUp = () => { window.removeEventListener('pointermove', onMove); drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
+  const onUp = () => { window.removeEventListener('pointermove', onMove); const d0 = drag.current; if (d0 && d0.kind === 'wholemove' && !d0.moved) { setWhole(false); setSelected(d0.hitId || ''); } drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
@@ -320,6 +336,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       <div style={{ flex: '1 1 480px', minWidth: 360 }}>
       <ZoomView testid="sk-zoom">
       <div ref={hostRef} style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
+        <div style={{ position: 'relative' }}>{/* 안내선 층과 그림이 정확히 같은 크기가 되도록(아래 힌트 줄이 층을 늘이지 않게) 한 틀로 묶는다 */}
         <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
           <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
           {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
@@ -342,8 +359,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           </g>)}
         </svg>
         <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+        </div>
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
-        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint">글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>빈 곳을 끌면 그림 전체가 움직입니다.</b> 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
       </ZoomView>
       </div>
@@ -412,11 +430,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <div style={sec}>
             <span style={title}>전체</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[['concept', '개념도(주황)'], ['line', '도면용(흑백)']].map(([id, label]) => <button key={id} style={{ ...smallBtn(norm.style === id), flex: 1 }} onClick={() => setGlobal({ style: id })} data-testid={`style-${id}`}>{label}</button>)}
-            </div>
-            <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showLegend} onChange={(e) => setGlobal({ showLegend: e.target.checked })} />하단 범례 표시(개념도)</label>
-            <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시(개념도)</label>
+            <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showLegend} onChange={(e) => setGlobal({ showLegend: e.target.checked })} />하단 범례 표시</label>
+            <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시</label>
             {norm.textBlock && (
               <div style={{ ...sec, gap: 6, background: 'rgba(240,176,0,0.08)' }} data-testid="textblock-panel">
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>오른쪽 문구 블록</span>

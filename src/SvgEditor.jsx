@@ -166,25 +166,33 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   }, [view.svg, fields]);
 
   // ── 누르기·끌기 ──
+  // 여러 개를 고른 상태에서 그 선택 상자 안쪽을 누르면 전체 이동의 시작(빈 곳을 눌러도 선택이 풀리지 않고 통째로 끌린다)
+  const insideBox = (e) => {
+    if (!(multi.length > 1) || !ov?.box || !hostRef.current) return false;
+    const hr = hostRef.current.getBoundingClientRect(); const x = e.clientX - hr.left; const y = e.clientY - hr.top; const [bx, by, bw, bh] = ov.box;
+    return x >= bx - 3 && x <= bx + bw + 3 && y >= by - 3 && y <= by + bh + 3;
+  };
+  const startMoveMulti = (e, fromBlank, bgId = '') => {
+    const items = multi.map((mid) => { const el2 = elOf(mid); const inv2 = invOf(el2 && el2.parentNode && el2.parentNode.getScreenCTM ? el2.parentNode.getScreenCTM() : null); const ad = (Eref.current.adds || []).find((a) => a.id === mid); return inv2 && !isBg(mid) ? { id: mid, inv: inv2, start: through(inv2, e.clientX, e.clientY), t0: editTranslate(Eref.current, mid), add0: ad ? { ...ad } : null } : null; }).filter(Boolean);
+    if (!items.length) return;
+    drag.current = { kind: 'moveMulti', items, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, snap: buildSnap(items.map((i) => i.id)), fromBlank, bgId };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true });
+  };
   const onDown = (e) => {
     if (e.button !== 0 || disabled || ed) return;
     const h = e.target.closest?.('[data-h]');
     if (h) { startHandle(e, h.getAttribute('data-h')); return; }
     const t = e.target.closest?.('[data-eid]');
-    if (!t) { startMarquee(e, ''); return; }
+    if (!t) { if (insideBox(e) && !(e.shiftKey || e.ctrlKey || e.metaKey)) { e.preventDefault(); startMoveMulti(e, true, ''); return; } startMarquee(e, ''); return; }
     e.preventDefault();
     let id = t.getAttribute('data-eid');
     if (e.altKey && byId[id]?.parent) id = byId[id].parent; // Alt+클릭: 속한 묶음을 고른다
-    if (isBg(id)) { startMarquee(e, id); return; }  // 배경을 누르면: 그냥 놓으면 배경 선택, 끌면 상자로 여러 개 고르기
+    if (isBg(id)) { if (insideBox(e) && !(e.shiftKey || e.ctrlKey || e.metaKey)) { startMoveMulti(e, true, id); return; } startMarquee(e, id); return; }  // 배경을 누르면: 그냥 놓으면 배경 선택, 끌면 상자로 여러 개 고르기(여러 개를 고른 상자 안쪽이면 전체 이동)
     if (e.shiftKey || e.ctrlKey || e.metaKey) { // Shift·Ctrl+클릭: 선택에 더하거나 뺀다
       const cur = multi.length > 1 ? multi : sel ? [sel] : []; const nx = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
       setMulti(nx.length > 1 ? nx : []); setSel(nx[nx.length - 1] || ''); setNode(-1); return;
     }
-    if (multi.length > 1 && multi.includes(id)) { // 고른 것 중 하나를 잡으면 모두 함께 옮긴다
-      const items = multi.map((mid) => { const el2 = elOf(mid); const inv2 = invOf(el2 && el2.parentNode && el2.parentNode.getScreenCTM ? el2.parentNode.getScreenCTM() : null); const ad = (Eref.current.adds || []).find((a) => a.id === mid); return inv2 && !isBg(mid) ? { id: mid, inv: inv2, start: through(inv2, e.clientX, e.clientY), t0: editTranslate(Eref.current, mid), add0: ad ? { ...ad } : null } : null; }).filter(Boolean);
-      drag.current = { kind: 'moveMulti', items, cx: e.clientX, cy: e.clientY, moved: false, base: Eref.current, snap: buildSnap(items.map((i) => i.id)) };
-      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
-    }
+    if (multi.length > 1 && (multi.includes(id) || insideBox(e))) { startMoveMulti(e, false); return; } // 고른 것 중 하나(또는 선택 상자 안쪽)를 잡으면 모두 함께 옮긴다
     setMulti([]); setSel(id); setNode(-1);
     if (isBg(id)) return;
     const el = elOf(id); if (!el) return;
@@ -360,6 +368,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   };
   const onUp = (e) => {
     window.removeEventListener('pointermove', onMove); const d = drag.current; drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setScaleInfo(null); setTick((n) => n + 1);
+    if (d && d.kind === 'moveMulti' && d.fromBlank && !d.moved) { setMulti([]); setSel(d.bgId || ''); setNode(-1); return; } // 빈 곳을 그냥 눌렀다 뗌: 선택 해제(또는 배경 선택)
     if (d && d.kind === 'marquee') {
       setMarq(null);
       if (!d.moved) { if (!d.add) { setMulti([]); setSel(d.bgId); setNode(-1); } return; } // 끌지 않고 놓음: 배경(또는 빈 곳) 클릭
@@ -676,7 +685,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
           )}
         </div>
         </ZoomView>
-        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두). 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>모두 고른 뒤 상자 안쪽을 끌면 그림 전체가 통째로 움직입니다</b>. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
       </div>
 
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sv-side">

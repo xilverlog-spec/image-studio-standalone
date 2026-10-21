@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EmptyState } from './Icon';
+import { toIllustratorSvg, externalImageRefs } from './conceptDiagram/svgexport';
 import { DIAGRAM_TYPES, EXAMPLE_SPECS, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
@@ -957,7 +958,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
 
   // 저장할 결과: 페이지 모드면 정한 크기(mm)의 페이지, 아니면 그림 그대로
   const outRes = pageOn ? pageModel?.out : rendered;
-  const saveSvg = () => outRes?.svg && saveBlob(new Blob([outRes.svg], { type: 'image/svg+xml' }), `diagram_${stamp()}.svg`);
+  const saveSvg = () => { if (!outRes?.svg) return; const ext = externalImageRefs(outRes.svg); if (ext.length) addToast?.('info', '바깥 파일을 가리키는 이미지가 있습니다', `${ext.length}개 이미지는 파일 안에 들어 있지 않습니다. 이미지를 다시 넣어 주세요.`); saveBlob(new Blob([toIllustratorSvg(outRes.svg)], { type: 'image/svg+xml' }), `diagram_${stamp()}.svg`); }; // 일러스트레이터가 이미지를 '연결된 파일을 찾을 수 없음'으로 읽지 않게 xlink:href 로 저장
   const savePng = () => {
     if (!outRes?.svg) return;
     const url = URL.createObjectURL(new Blob([outRes.svg], { type: 'image/svg+xml' }));

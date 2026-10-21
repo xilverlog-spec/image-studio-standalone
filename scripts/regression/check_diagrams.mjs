@@ -19,6 +19,7 @@ const scopeJs = path.resolve(here, '../../src/conceptDiagram/scope.js');
 const rotateJs = path.resolve(here, '../../src/conceptDiagram/rotate.js');
 const markerJs = path.resolve(here, '../../src/conceptDiagram/marker.js');
 const calloutJs = path.resolve(here, '../../src/conceptDiagram/callout.js');
+const svgexportJs = path.resolve(here, '../../src/conceptDiagram/svgexport.js');
 const dimJs = path.resolve(here, '../../src/conceptDiagram/dim.js');
 const iconsJs = path.resolve(here, '../../src/conceptDiagram/icons.js');
 const tableJs = path.resolve(here, '../../src/conceptDiagram/table.js');
@@ -64,6 +65,7 @@ export { scaleLineSpacing, editLineSpacing, LH_MIN, LH_MAX } from ${fwd(svgeditJ
 export { HEAD_ALIGNS, HEAD_LS_MIN, HEAD_LS_MAX } from ${fwd(pageJs)};
 export { dimLayout, dimBox, dimSvg, DIM_COLOR, DIM_DEFAULT_TEXT } from ${fwd(dimJs)};
 export { editAddDim } from ${fwd(svgeditJs)};
+export { toIllustratorSvg, externalImageRefs } from ${fwd(svgexportJs)};
 export { sketchSetDimStart } from ${fwd(sketch)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
@@ -71,7 +73,7 @@ export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
-export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
+export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, sketchTranslateAll, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
 export { hueOf, bandOf, mergeRegionWinds, featherMap, blendMasks } from ${fwd(regionJs)};
 export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD, editAddImage, editUpdateAdd, editRemoveAdd, SHAPE_FONT, shapeSvg, appendShapes, newShape, editAddShape, editUpdateShape, editRemoveShape, rawShift, rawSetText } from ${fwd(svgeditJs)};`);
@@ -1191,17 +1193,17 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(nearPt(m.sketchZoomPt(s1, [300, 400]), [200, 300]) && nearPt(m.sketchUnzoomPt(s1, [200, 300]), [300, 400]), '앞뒤 변환이 서로 되돌림');
   const o1 = m.renderSketch(s1).svg;
   expect(/<g data-gscale="1" transform="translate\(50\.00 100\.00\) scale\(0\.5000\)">/.test(o1) && (o1.match(/<\/g>/g) || []).length >= 1, '그릴 때 내용 묶음에 translate·scale 이 붙음');
-  const iTitle = o1.indexOf('>제목<'); const iG = o1.indexOf('data-gscale'); expect(iTitle >= 0 && iTitle < iG, '제목은 묶음 바깥(그대로)');
+  const iTitle = o1.indexOf('>제목<'); const iG = o1.indexOf('data-gscale'); expect(iTitle >= 0 && iTitle > iG, '제목도 묶음 안(그림 전체가 함께 움직이고 커지고 줄어듦)'); expect(o1.indexOf('<rect width="1200"') < iG && o1.indexOf('<rect width="1200"') >= 0, '바탕 사각형만 묶음 바깥');
   expect(o1.indexOf('>글자<') > iG && o1.indexOf('stroke-width="3"') > iG, '메모 글자와 선은 묶음 안(같이 줄어듦)');
   { const back = m.sketchComposeScale(s1, 2, about); expect(!('gscale' in back), '같은 기준점으로 되돌리면 크기 변환이 사라짐'); }
   { const s3 = m.sketchComposeScale(m.sketchComposeScale(sp, 2, [0, 0]), 1.5, [100, 50]); const g = s3.gscale; expect(near(g.k, 3) && nearPt(g.t, [1.5 * 0 + 100 * (1 - 1.5), 50 * (1 - 1.5)]), '여러 번: 배율은 곱, 이동은 합성'); }
   { const big = m.sketchComposeScale(sp, 1000, [0, 0]); const tiny = m.sketchComposeScale(sp, 0, [0, 0]); expect(big.gscale.k === m.GSCALE_MAX && tiny.gscale.k === m.GSCALE_MIN, '배율은 0.05~20 배로 제한'); }
   { const big = m.sketchComposeScale(m.sketchComposeScale(sp, 10, [0, 0]), 10, [0, 0]); expect(big.gscale.k === m.GSCALE_MAX, '합친 배율도 20 배를 넘지 않음'); }
-  { const n = m.normalizeSketch({ blocks: [], gscale: { k: 'abc', t: [1, 2] } }); const n2 = m.normalizeSketch({ blocks: [], gscale: { k: 1, t: [1, 2] } }); const n3 = m.normalizeSketch({ blocks: [], gscale: { k: 9999, t: [1, 2] } }); const n4 = m.normalizeSketch({ blocks: [], gscale: { k: 2, t: [1] } });
+  { const n = m.normalizeSketch({ blocks: [], gscale: { k: 'abc', t: [1, 2] } }); const n2 = m.normalizeSketch({ blocks: [], gscale: { k: 1, t: [0, 0] } }); const n3 = m.normalizeSketch({ blocks: [], gscale: { k: 9999, t: [1, 2] } }); const n4 = m.normalizeSketch({ blocks: [], gscale: { k: 2, t: [1] } });
     expect(!n.gscale && !n2.gscale && n3.gscale.k === m.GSCALE_MAX && !n4.gscale, '잘못된 값(숫자 아님·배율 1·t 모자람)은 버리고 큰 값은 제한'); }
   { const edited = m.sketchMoveBy(s1, 'b1', 5, 0); expect(edited.gscale && edited.gscale.k === 0.5, '요소를 옮겨도 크기 변환은 그대로'); const nn = m.normalizeSketch(JSON.parse(JSON.stringify(s1))); expect(nn.gscale.k === 0.5, '저장했다 불러와도 유지'); }
   { const sel = m.renderSketch(s1, { interactive: true, selected: 'b1' }).svg; const iG2 = sel.indexOf('data-gscale'); const iHandle = sel.indexOf('data-handle'); expect(iHandle > iG2 && iG2 > 0, '선택 상자·손잡이도 같은 묶음 안(같이 줄어듦)'); }
-  { const side = m.normalizeSketch({ style: 'line', blocks: [{ id: 'b1', rect: [10, 10, 60, 50], name: '판' }] }); const z = m.sketchComposeScale(side, 0.5, [0, 0]); const o = m.renderSketch(z).svg; const iG3 = o.indexOf('data-gscale'); const iEnd = (() => { let d = 0; const re = /<g[\s>]|<\/g>/g; re.lastIndex = o.lastIndexOf('<g', iG3); let mm; while ((mm = re.exec(o))) { d += mm[0].startsWith('</') ? -1 : 1; if (d === 0) return mm.index; } return -1; })(); const marks = [...o.matchAll(/<circle cx="[\d.]+" cy="[\d.]+" r="12"/g)].map((q) => q.index); expect(marks.length >= 2 && marks.some((x) => x > iG3 && x < iEnd) && marks.some((x) => x > iEnd), '도면용: 도형 위 번호 표식은 묶음 안, 오른쪽 설명 칸의 표식은 묶음 밖'); }
+  { const side = m.normalizeSketch({ style: 'line', blocks: [{ id: 'b1', rect: [10, 10, 60, 50], name: '판' }] }); const z = m.sketchComposeScale(side, 0.5, [0, 0]); const o = m.renderSketch(z).svg; const iG3 = o.indexOf('data-gscale'); const marks = [...o.matchAll(/<circle cx="[\d.]+" cy="[\d.]+" r="12"/g)].map((q) => q.index); expect(marks.length >= 2 && marks.every((x) => x > iG3), '도면용: 도형 위 번호 표식과 오른쪽 설명 칸의 표식도 모두 묶음 안'); const iLeg = o.indexOf('>판<'); expect(iLeg > iG3, '도면용: 설명 칸 글자도 묶음 안'); }
   { const o = m.renderSketch(s1).svg; expect(!/NaN|undefined/.test(o), '그림에 NaN 이 없음'); }
 }
 // 글자 정렬·자간·행간(R11): 구조형 편집 — 정렬·자간은 속성, 행간은 여러 줄 글자 안쪽 줄 간격 배수
@@ -1327,6 +1329,52 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(m.sketchCanRotate(SA.spec, SA.id) === false, '치수선은 돌리지 않음');
   { const bx = m.sketchBox(SA.spec, SA.id); expect(bx[0] === Math.min(dm.x, dm.tx) && bx[2] === Math.max(dm.x, dm.tx), '선택 상자(스냅 기준)는 두 끝점을 감쌈'); }
   { const T = m.sketchTextTargets ? m.sketchTextTargets(SA.spec) : null; expect(!T || T.some((q) => q.value === '10m'), '더블클릭으로 고칠 글자 목록에 치수 글자가 들어 있음'); }
+}
+// 전체 이동(손스케치): 내용 전체를 transform 의 이동(t)으로 옮긴다
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`전체 이동(손스케치): ${label}`); };
+  const near = (a, b, e = 0.02) => Math.abs(a - b) <= e;
+  const sp = m.normalizeSketch({ style: 'concept', blocks: [{ id: 'b1', rect: [10, 10, 60, 50] }] });
+  const a = m.sketchTranslateAll(sp, 30, -20);
+  expect(a.gscale && a.gscale.k === 1 && near(a.gscale.t[0], 30) && near(a.gscale.t[1], -20), '배율 1 에서 이동만: k=1, t=(30,-20)');
+  expect(m.normalizeSketch(JSON.parse(JSON.stringify(a))).gscale?.t[0] === 30, '이동만 있어도 저장했다 불러오면 유지');
+  expect(/transform="translate\(30\.00 -20\.00\) scale\(1\.0000\)"/.test(m.renderSketch(a).svg), '그릴 때 translate 만 들어감');
+  const b = m.sketchTranslateAll(a, 5, 5); expect(near(b.gscale.t[0], 35) && near(b.gscale.t[1], -15), '이동은 누적');
+  expect(!('gscale' in m.sketchTranslateAll(a, -30, 20)), '제자리로 되돌리면 변환이 사라짐');
+  const z = m.sketchComposeScale(sp, 0.5, [100, 200]); const zt = m.sketchTranslateAll(z, 10, 10); expect(near(zt.gscale.k, 0.5) && near(zt.gscale.t[0], z.gscale.t[0] + 10), '크기를 바꾼 뒤에도 배율은 그대로 이동만 합쳐짐');
+  const c = m.sketchComposeScale(a, 2, [0, 0]); expect(near(c.gscale.k, 2) && near(c.gscale.t[0], 60), '이동한 뒤 크기를 바꿔도 합성이 맞음');
+}
+// SVG 저장(일러스트레이터): href → xlink:href
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`SVG 저장(일러스트): ${label}`); };
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const raw = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="100" height="60"><defs><linearGradient id="g1" href="#g0"/></defs><image href="${png}" x="0" y="0" width="50" height="30"/><use href="#a"/><image x="1" y="1" width="5" height="5" href='${png}'/></svg>`;
+  const out = m.toIllustratorSvg(raw);
+  expect(!/\shref=/.test(out) && (out.match(/xlink:href=/g) || []).length === 4, '모든 href(이미지·use·그라디언트) 가 xlink:href 로 바뀜(작은따옴표 포함)');
+  expect(/<svg[^>]*xmlns:xlink="http:\/\/www\.w3\.org\/1999\/xlink"/.test(out) && (out.match(/xmlns:xlink=/g) || []).length === 1, '맨 앞 <svg> 에 xmlns:xlink 를 한 번만 선언');
+  expect(out.includes(png) && (out.match(/data:image\/png;base64,/g) || []).length === 2, '이미지 데이터(data:)는 그대로 파일 안에 들어 있음');
+  expect(m.toIllustratorSvg(out) === out, '두 번 불러도 그대로(중복 변환·중복 선언 없음)');
+  expect(m.toIllustratorSvg('') === '' && m.toIllustratorSvg(null) === '', '빈 값은 그대로');
+  expect(/^<\?xml version="1\.0"\?>\s*<svg[^>]*xmlns:xlink=/.test(m.toIllustratorSvg('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,AA"/></svg>')), 'XML 선언이 앞에 있어도 <svg> 에 선언을 넣음');
+  expect(m.externalImageRefs(raw).length === 0 && m.externalImageRefs('<svg><image href="/generated/a.png"/><image xlink:href="http://x/y.png"/><image href="data:image/png;base64,AA"/></svg>').join() === '/generated/a.png,http://x/y.png', '바깥 주소를 가리키는 이미지만 찾아냄(data: 는 제외)');
+  // 실제 그림: 손스케치에 넣은 이미지, 구조형에 넣은 이미지
+  const sk = m.sketchAddImage(m.normalizeSketch({ blocks: [] }), { href: png, w: 100, h: 60 }).spec; const so = m.toIllustratorSvg(m.renderSketch(sk).svg);
+  expect(/<image[^>]*xlink:href="data:image\/png/.test(so) && !/\shref=/.test(so), '손스케치: 넣은 이미지가 xlink:href 로 저장됨');
+  const sv = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="10" height="10"/></svg>'; const E = m.editAddImage({ sig: m.scanSvg(sv).sig, ops: {} }, m.scanSvg(sv).sig, { href: png, w: 100, h: 60, box: [0, 0, 400, 300] }).edits;
+  const vo = m.toIllustratorSvg(m.applyEdits(sv, E).svg); expect(/<image[^>]*xlink:href="data:image\/png/.test(vo) && !/\shref=/.test(vo), '구조형: 넣은 이미지가 xlink:href 로 저장됨');
+}
+// SVG 저장(일러스트레이터): 화살촉 context-stroke → 선 색
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`SVG 저장(화살촉): ${label}`); };
+  const mk = '<marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker>';
+  const raw = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><defs>${mk}</defs><path d="M0 0L50 0" stroke="#ff0000" stroke-width="3" marker-end="url(#m1)"/><line x1="0" y1="10" x2="50" y2="10" stroke="#0000ff" stroke-width="3" marker-end="url(#m1)"/><path d="M0 20L50 20" stroke="#ff0000" marker-end="url(#m1)"/></svg>`;
+  const out = m.toIllustratorSvg(raw);
+  expect(!/context-stroke/.test(out), 'context-stroke 가 남지 않음');
+  expect(/marker-end="url\(#m1__ff0000\)"/.test(out) && /marker-end="url\(#m1__0000ff\)"/.test(out), '선 색마다 화살촉 복사본(빨강·파랑)을 가리킴');
+  expect(/<marker id="m1__ff0000"[^>]*>[\s\S]*?fill="#ff0000"/.test(out) && /<marker id="m1__0000ff"[^>]*>[\s\S]*?fill="#0000ff"/.test(out), '복사본 화살촉이 그 선 색으로 칠해짐');
+  expect((out.match(/<marker id="m1__ff0000"/g) || []).length === 1, '같은 색은 복사본을 한 번만 만듦');
+  expect(m.toIllustratorSvg(out) === out, '다시 불러도 그대로');
+  expect(!/context-stroke/.test(m.toIllustratorSvg('<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="q"><path fill="context-stroke"/></marker></defs><path d="M0 0" marker-end="url(#q)"/></svg>')) && /marker-end="url\(#q__222222\)"/.test(m.toIllustratorSvg('<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="q"><path fill="context-stroke"/></marker></defs><path d="M0 0" marker-end="url(#q)"/></svg>')), '선 색을 못 찾으면 어두운 회색');
 }
 // 번호 마커(R3-2)
 {
