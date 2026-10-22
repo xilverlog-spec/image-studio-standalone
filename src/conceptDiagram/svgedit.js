@@ -426,12 +426,32 @@ export const editRemoveAdd = (edits, id, sig) => { const gone = (edits?.adds || 
 
 // ── 선 종류 ──
 export const DASH_PRESETS = { solid: { label: '실선', dash: null, cap: null }, dashed: { label: '파선', dash: '9 6', cap: null }, dotted: { label: '점선', dash: '1.5 6', cap: 'round' }, dashdot: { label: '일점쇄선', dash: '14 5 2 5', cap: null }, dots: { label: '굵은 점(둥근 점선)', dash: '0.1 8.5', cap: 'round' } };
+// 파선 간격: 선 종류의 '쉬는 칸'(홀수 번째 숫자)만 배율로 늘리고 줄인다(선 조각 길이는 그대로). 1 = 선 종류의 기본 간격
+export const DASH_GAP_MIN = 0.3; export const DASH_GAP_MAX = 4;
+const dashNums = (v) => String(v ?? '').trim().split(/[\s,]+/).filter(Boolean).map(Number).filter((q) => Number.isFinite(q));
+export const clampGap = (g) => Math.min(DASH_GAP_MAX, Math.max(DASH_GAP_MIN, Number(g) > 0 ? Number(g) : 1));
+// 지금 선 모양이 어느 종류(간격을 늘리고 줄인 것 포함)이고 간격 배율이 얼마인지
+export function dashGapOf(v) {
+  const n = dashNums(v); if (!n.length) return { kind: 'solid', gap: 1 };
+  for (const [kind, p] of Object.entries(DASH_PRESETS)) {
+    if (!p.dash) continue; const b = dashNums(p.dash); if (b.length !== n.length) continue;
+    let ok = true; let sum = 0; let cnt = 0;
+    for (let i = 0; i < b.length && ok; i++) { if (i % 2 === 0) { if (Math.abs(n[i] - b[i]) > 0.02) ok = false; } else if (b[i] > 0 && n[i] >= 0) { sum += n[i] / b[i]; cnt++; } else ok = false; }
+    if (ok && cnt) return { kind, gap: Math.round((sum / cnt) * 100) / 100 };
+  }
+  return { kind: 'custom', gap: 1 };
+}
 export function dashKind(v) {
   const s = String(v ?? '').trim(); if (!s || s === 'none') return 'solid';
-  const hit = Object.entries(DASH_PRESETS).find(([, p]) => p.dash && p.dash.replace(/\s+/g, ' ') === s.replace(/[\s,]+/g, ' '));
-  return hit ? hit[0] : 'custom';
+  return dashGapOf(s).kind;
 }
-export const dashPatch = (kind) => { const p = DASH_PRESETS[kind]; return p ? { 'stroke-dasharray': p.dash, 'stroke-linecap': p.cap } : {}; };
+export const dashWithGap = (kind, gap) => { const p = DASH_PRESETS[kind]; if (!p || !p.dash) return {}; const g = clampGap(gap); return { 'stroke-dasharray': dashNums(p.dash).map((x, i) => (i % 2 ? Math.round(x * g * 100) / 100 : x)).join(' '), 'stroke-linecap': p.cap }; };
+// 선 종류에 없는 파선('8 6' 같은 값)도 처음 모습(base)을 기준으로 간격을 배율로 바꾼다. 홀수 개 값은 SVG 규칙대로 되풀이해 짝수로 맞춘다
+export const dashNumsEven = (v) => { const n = dashNums(v); return n.length && n.length % 2 ? n.concat(n) : n; };
+export const dashSameParts = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => i % 2 || Math.abs(x - b[i]) < 0.02); // 선 조각 길이가 같은지(간격만 다른지)
+export const dashGapFactor = (n, base) => { let sum = 0; let c = 0; for (let i = 1; i < base.length; i += 2) { if (base[i] > 0) { sum += n[i] / base[i]; c++; } } return c ? Math.round((sum / c) * 100) / 100 : 1; };
+export const dashScaled = (base, gap) => base.map((x, i) => (i % 2 ? Math.round(x * clampGap(gap) * 100) / 100 : x)).join(' ');
+export const dashPatch = (kind, gap = 1) => { const p = DASH_PRESETS[kind]; if (!p) return {}; return p.dash && gap !== 1 ? dashWithGap(kind, gap) : { 'stroke-dasharray': p.dash, 'stroke-linecap': p.cap }; };
 
 // ── 경로(path d) 해석: 모든 명령을 절대 좌표의 M L C Q A Z 로 바꾼다 ──
 // 마디: { c:'M|L|C|Q|A|Z', p:[x,y](끝점), c1, c2(제어점), a:[rx,ry,회전,큰호,방향](호) }

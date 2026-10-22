@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
+import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, DASH_GAP_MIN, DASH_GAP_MAX, dashKind, dashNumsEven, dashSameParts, dashGapFactor, dashScaled, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
@@ -80,6 +80,13 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const selIds = multi.length > 1 ? multi : sel ? [sel] : [];
   const flash = (t) => { setNote(t); setTimeout(() => setNote((n) => (n === t ? '' : n)), 2600); };
   const sigRef = useRef(view.sig); sigRef.current = view.sig;
+  const dashBaseRef = useRef({}); // 사용자 지정 파선의 처음 모습(도형 번호 → 숫자들). 간격 슬라이더의 100% 기준
+  const dashBaseOf = (id, attr) => { // 파선의 간격을 배율로 바꿀 때 기준이 되는 숫자들(실선이면 null)
+    const kind = dashKind(attr); if (kind === 'solid') return null;
+    if (kind !== 'custom') return dashNumsEven(DASH_PRESETS[kind].dash);
+    const n = dashNumsEven(attr); if (!n.length) return null;
+    const b = dashBaseRef.current[id]; if (dashSameParts(b, n)) return b; dashBaseRef.current[id] = n; return n;
+  };
 
   useEffect(() => { // 한 번만 확인: 지원하지 않으면 화살촉에 색을 직접 지정한다
     let off = false;
@@ -416,6 +423,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const fillNone = !!cs && (cs.fill === 'none' || !fill); const strokeNone = !!cs && (cs.stroke === 'none' || !stroke);
   const sw = el ? num(el.getAttribute('stroke-width') ?? (cs && cs.strokeWidth), 1) : 1;
   const dash = el ? dashKind(el.getAttribute('stroke-dasharray')) : 'solid';
+  const dashBase = el && sel ? dashBaseOf(sel, el.getAttribute('stroke-dasharray')) : null; // 파선 간격의 기준(선 종류의 기본 간격, 사용자 지정은 처음 모습)
+  const dashGap = dashBase ? dashGapFactor(dashNumsEven(el.getAttribute('stroke-dasharray')), dashBase) : 1; // 파선 간격 배율(기준 = 1)
   const op = el ? num(el.getAttribute('opacity'), 1) : 1;
   const fs = el && tag === 'text' ? num(cs?.fontSize, 14) : 0;
   const taOf = el && tag === 'text' ? (cs?.textAnchor || 'start') : '';                      // 글자 정렬: start | middle | end
@@ -602,7 +611,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
       if (adds.some((a) => a.id === id)) return; const n = elOf(id); if (!n) return; const tg = n.tagName.toLowerCase(); const st = getComputedStyle(n);
       if (propFilter === 'fill' && (tg === 'line' || tg === 'polyline' || st.fill === 'none')) return;
       if (propFilter === 'stroke' && (tg === 'text' || st.stroke === 'none')) return;
-      next = editSet(next, id, patchObj, sigRef.current);
+      const po = typeof patchObj === 'function' ? patchObj(n) : patchObj; if (!po || !Object.keys(po).length) return; // 함수면 도형마다 다른 값(예: 자기 선 종류에 맞춘 파선 간격)
+      next = editSet(next, id, po, sigRef.current);
     });
     commit(next, key ? `multi:${key}` : '');
   };
@@ -752,6 +762,9 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <select style={input} defaultValue="" onChange={(e) => { if (e.target.value) multiSet('stroke', dashPatch(e.target.value), 'dash'); }} data-testid="sv-multi-dash">
                 <option value="">바꾸지 않음</option>{Object.entries(DASH_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
+            </label>
+            <label style={lab}>파선 간격(모두)
+              <input type="range" min={DASH_GAP_MIN} max={DASH_GAP_MAX} step="0.05" defaultValue="1" onChange={(e) => { const g = Number(e.target.value); multiSet('stroke', (n) => { const b = dashBaseOf(n.getAttribute('data-eid'), n.getAttribute('stroke-dasharray')); return b ? { 'stroke-dasharray': dashScaled(b, g) } : null; }, 'dashgap'); }} data-testid="sv-multi-dash-gap" />
             </label>
             <label style={lab}>투명도(모두)
               <input type="range" min="0.05" max="1" step="0.05" defaultValue="1" onChange={(e) => multiSet('', { opacity: Number(e.target.value) >= 1 ? null : e.target.value }, 'op')} data-testid="sv-multi-opacity" />
@@ -1014,11 +1027,16 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
                 <input type="range" min="0.5" max="14" step="0.5" value={Math.min(14, Math.max(0.5, sw))} onChange={(e) => patch(sel, { 'stroke-width': e.target.value }, 'sw')} data-testid="sv-width" />
               </label>
               <label style={lab}>선 종류
-                <select style={input} value={dash} onChange={(e) => patch(sel, dashPatch(e.target.value))} data-testid="sv-dash">
+                <select style={input} value={dash} onChange={(e) => patch(sel, dashPatch(e.target.value, dash === 'custom' || e.target.value === 'solid' ? 1 : dashGap))} data-testid="sv-dash">
                   {Object.entries(DASH_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   {dash === 'custom' && <option value="custom">사용자 지정(원본)</option>}
                 </select>
               </label>
+              {dashBase && (
+                <label style={lab}>파선 간격 {Math.round(dashGap * 100)}%
+                  <input type="range" min={DASH_GAP_MIN} max={DASH_GAP_MAX} step="0.05" value={Math.min(DASH_GAP_MAX, Math.max(DASH_GAP_MIN, dashGap))} onChange={(e) => patch(sel, { 'stroke-dasharray': dashScaled(dashBase, Number(e.target.value)) }, 'dashgap')} data-testid="sv-dash-gap" />
+                </label>
+              )}
             </>)}
             {tag === 'text' && (
               <label style={lab}>글자 크기 {r2(fs)}

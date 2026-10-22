@@ -28,6 +28,8 @@ const rotOf = (v) => { const r = normDeg(Number(v)); return r ? { rot: r } : {};
 const bbox = (pts) => { const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
 
 export const DASHES = { solid: '', dashed: '9 6', dotted: '1.5 6', dashdot: '14 5 2 5', dots: '0.1 8.5' };
+export const DGAP_MIN = 0.3; export const DGAP_MAX = 4; // 파선 간격 배율(선 종류의 기본 간격 = 1). 선 조각 길이는 그대로 두고 쉬는 칸만 늘리고 줄인다
+const dashStr = (d, g) => { const p = DASHES[d]; if (!p) return ''; const k = Number(g); if (!(k > 0) || k === 1) return p; const kk = Math.min(DGAP_MAX, Math.max(DGAP_MIN, k)); return p.split(' ').map((x, i) => (i % 2 ? String(Math.round(Number(x) * kk * 100) / 100) : x)).join(' '); };
 export const DASH_LABEL = { solid: '실선', dashed: '파선', dotted: '점선', dashdot: '일점쇄선', dots: '굵은 점(둥근 점선)' };
 // 선 표현(form): line = 선(실선·파선·점선·일점쇄선), 나머지는 모양 자체가 다른 표현
 export const FORMS = ['line', 'ribbon', 'soft', 'double', 'chevron', 'zigzag'];
@@ -527,6 +529,7 @@ export function makeAxonSpec(read) {
 // 전체 크기 조절: 그림 속 내용 전체를 transform 한 겹(translate · scale)으로 키우고 줄인다 — 선 굵기·글자·점선·화살촉이 한꺼번에 같은 비율로 바뀐다.
 // 제목·범례·메모 칸은 그대로. 편집할 때 화면 좌표 ↔ 다이어그램 좌표 변환은 sketchUnzoomPt 로 이 변환을 먼저 되돌린다.
 export const GSCALE_MIN = 0.05; export const GSCALE_MAX = 20;
+const dgapOf = (v) => { const g = Number(v); return Number.isFinite(g) && g > 0 && Math.abs(g - 1) > 0.004 ? { dgap: Math.round(Math.min(DGAP_MAX, Math.max(DGAP_MIN, g)) * 100) / 100 } : {}; }; // 1(기본)이면 저장하지 않는다
 export function normalizeSketch(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
   const seen = new Set();
@@ -540,11 +543,11 @@ export function normalizeSketch(raw) {
   });
   const lines = (Array.isArray(s.lines) ? s.lines : []).slice(0, 40).map((l, i) => ({
     id: uid(l.id, `p${i + 1}`), pts: (Array.isArray(l.pts) && l.pts.length >= 2 ? l.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt),
-    dash: DASHES[l.dash] !== undefined ? l.dash : 'solid', width: num(l.width, 1.6, 0.5, 12), color: isHex(l.color) ? l.color : '',
+    dash: DASHES[l.dash] !== undefined ? l.dash : 'solid', width: num(l.width, 1.6, 0.5, 12), color: isHex(l.color) ? l.color : '', ...dgapOf(l.dgap),
   }));
   const winds = (Array.isArray(s.winds) ? s.winds : []).slice(0, 30).map((w, i) => ({
     id: uid(w.id, `w${i + 1}`), pts: (Array.isArray(w.pts) && w.pts.length >= 2 ? w.pts : [[0, 0], [10, 0]]).slice(0, 30).map(pt), smooth: w.smooth !== false,
-    head: HEADS.includes(w.head) ? w.head : 'end', dash: DASHES[w.dash] !== undefined ? w.dash : 'solid', width: num(w.width, 4.5, 0.5, 14),
+    head: HEADS.includes(w.head) ? w.head : 'end', dash: DASHES[w.dash] !== undefined ? w.dash : 'solid', ...dgapOf(w.dgap), width: num(w.width, 4.5, 0.5, 14),
     form: FORMS.includes(w.form) ? w.form : 'line', shape: SHAPES.includes(w.shape) ? w.shape : 'read', bend: num(w.bend, 0.65, 0, 1.6), amp: num(w.amp, 0.45, -1.2, 1.2),
     via: Array.isArray(w.via) && w.via.length === 2 && w.via.every((v) => Number.isFinite(Number(v))) ? [Number(w.via[0]), Number(w.via[1])] : null,
     color: isHex(w.color) ? w.color : '#1E88C8', inLabel: String(w.inLabel ?? ''), outLabel: String(w.outLabel ?? ''),
@@ -784,7 +787,7 @@ export function renderSketch(raw, opts = {}) {
   const slabs = spec.blocks.filter((b) => b.kind === 'slab').sort((p, q) => (q.rect[2] - q.rect[0]) * (q.rect[3] - q.rect[1]) - (p.rect[2] - p.rect[0]) * (p.rect[3] - p.rect[1]));
   const cores = spec.blocks.filter((b) => b.kind === 'core');
   const openings = spec.blocks.filter((b) => b.kind === 'opening');
-  const dash = (d) => (DASHES[d] ? ` stroke-dasharray="${DASHES[d]}"` : '');
+  const dash = (d, g) => (DASHES[d] ? ` stroke-dasharray="${dashStr(d, g)}"` : '');
   const cap = (d) => (d === 'dotted' ? 'round' : 'round');
   slabs.forEach((b) => {
     const [x, y, w, h] = R(b);
@@ -794,7 +797,7 @@ export function renderSketch(raw, opts = {}) {
   spec.lines.forEach((l) => {
     const Q = l.pts.map(P); const d = `M${Q.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`; const col = l.color || C.part;
     if (selected === l.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${l.width + 9}" stroke-opacity="0.4" stroke-linecap="round"/>`);
-    o.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${l.width}" stroke-linecap="${cap(l.dash)}" stroke-opacity="${pres && !l.color ? 0.75 : 1}"${dash(l.dash)}/>`);
+    o.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${l.width}" stroke-linecap="${cap(l.dash)}" stroke-opacity="${pres && !l.color ? 0.75 : 1}"${dash(l.dash, l.dgap)}/>`);
     if (interactive) o.push(`<path class="hit" data-eid="${esc(l.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="16" style="cursor:move"/>`);
     if (interactive && selected === l.id) { dot(l.id, 'start', Q[0][0], Q[0][1]); dot(l.id, 'end', Q[Q.length - 1][0], Q[Q.length - 1][1]); const bb = bbox(Q); handles.push(rotHandle(l.id, (bb[0] + bb[2]) / 2, Math.max(14, bb[1] - 34), Math.max(22, bb[1] - 8))); }
   });
@@ -855,9 +858,9 @@ export function renderSketch(raw, opts = {}) {
     if (w.form === 'line') {
       if (pres) o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-opacity="0.22" stroke-width="${(w.width * 4.6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`);
       const mk = (w.head === 'end' || w.head === 'both' ? ` marker-end="url(#aw_${esc(w.id)})"` : '') + (w.head === 'start' || w.head === 'both' ? ` marker-start="url(#aw_${esc(w.id)})"` : '');
-      o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-width="${w.width}" stroke-linecap="round" stroke-linejoin="round"${dash(w.dash)}${mk}/>`);
+      o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-width="${w.width}" stroke-linecap="round" stroke-linejoin="round"${dash(w.dash, w.dgap)}${mk}/>`);
     } else {
-      const r = drawWindForm(w, geo, pres, dash(w.dash)); o.push(r.svg); if (r.defs) extraDefs.push(r.defs);
+      const r = drawWindForm(w, geo, pres, dash(w.dash, w.dgap)); o.push(r.svg); if (r.defs) extraDefs.push(r.defs);
     }
     if (interactive) o.push(`<path class="hit" data-eid="${esc(w.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="${Math.max(18, thick + 10)}" style="cursor:move"/>`);
     if (interactive && selected === w.id) {

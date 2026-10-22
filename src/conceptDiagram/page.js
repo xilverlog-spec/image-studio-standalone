@@ -53,6 +53,7 @@ export function layoutById(id) {
 
 // ── 직접 조정한 배치('custom'): 칸마다 번호(id)와 비율 상자 r=[왼쪽, 위, 오른쪽, 아래](0~1)를 갖는다. 프리셋을 끌어 바꾸면 그 모양을 복사해 custom 이 된다.
 export const MAX_CELLS = 12;
+export const ZOOM_MIN = 0.2; export const ZOOM_MAX = 2; // 칸 안에서 그림만 키우고 줄이는 배율(칸에 맞춘 크기 = 1). 1 보다 크면 칸을 넘는 부분은 잘린다
 export function presetToCustom(layoutId) { return layoutById(layoutId).cells.map((r, i) => ({ id: `c${i + 1}`, r: [...r] })); }
 const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(Number(v)) ? Number(v) : 0));
 // 저장된 custom 을 믿을 수 있는 값으로 정리(범위 0~1, 크기 최소, id 중복 제거, 최대 12칸). 쓸 수 없으면 null
@@ -435,6 +436,8 @@ export function composePage(page, items, opts = {}) {
     // 맞춤 방식: 'fill' 칸을 꽉 채움(글자 크기는 그림 배율을 따름) / 'text' 본문 글자를 목표 pt 에 맞춤(그림이 칸보다 작아질 수 있음) / 'both' 칸을 꽉 채우고 그림 속 글자만 본문 목표 pt 에 맞춤(권장)
     const mode = opts.fit || (opts.fill === false ? 'text' : 'fill');
     if (mode === 'text' && tiers) { const target = (pt.label * PT_MM) / tiers.label; if (target < s) s = target; }
+    const zk = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((cellMeta && cellMeta[cell.id] || {}).zoom) > 0 ? Number(cellMeta[cell.id].zoom) : 1)); // 이 칸의 그림 배율(칸 크기는 그대로)
+    s *= zk;
     let textK = 1;
     if (mode === 'both' && tiers) { // 글자만 따로: 그림 배율 s 에서 본문이 목표 pt 가 되게 하는 비율. 키울 때는 글자가 칸 밖으로 넘칠 수 있어 1.3배까지, 줄일 때는 0.3배까지
       textK = Math.min(1.3, Math.max(0.3, (pt.label * PT_MM) / (s * tiers.label)));
@@ -451,8 +454,9 @@ export function composePage(page, items, opts = {}) {
       if (upper && eng.label >= upper) warnings.push({ level: 'warn', text: `${tag}다이어그램 속 글자(${r1(eng.label)}pt)가 ${capPt ? '칸 제목' : used.sub ? '소제목' : '제목'}(${r1(upper)}pt)보다 크거나 같아 위계가 맞지 않습니다.` });
     }
     const cid = `pgclip${idx}`;
-    body.push(`<clipPath id="${cid}"><rect x="${ox.toFixed(3)}" y="${oy.toFixed(3)}" width="${ow.toFixed(3)}" height="${oh.toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
-    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, labRect, descRect, labelText, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
+    const kx0 = Math.max(ox, cell.x); const ky0 = Math.max(oy, cy); const kx1 = Math.min(ox + ow, cell.x + cw); const ky1 = Math.min(oy + oh, cy + ch); // 보이는 그림 = 그림 상자 ∩ 칸(그림 자리)
+    body.push(`<clipPath id="${cid}"><rect x="${kx0.toFixed(3)}" y="${ky0.toFixed(3)}" width="${(kx1 - kx0).toFixed(3)}" height="${(ky1 - ky0).toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
+    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, art: [kx0, ky0, kx1 - kx0, ky1 - ky0], center: [ox + ow / 2, oy + oh / 2], zoom: zk, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, labRect, descRect, labelText, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
   });
   const first = reports.find((r) => !r.empty);
   // 꼬리말: 오른쪽 아래에 '프로젝트명  02'(쪽번호는 숫자면 두 자리). 아래 여백 안쪽 가운데에 놓는다

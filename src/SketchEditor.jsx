@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { DASHES, DASH_LABEL, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
+import { DASHES, DASH_LABEL, DGAP_MIN, DGAP_MAX, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
 // 편집 대상은 구조(spec)이므로 어떻게 고쳐도 항상 정돈된 SVG 가 나온다. 저장은 부모(ConceptDiagram)의 SVG/PNG 저장 버튼이 한다.
@@ -464,6 +464,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <label style={lab}>선 표현
                 <select style={input} value={formValue(sel.el)} onChange={(e) => { const [form, dash] = e.target.value.split(':'); set({ form, dash }); }} data-testid="prop-form">{LINE_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
               </label>
+              {(sel.el.form || 'line') === 'line' && sel.el.dash !== 'solid' && (
+                <label style={lab}>파선 간격 {Math.round((sel.el.dgap || 1) * 100)}%
+                  <input type="range" min={DGAP_MIN} max={DGAP_MAX} step="0.05" value={sel.el.dgap || 1} onChange={(e) => set({ dgap: Number(e.target.value) }, 'dgap')} data-testid="prop-dgap" />
+                </label>
+              )}
               <label style={lab}>굵기 {sel.el.width}
                 <input type="range" min="1" max="14" step="0.5" value={sel.el.width} onChange={(e) => set({ width: Number(e.target.value) }, 'w')} />
               </label>
@@ -500,6 +505,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <label style={lab}>선 종류
                 <select style={input} value={sel.el.dash} onChange={(e) => set({ dash: e.target.value })}>{Object.keys(DASHES).map((k) => <option key={k} value={k}>{DASH_LABEL[k]}</option>)}</select>
               </label>
+              {sel.el.dash !== 'solid' && (
+                <label style={lab}>파선 간격 {Math.round((sel.el.dgap || 1) * 100)}%
+                  <input type="range" min={DGAP_MIN} max={DGAP_MAX} step="0.05" value={sel.el.dgap || 1} onChange={(e) => set({ dgap: Number(e.target.value) }, 'dgap')} data-testid="prop-dgap" />
+                </label>
+              )}
               <label style={lab}>굵기 {sel.el.width}
                 <input type="range" min="0.5" max="8" step="0.5" value={sel.el.width} onChange={(e) => set({ width: Number(e.target.value) }, 'w')} />
               </label>

@@ -5,7 +5,7 @@ import { DIAGRAM_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonL
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
-import { composePage, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
+import { composePage, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -434,14 +434,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!m) return;
     const no = (id) => ids.indexOf(id) + 1;
     pushHistory();
-    setPg((p) => { const cm = p.cellMeta || {}; return { ...p, cellMeta: { ...cm, [toId]: { ...(cm[toId] || {}), desc: cm[fromId]?.desc }, [fromId]: { ...(cm[fromId] || {}), desc: cm[toId]?.desc } } }; }); // 칸 설명은 그림을 따라간다(맞바꿈이면 서로)
+    setPg((p) => { const cm = p.cellMeta || {}; return { ...p, cellMeta: { ...cm, [toId]: { ...(cm[toId] || {}), desc: cm[fromId]?.desc, zoom: cm[fromId]?.zoom }, [fromId]: { ...(cm[fromId] || {}), desc: cm[toId]?.desc, zoom: cm[toId]?.zoom } } }; }); // 칸 설명은 그림을 따라간다(맞바꿈이면 서로)
     setCells(m.items); setSelCell(toId); setResult(m.items[toId]); setGenError('');
     addToast?.('success', m.swapped ? `칸 ${no(fromId)}과 칸 ${no(toId)}의 그림을 맞바꿨습니다` : `칸 ${no(fromId)}의 그림을 칸 ${no(toId)}(으)로 옮겼습니다`, '칸 크기가 다르면 그림이 새 칸에 맞춰 다시 배치됩니다. 되돌리려면 Ctrl+Z.');
   };
-  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined } } })); setResult(null); };
+  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined, zoom: undefined } } })); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
-  const composeAll = (layoutId, custom, wantOut) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치)
+  const [liveZoom, setLiveZoom] = useState(null); // 끄는 중인 칸 안의 그림 배율 { id, k }
+  const liveZoomRef = useRef(null);
+  const composeAll = (layoutId, custom, wantOut, zoomOv) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치)
     if (!pageOn) return null;
     try {
       const page = { w: Number(pg.w) || 0, h: Number(pg.h) || 0, medium: pg.medium };
@@ -449,7 +451,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const ids = cellIds(layoutId, custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
       const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId, custom, gap: Number(pg.gap) || 0, measure: domMeasure,
-        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: zoomOv ? { ...(pg.cellMeta || {}), [zoomOv.id]: { ...((pg.cellMeta || {})[zoomOv.id] || {}), zoom: zoomOv.k } } : pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };
@@ -468,7 +470,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     } catch (e) { return { preview: null, out: null, error: e.message }; }
   };
   const pageModel = useMemo(() => composeAll(pg.layoutId, pg.custom, true), [pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
-  const livePage = useMemo(() => (live && pageOn ? composeAll('custom', live.cells, false) : null), [live, pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps — 칸 가장자리를 끄는 동안의 미리보기(저장용은 놓을 때 한 번만 다시 만든다)
+  const livePage = useMemo(() => ((live || liveZoom) && pageOn ? (live ? composeAll('custom', live.cells, false) : composeAll(pg.layoutId, pg.custom, false, liveZoom)) : null), [live, liveZoom, pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps — 칸 가장자리를 끄는 동안의 미리보기(저장용은 놓을 때 한 번만 다시 만든다)
   const livePageSrc = useMemo(() => (livePage?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(livePage.preview.svg)}` : ''), [livePage]);
   const pageSrc0 = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]);
   const pageSrc = livePageSrc || pageSrc0; // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다). 칸 가장자리를 끄는 동안에는 바뀌는 크기가 그림에 바로 보인다
@@ -537,6 +539,37 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     const onUp = () => { stop(); if (moved) commitCustom(last); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
     dragCancelRef.current = stop; // Esc 로 끌던 것을 취소(원래대로)
+  };
+  // 칸 안의 그림 크기: 그림 모서리의 둥근 점을 끌면 그림 가운데를 기준으로 키우고 줄인다(칸 크기는 그대로, 놓으면 확정, Esc 취소). 1(칸에 맞춤) 근처에서는 붙는다
+  const commitZoom = (id, k) => {
+    pushHistory();
+    setPg((p) => { const cm = { ...(p.cellMeta || {}) }; const cur = { ...(cm[id] || {}) }; if (Math.abs(k - 1) < 0.005) delete cur.zoom; else cur.zoom = Math.round(k * 1000) / 1000; cm[id] = cur; return { ...p, cellMeta: cm }; });
+  };
+  const resetZoom = (id = selCell) => commitZoom(id, 1);
+  // 미리보기 위의 '그림 크기' 슬라이더: 움직이는 동안은 바로 보여 주고(live), 손을 떼거나 키보드를 떼면 한 번만 기록한다
+  const zoomSlide = (id, v) => { const k = Math.abs(v - 1) < 0.03 ? 1 : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v)); liveZoomRef.current = { id, k }; setLiveZoom({ id, k }); };
+  const zoomSlideEnd = () => { const z = liveZoomRef.current; liveZoomRef.current = null; if (z) { commitZoom(z.id, z.k); setLiveZoom(null); } };
+  const startZoom = (e, id) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const pm = pageModel?.preview; const el = previewRef.current; if (!pm || !el) return;
+    const cr = pm.cells.find((q) => q.id === id); if (!cr || !cr.center) return;
+    e.preventDefault(); e.stopPropagation();
+    const rect = el.getBoundingClientRect(); const mmPerPx = pm.page.w / rect.width;
+    const cxp = rect.left + cr.center[0] / mmPerPx; const cyp = rect.top + cr.center[1] / mmPerPx; // 그림 가운데(화면 픽셀)
+    const d0 = Math.max(8, Math.hypot(e.clientX - cxp, e.clientY - cyp)); const k0 = cr.zoom || 1;
+    selectCell(id);
+    let last = k0; let moved = false; let raf = 0; let pending = null;
+    const flush = () => { raf = 0; if (pending) { setLiveZoom(pending); pending = null; } };
+    const onMove = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
+      moved = true; const v = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k0 * (Math.hypot(ev.clientX - cxp, ev.clientY - cyp) / d0)));
+      last = Math.abs(v - 1) < 0.03 ? 1 : v; pending = { id, k: last }; if (!raf) raf = requestAnimationFrame(flush);
+    };
+    const x0 = e.clientX; const y0 = e.clientY;
+    const stop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); dragCancelRef.current = null; setLiveZoom(null); };
+    const onUp = () => { stop(); if (moved) commitZoom(id, last); };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+    dragCancelRef.current = stop;
   };
   const onCellMm = (patch) => { const pm = pageModel?.preview; if (pm) commitCustom(setCellMm(getCells(pg.layoutId, pg.custom), selCell, patch, pm.box, minOf(pm.box)), 'mm'); };
   const onSplit = (dir) => { const r = splitCell(getCells(pg.layoutId, pg.custom), selCell, dir); if (r.newId) commitCustom(r.cells); else addToast?.('info', '칸은 최대 12개입니다'); };
@@ -1533,6 +1566,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                   <button style={{ ...btn(false, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={duplicateCell} data-testid="cell-dup" title="고른 칸의 그림을 비어 있는 다른 칸에 복제합니다 (Ctrl+D)">빈 칸에 복제</button>
                 </span>
               </div>
+              {(() => { // 고른 칸 안의 그림만 키우고 줄이는 조절 칸(칸 크기는 그대로)
+                const cr = pageModel.preview.cells.find((q) => q.id === selCell); if (!cr || !cr.art) return null;
+                const z = liveZoom && liveZoom.id === selCell ? liveZoom.k : (cr.zoom || 1);
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)' }} data-testid="cell-zoom-bar">
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }} title="고른 칸 안의 그림만 키우고 줄입니다(칸 크기는 그대로). 그림 모서리의 둥근 파란 점을 끌어도 됩니다">그림 크기</span>
+                    <input type="range" min={ZOOM_MIN} max={ZOOM_MAX} step="0.01" value={z} onChange={(e) => zoomSlide(selCell, Number(e.target.value))} onPointerUp={zoomSlideEnd} onKeyUp={zoomSlideEnd} onBlur={zoomSlideEnd} style={{ flex: 1, minWidth: 80 }} data-testid="cell-zoom-slider" aria-label="고른 칸 안의 그림 크기" />
+                    <span style={{ fontSize: 12, fontWeight: 700, minWidth: 38, textAlign: 'right', color: 'var(--text-primary)' }} data-testid="cell-zoom-value">{Math.round(z * 100)}%</span>
+                    <button style={{ ...btn(false, Math.abs(z - 1) < 0.005), padding: '3px 10px', fontSize: 11.5 }} disabled={Math.abs(z - 1) < 0.005} onClick={() => resetZoom()} data-testid="cell-zoom-reset" title="이 칸의 그림 크기를 칸에 맞춘 처음 크기(100%)로 되돌립니다">칸에 맞춤</button>
+                  </div>
+                );
+              })()}
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
@@ -1555,6 +1600,18 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
                             style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid var(--primary)', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
                         ))}
+                        {sel && !live && (() => { // 이 칸 안의 그림 크기 조절: 그림 모서리 안쪽의 둥근 점(칸 크기 점과 겹치지 않게 14px 안쪽)
+                          const cr = (livePage?.preview || pm).cells.find((q) => q.id === c.id); const ar = cr && cr.art; if (!ar || ar[2] < 8 || ar[3] < 8) return null;
+                          const [ax, ay, aw, ah] = ar; const z = liveZoom && liveZoom.id === c.id ? liveZoom.k : (cr.zoom || 1);
+                          return (<>
+                            <div style={{ position: 'absolute', left: `${(ax / pw) * 100}%`, top: `${(ay / ph) * 100}%`, width: `${(aw / pw) * 100}%`, height: `${(ah / ph) * 100}%`, border: '1px dashed var(--primary)', pointerEvents: 'none', boxSizing: 'border-box', zIndex: 2 }} data-testid="zoom-box" />
+                            {[[0, 0, 'nwse-resize'], [1, 0, 'nesw-resize'], [1, 1, 'nwse-resize'], [0, 1, 'nesw-resize']].map(([fx, fy, cur]) => (
+                              <div key={`z${fx}${fy}`} onPointerDown={(e) => startZoom(e, c.id)} onDoubleClick={(e) => { e.stopPropagation(); resetZoom(c.id); }} data-testid={`zoom-handle-${fx}${fy}`} title="끌어서 이 칸 안의 그림 크기를 키우고 줄입니다(칸 크기는 그대로). 더블클릭: 칸에 맞춤"
+                                style={{ position: 'absolute', left: `calc(${((ax + fx * aw) / pw) * 100}% + ${fx ? -16 : 16}px)`, top: `calc(${((ay + fy * ah) / ph) * 100}% + ${fy ? -16 : 16}px)`, width: 17, height: 17, transform: 'translate(-50%, -50%)', background: 'var(--primary)', border: '2px solid #fff', borderRadius: '50%', cursor: cur, touchAction: 'none', zIndex: 4, boxSizing: 'border-box' }} />
+                            ))}
+                            {liveZoom && liveZoom.id === c.id && <div style={{ position: 'absolute', left: `${((ax + aw / 2) / pw) * 100}%`, top: `${((ay + ah / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 5 }} data-testid="zoom-label">{Math.abs(z - 1) < 0.005 ? '그림 크기: 칸에 맞춤' : `그림 크기 ${Math.round(z * 100)}%`}</div>}
+                          </>);
+                        })()}
                         {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
                       </React.Fragment>
                     );
@@ -1565,7 +1622,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 })()}
                 {pgEdit && previewRef.current && <InlineInput host={previewRef.current} target={pgEdit.el} value={pgEdit.value} multiline={false} onCommit={(v) => commitPgEdit(pgEdit, v)} onCancel={() => setPgEdit(null)} />}
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 점을 끌면 크기가 바뀝니다(Alt: 이 칸만){result ? `. 그림 속 도형·글자는 ${sideOn ? '왼쪽' : '이 위쪽'} 편집기에서 바로 고칩니다` : ''}. 제목·소제목은 눌러서, 칸 제목은 더블클릭해서 바로 고칩니다.</p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 네모 점을 끌면 칸 크기가, 그림 모서리의 둥근 파란 점을 끌면 칸 안의 그림 크기가 바뀝니다(Alt: 이 칸만){result ? `. 그림 속 도형·글자는 ${sideOn ? '왼쪽' : '이 위쪽'} 편집기에서 바로 고칩니다` : ''}. 제목·소제목은 눌러서, 칸 제목은 더블클릭해서 바로 고칩니다.</p>
             </div>
           )}
           </div>

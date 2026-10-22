@@ -31,7 +31,7 @@ const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
@@ -71,12 +71,12 @@ export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCurs
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
-export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, sketchTranslateAll, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
 export { hueOf, bandOf, mergeRegionWinds, featherMap, blendMasks } from ${fwd(regionJs)};
-export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, dashKind, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD, editAddImage, editUpdateAdd, editRemoveAdd, SHAPE_FONT, shapeSvg, appendShapes, newShape, editAddShape, editUpdateShape, editRemoveShape, rawShift, rawSetText } from ${fwd(svgeditJs)};`);
+export { scanSvg, applyEdits, emptyEdits, hasEdits, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, DASH_PRESETS, DASH_GAP_MIN, DASH_GAP_MAX, dashKind, dashGapOf, dashWithGap, dashNumsEven, dashSameParts, dashGapFactor, dashScaled, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD, editAddImage, editUpdateAdd, editRemoveAdd, SHAPE_FONT, shapeSvg, appendShapes, newShape, editAddShape, editUpdateShape, editRemoveShape, rawShift, rawSetText } from ${fwd(svgeditJs)};`);
 const b = await rolldown({ input: path.join(tmp, 'entry.js') });
 await b.write({ file: path.join(tmp, 'bundle.mjs'), format: 'esm' });
 const m = await import(pathToFileURL(path.join(tmp, 'bundle.mjs')).href);
@@ -1394,6 +1394,68 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   }
   expect(m.buildConceptPrompt('site', '시험', { asis: true }).includes('바탕으로 쓸 이미지') && !m.buildConceptPrompt('site', '시험', { asis: true }).includes('읽어 올 자료'), '배치(그대로 바탕)는 그대로: 바탕 이미지 안내만');
   expect(m.buildConceptPrompt('site', '시험', { style: true }).includes('[첨부 이미지 — 스타일 참고]'), '스타일 참고만 쓰면 기존 표기 그대로');
+}
+// 칸 안의 그림 배율(페이지 미리보기에서 그림만 키우고 줄이기)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`그림 배율: ${label}`); };
+  const lay = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/><rect x="10" y="10" width="80" height="40" fill="#cde"/></svg>' };
+  const page = { w: 420, h: 297, medium: 'print' };
+  const rep = (cellMeta, layoutId = '2x1', items = [{ id: 'c1', render: lay }, { id: 'c2', render: lay }]) => m.composePage(page, items, { layoutId, preview: true, cellMeta, fit: 'fill' }).cells.find((c) => c.id === 'c1');
+  const base = rep(undefined); const same = rep({}); const one = rep({ c1: { zoom: 1 } });
+  expect(base && Array.isArray(base.art) && base.art.length === 4 && Array.isArray(base.center) && base.zoom === 1, '보고서에 그림 자리(art)·가운데(center)·배율(zoom)이 담김');
+  expect(JSON.stringify(base.art) === JSON.stringify(same.art) && JSON.stringify(same.art) === JSON.stringify(one.art), '배율을 안 정하거나 1 이면 이전과 같은 자리');
+  const half = rep({ c1: { zoom: 0.5 } });
+  expect(Math.abs(half.art[2] / base.art[2] - 0.5) < 0.01 && Math.abs(half.art[3] / base.art[3] - 0.5) < 0.01 && half.zoom === 0.5, '0.5 배면 그림이 절반 크기로 줄어듦');
+  expect(Math.abs((half.center[0]) - (base.center[0])) < 0.01 && Math.abs(half.center[1] - base.center[1]) < 0.01, '줄여도 칸 가운데에 머문다');
+  const big = rep({ c1: { zoom: 1.6 } });
+  const [cx, cy, cw, ch] = big.rect;
+  expect(big.art[2] > base.art[2] - 0.01 && big.art[0] >= cx - 0.01 && big.art[1] >= cy - 0.01 && big.art[0] + big.art[2] <= cx + cw + 0.01 && big.art[1] + big.art[3] <= cy + ch + 0.01, '1 보다 크게 키워도 보이는 그림은 칸 안으로 잘림');
+  expect(rep({ c1: { zoom: 99 } }).zoom === m.ZOOM_MAX && rep({ c1: { zoom: 0.001 } }).zoom === m.ZOOM_MIN && rep({ c1: { zoom: 'x' } }).zoom === 1 && rep({ c1: { zoom: -3 } }).zoom === 1, '배율은 허용 범위로 맞춰지고 엉뚱한 값은 1 로');
+  const other = rep({ c2: { zoom: 0.4 } });
+  expect(JSON.stringify(other.art) === JSON.stringify(base.art), '다른 칸의 배율은 이 칸에 영향 없음');
+  const single = m.composePage(page, [{ id: 'c1', render: lay }], { layoutId: '1x1', preview: true, cellMeta: { c1: { zoom: 0.5 } }, fit: 'fill' }).cells[0];
+  const single1 = m.composePage(page, [{ id: 'c1', render: lay }], { layoutId: '1x1', preview: true, fit: 'fill' }).cells[0];
+  expect(Math.abs(single.art[2] / single1.art[2] - 0.5) < 0.01, '한 칸짜리 페이지에서도 배율이 먹힘');
+  const svgHalf = m.composePage(page, [{ id: 'c1', render: lay }, { id: 'c2', render: lay }], { layoutId: '2x1', cellMeta: { c1: { zoom: 0.5 } }, fit: 'fill' }).svg;
+  const svgBase = m.composePage(page, [{ id: 'c1', render: lay }, { id: 'c2', render: lay }], { layoutId: '2x1', fit: 'fill' }).svg;
+  expect(svgHalf !== svgBase && !/NaN|Infinity/.test(svgHalf), '저장용 그림에도 배율이 반영되고 NaN 이 없음');
+}
+// 파선 간격 조절
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`파선 간격: ${label}`); };
+  const g = (v) => JSON.stringify(m.dashGapOf(v));
+  expect(g('9 6') === '{"kind":"dashed","gap":1}' && g('9 12') === '{"kind":"dashed","gap":2}' && g('9,3') === '{"kind":"dashed","gap":0.5}', '파선: 간격 배율을 읽음(쉼표도)');
+  expect(g('1.5 3') === '{"kind":"dotted","gap":0.5}' && g('14 10 2 10') === '{"kind":"dashdot","gap":2}' && g('0.1 17') === '{"kind":"dots","gap":2}', '점선·일점쇄선·굵은 점도 간격 배율을 읽음');
+  expect(g('3 3') === '{"kind":"custom","gap":1}' && g('') === '{"kind":"solid","gap":1}' && g(null) === '{"kind":"solid","gap":1}' && g('9 6 4') === '{"kind":"custom","gap":1}', '프리셋이 아닌 값은 사용자 지정, 비면 실선');
+  expect(m.dashKind('9 12') === 'dashed' && m.dashKind('1.5 3') === 'dotted' && m.dashKind('3 3') === 'custom' && m.dashKind('9 6') === 'dashed', '간격을 바꾼 파선도 같은 종류로 인식(선 종류 칸이 사용자 지정으로 바뀌지 않음)');
+  const w = (k, x) => JSON.stringify(m.dashWithGap(k, x));
+  expect(w('dashed', 2) === '{"stroke-dasharray":"9 12","stroke-linecap":null}' && w('dotted', 0.5) === '{"stroke-dasharray":"1.5 3","stroke-linecap":"round"}' && w('dashdot', 2) === '{"stroke-dasharray":"14 10 2 10","stroke-linecap":null}', '간격만 늘리고 줄이며 선 조각 길이는 그대로');
+  expect(w('solid', 2) === '{}' && w('nope', 2) === '{}', '실선·모르는 종류는 바꾸지 않음');
+  expect(m.dashWithGap('dashed', 99)['stroke-dasharray'] === `9 ${6 * m.DASH_GAP_MAX}` && m.dashWithGap('dashed', 0.001)['stroke-dasharray'] === `9 ${Math.round(6 * m.DASH_GAP_MIN * 100) / 100}` && m.dashWithGap('dashed', 'x')['stroke-dasharray'] === '9 6', '간격은 허용 범위(0.3~4배)로 맞춰지고 엉뚱한 값은 기본');
+  expect(JSON.stringify(m.dashPatch('dashed')) === JSON.stringify({ 'stroke-dasharray': '9 6', 'stroke-linecap': null }) && m.dashPatch('dashed', 2)['stroke-dasharray'] === '9 12' && m.dashPatch('solid', 3)['stroke-dasharray'] === null, 'dashPatch 는 기본 그대로, 배율을 주면 간격 반영');
+  // 선 종류에 없는 파선('8 6' 같은 AI·원본 값): 처음 모습을 기준으로 간격 배율
+  const base86 = m.dashNumsEven('8 6');
+  expect(JSON.stringify(base86) === '[8,6]' && JSON.stringify(m.dashNumsEven('5')) === '[5,5]' && JSON.stringify(m.dashNumsEven('4 2 1')) === '[4,2,1,4,2,1]' && JSON.stringify(m.dashNumsEven('')) === '[]' && JSON.stringify(m.dashNumsEven('4,2')) === '[4,2]', '홀수 개 값은 되풀이해 짝수로, 빈 값은 빈 배열');
+  expect(m.dashScaled(base86, 2) === '8 12' && m.dashScaled(base86, 0.5) === '8 3' && m.dashScaled(base86, 99) === '8 24' && m.dashScaled(base86, 'x') === '8 6' && m.dashScaled(m.dashNumsEven('14 5 2 5'), 3) === '14 15 2 15', '사용자 지정 파선도 간격만 배율로 바뀜(선 조각 길이 그대로)');
+  expect(m.dashGapFactor(m.dashNumsEven('8 12'), base86) === 2 && m.dashGapFactor(base86, base86) === 1 && m.dashGapFactor(m.dashNumsEven('8 3'), base86) === 0.5, '지금 값이 처음 모습의 몇 배인지 읽음');
+  expect(m.dashSameParts(base86, m.dashNumsEven('8 12')) && !m.dashSameParts(base86, m.dashNumsEven('9 6')) && !m.dashSameParts(base86, m.dashNumsEven('8 6 2 6')) && !m.dashSameParts(null, base86), '선 조각 길이·개수가 같을 때만 같은 파선으로 봄');
+  // 구조형: 편집 적용 후 그림에 실제로 반영
+  const S = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><line x1="5" y1="10" x2="95" y2="10" stroke="#000" stroke-width="2"/></svg>';
+  const eid = (m.applyEdits(S, m.emptyEdits(S), { ids: true }).svg.match(/data-eid="([^"]+)"/) || [])[1];
+  const E = m.editSet(m.emptyEdits(S), eid, m.dashWithGap('dashed', 2));
+  const out = m.applyEdits(S, E).svg;
+  expect(/stroke-dasharray="9 12"/.test(out) && /<line[^>]*stroke-dasharray="9 12"/.test(out), '구조형 선에 고른 간격이 그림 속성으로 들어감');
+  // 손스케치: 정리·그리기
+  const spec = { blocks: [{ id: 'b1', rect: [100, 100, 500, 300], kind: 'slab' }],
+    lines: [{ id: 'p1', pts: [[100, 200], [500, 200]], dash: 'dotted', width: 2, dgap: 0.5 }, { id: 'p2', pts: [[100, 250], [500, 250]], dash: 'dashed', width: 2 }],
+    winds: [{ id: 'w1', pts: [[100, 350], [500, 350]], head: 'end', dash: 'dashed', width: 4, dgap: 2, color: '#1E88C8' }, { id: 'w2', pts: [[100, 400], [500, 400]], head: 'end', dash: 'dashed', width: 4, dgap: 1 }] };
+  const n = m.normalizeSketch(spec);
+  expect(n.lines[0].dgap === 0.5 && !('dgap' in n.lines[1]) && n.winds[0].dgap === 2 && !('dgap' in n.winds[1]), '정리: 1 이 아닌 간격 배율만 남기고 기본(1)은 저장하지 않음');
+  const bad = m.normalizeSketch({ ...spec, winds: [{ ...spec.winds[0], dgap: 99 }, { ...spec.winds[0], id: 'w9', dgap: -2 }, { ...spec.winds[0], id: 'w8', dgap: 'x' }, { ...spec.winds[0], id: 'w7', dgap: 0.001 }] });
+  expect(bad.winds[0].dgap === m.DGAP_MAX && !('dgap' in bad.winds[1]) && !('dgap' in bad.winds[2]) && bad.winds[3].dgap === m.DGAP_MIN, '정리: 범위(0.3~4)로 맞추고 엉뚱한 값은 버림');
+  const svg = m.renderSketch(n).svg;
+  expect(svg.includes('stroke-dasharray="1.5 3"') && svg.includes('stroke-dasharray="9 12"') && svg.includes('stroke-dasharray="9 6"'), '그리기: 직선·화살표에 고른 간격이 들어가고, 안 고른 것은 기본 간격 그대로');
+  expect(m.renderSketch(m.sketchUpdate(n, 'p2', { dgap: 3 })).svg.includes('stroke-dasharray="9 18"') && !/NaN/.test(svg), '편집: 간격을 바꾸면 그 선만 바뀌고 NaN 이 없음');
 }
 // 번호 마커(R3-2)
 {
