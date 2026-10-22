@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { DASHES, DASH_LABEL, DGAP_MIN, DGAP_MAX, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
@@ -59,10 +60,12 @@ import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResi
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
-export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
   const [selected, setSelected] = useState('');
+  useEffect(() => { if (selected && onPick) onPick(); }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps — 요소를 누르면 왼쪽 ③ 도형 편집 탭을 연다
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
   const [edWide, setEdWide] = useState(true); const edRoOff = useRef(null); // 편집기가 넓을 때(900px 이상)만 속성 패널을 오른쪽에 두고, 좁으면 그림 아래에 가로로 펼친다
+  const rowMode = edWide && !sideHost; // 속성 패널이 편집기 안쪽에 있고 편집기가 넓을 때만 그림 | 패널 가로 한 줄
   const edRootRef = useCallback((el) => { // 콜백 ref: 편집기 뿌리 상자가 (처음 그려질 때든 나중에든) 생기면 폭을 지켜본다
     if (edRoOff.current) { edRoOff.current(); edRoOff.current = null; }
     if (el) setEdWide(el.getBoundingClientRect().width >= 900); // 처음 그려질 때 바로 정한다(깜빡임 없이)
@@ -110,15 +113,19 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const sel = selected ? sketchFind(norm, selected) : null;
   const view = useMemo(() => sketchView(norm), [norm]);
   // 중심축 항상 보기: 그림 틀 가운데의 세로·가로선
-  const axisGuides = showAxis ? (() => { const f = norm.frame; const ax = sketchAxes(norm, ''); return [{ dim: 'x', v: ax.x[0].v, kind: 'axis', lo: f[1] - 2, hi: f[3] + 2 }, { dim: 'y', v: ax.y[0].v, kind: 'axis', lo: f[0] - 2, hi: f[2] + 2 }]; })() : [];
+  const axisGuides = showAxis ? (() => { const f = norm.frame; const ax = sketchAxes(norm, ''); const g = [{ dim: 'x', v: ax.x[0].v, kind: 'axis', lo: f[1] - 2, hi: f[3] + 2 }, { dim: 'y', v: ax.y[0].v, kind: 'axis', lo: f[0] - 2, hi: f[2] + 2 }];
+    if (axisPick === 'big') { if (ax.x.length > 1) g.push({ dim: 'x', v: ax.x[1].v, kind: 'axis', lo: f[1] - 2, hi: f[3] + 2 }); if (ax.y.length > 1) g.push({ dim: 'y', v: ax.y[1].v, kind: 'axis', lo: f[0] - 2, hi: f[2] + 2 }); }
+    return g; })() : [];
   // 정렬·대칭 기준: 고른 요소 말고 다른 요소 중에서 고른다. 없어진 요소면 그림 가운데로 돌린다
   const others = selected ? [...norm.blocks, ...norm.lines, ...norm.winds, ...norm.memos].filter((e) => e.id !== selected) : [];
   const ref = refId !== 'axis' && others.some((e) => e.id === refId) ? refId : 'axis';
   const refIsBlock = selected && ref !== 'axis' && sketchKind(norm, ref) === 'block' && sketchKind(norm, selected) === 'block';
   const axesNow = selected ? sketchAxes(norm, selected) : null;
-  const axisIdx = axisPick === 'big' && axesNow && axesNow.x.length > 1 ? 1 : 0;
+  const axisIdxX = axisPick === 'big' && axesNow && axesNow.x.length > 1 ? 1 : 0; // 좌우 대칭의 축(세로선) 고르기
+  const axisIdxY = axisPick === 'big' && axesNow && axesNow.y.length > 1 ? 1 : 0; // 상하 대칭의 축(가로선) 고르기
+  const axisChoice = !!axesNow && (axesNow.x.length > 1 || axesNow.y.length > 1); // 큰 도형 가운데가 가로·세로 어느 쪽이든 다르면 선택칸을 보인다
   const elLabel = (e) => `${{ block: e.kind === 'core' ? '코어' : e.kind === 'opening' ? '개구부' : '판', line: '선', wind: '화살표', memo: '글자' }[sketchKind(norm, e.id)] || ''} ${e.id}${e.name ? ` · ${e.name}` : e.text ? ` · ${e.text}` : ''}`;
-  const axisVal = (dir) => { const a = dir === 'h' ? axesNow.x : axesNow.y; return a[Math.min(axisIdx, a.length - 1)].v; };
+  const axisVal = (dir) => (dir === 'h' ? axesNow.x[axisIdxX].v : axesNow.y[axisIdxY].v);
   const doAlign = (mode) => commit(sketchAlign(norm, selected, ref, mode));
   const doMirrorPlace = (dir) => { if (ref !== 'axis') commit(sketchMirrorPlace(norm, selected, ref, axisVal(dir), dir)); };
   const doMirrorCopy = (dir) => { const r = sketchMirrorCopy(norm, selected, axisVal(dir), dir); if (r.id) { commit(r.spec); setSelected(r.id); } };
@@ -346,43 +353,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const title = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' };
   const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.dim ? '치수선' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
 
-  return (
-    <div ref={edRootRef} style={{ display: 'flex', flexDirection: edWide ? 'row' : 'column', gap: 14, alignItems: edWide ? 'flex-start' : 'stretch' }} data-testid="sketch-editor" data-wide={edWide ? '1' : '0'}>
-      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
-      <div style={edWide ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
-      <ZoomView testid="sk-zoom">
-      <div ref={hostRef} style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
-        <div style={{ position: 'relative' }}>{/* 안내선 층과 그림이 정확히 같은 크기가 되도록(아래 힌트 줄이 층을 늘이지 않게) 한 틀로 묶는다 */}
-        <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
-          <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
-          {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
-            <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
-          {[...axisGuides, ...guides].map((g, i) => {
-            const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
-            const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
-            return (<g key={`${g.dim}${g.kind}${i}`} data-guide={g.kind}>
-              <line x1={a[0]} y1={a[1]} x2={z[0]} y2={z[1]} stroke={col} strokeWidth="1.6" strokeDasharray={g.kind === 'axis' ? '10 5' : '6 4'} />
-              {label && <text x={g.dim === 'x' ? a[0] + 5 : a[0]} y={g.dim === 'x' ? a[1] + 13 : a[1] - 5} fontSize="13" fontWeight="700" fill={col} style={{ fontFamily: 'sans-serif' }}>{label}</text>}
-            </g>);
-          })}
-          {rotInfo && (() => { const q = view.toScreen(rotInfo.c); return (<g data-testid="rot-label"><rect x={q[0] - 28} y={q[1] - 13} width="56" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={q[0]} y={q[1] + 5} textAnchor="middle" fontSize="15" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(rotInfo.deg * 10) / 10}°</text></g>); })()}
-          </g>
-          {whole && wbox && (<g data-testid="whole-overlay">
-            <rect x={wbox[0] - 6} y={wbox[1] - 6} width={wbox[2] - wbox[0] + 12} height={wbox[3] - wbox[1] + 12} fill="none" stroke="#F28C28" strokeWidth="3" strokeDasharray="12 8" rx="4" />
-            {[['nw', wbox[0] - 6, wbox[1] - 6, 'nwse-resize'], ['ne', wbox[2] + 6, wbox[1] - 6, 'nesw-resize'], ['se', wbox[2] + 6, wbox[3] + 6, 'nwse-resize'], ['sw', wbox[0] - 6, wbox[3] + 6, 'nesw-resize']].map(([c, hx, hy, cur]) => (
-              <rect key={c} data-testid={`whole-${c}`} x={hx - 11} y={hy - 11} width="22" height="22" rx="4" fill="#F28C28" stroke="#fff" strokeWidth="3" style={{ pointerEvents: 'auto', cursor: cur }} onPointerDown={(ev) => startWhole(ev, c)}><title>끌어서 그림 전체의 크기를 조절합니다(글자·선 굵기도 함께)</title></rect>))}
-            {wInfo && (() => { const cx = (wbox[0] + wbox[2]) / 2; const cy = (wbox[1] + wbox[3]) / 2; return (<g data-testid="whole-label"><rect x={cx - 40} y={cy - 14} width="80" height="28" rx="7" fill="rgba(30,30,30,0.85)" /><text x={cx} y={cy + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(wInfo.k * 100)}%</text></g>); })()}
-          </g>)}
-        </svg>
-        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
-        </div>
-        {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
-        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>(모서리를 끌면 크기, 빈 곳을 끌면 위치가 바뀝니다). 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
-      </div>
-      </ZoomView>
-      </div>
-
-      <div className={edWide ? undefined : 'ed-cols'} style={edWide ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sk-side">
+  const sidePanel = (
+      <div className={rowMode || sideHost ? undefined : 'ed-cols'} style={sideHost ? { display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' } : rowMode ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sk-side">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={smallBtn(false)} disabled={!past.current.length} onClick={undo} title="Ctrl+Z" data-testid="undo">↶ 되돌리기</button>
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
@@ -763,9 +735,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
                 {[['left', '⇤ 왼쪽'], ['hcenter', '⇔ 가운데'], ['right', '⇥ 오른쪽'], ['top', '⤒ 위'], ['vcenter', '↕ 중간'], ['bottom', '⤓ 아래']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => doAlign(k)} data-testid={`align-${k}`}>{t}</button>)}
               </div>
-              {axesNow && axesNow.x.length > 1 && (
+              {axisChoice && (
                 <label style={lab}>대칭축
-                  <select style={input} value={axisIdx === 1 ? 'big' : 'frame'} onChange={(e) => setAxisPick(e.target.value)} data-testid="align-axis">
+                  <select style={input} value={axisPick === 'big' ? 'big' : 'frame'} onChange={(e) => setAxisPick(e.target.value)} data-testid="align-axis">
                     <option value="frame">그림 가운데</option><option value="big">가장 큰 도형 가운데</option>
                   </select>
                 </label>
@@ -789,6 +761,50 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
         {cropFor && sel && sel.el.kind === 'image' && <ImageCropDialog src={sel.el.orig || sel.el.href} crop={sel.el.crop || null} busy={imgBusy} onApply={applyCrop} onCancel={() => setCropFor(null)} />}
         <p style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>좌표는 그림 안 위치(0~100)입니다. 위쪽 ‘SVG 저장’을 누르면 지금 모습 그대로 저장됩니다.</p>
       </div>
+  );
+  return (
+    <div ref={edRootRef} style={{ display: 'flex', flexDirection: rowMode ? 'row' : 'column', gap: 14, alignItems: rowMode ? 'flex-start' : 'stretch' }} data-testid="sketch-editor" data-wide={rowMode ? '1' : '0'}>
+      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
+      <div style={rowMode ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
+      <ZoomView testid="sk-zoom">
+      <div ref={hostRef} style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
+        <div style={{ position: 'relative' }}>{/* 안내선 층과 그림이 정확히 같은 크기가 되도록(아래 힌트 줄이 층을 늘이지 않게) 한 틀로 묶는다 */}
+        <svg viewBox={`0 0 ${SKETCH_SIZE[0]} ${SKETCH_SIZE[1]}`} data-testid="guide-overlay" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+          <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
+          {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
+            <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
+          {[...axisGuides, ...guides].map((g, i) => {
+            const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
+            const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
+            return (<g key={`${g.dim}${g.kind}${i}`} data-guide={g.kind}>
+              <line x1={a[0]} y1={a[1]} x2={z[0]} y2={z[1]} stroke={col} strokeWidth="1.6" strokeDasharray={g.kind === 'axis' ? '10 5' : '6 4'} />
+              {label && <text x={g.dim === 'x' ? a[0] + 5 : a[0]} y={g.dim === 'x' ? a[1] + 13 : a[1] - 5} fontSize="13" fontWeight="700" fill={col} style={{ fontFamily: 'sans-serif' }}>{label}</text>}
+            </g>);
+          })}
+          {rotInfo && (() => { const q = view.toScreen(rotInfo.c); return (<g data-testid="rot-label"><rect x={q[0] - 28} y={q[1] - 13} width="56" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={q[0]} y={q[1] + 5} textAnchor="middle" fontSize="15" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(rotInfo.deg * 10) / 10}°</text></g>); })()}
+          </g>
+          {whole && wbox && (<g data-testid="whole-overlay">
+            <rect x={wbox[0] - 6} y={wbox[1] - 6} width={wbox[2] - wbox[0] + 12} height={wbox[3] - wbox[1] + 12} fill="none" stroke="#F28C28" strokeWidth="3" strokeDasharray="12 8" rx="4" />
+            {[['nw', wbox[0] - 6, wbox[1] - 6, 'nwse-resize'], ['ne', wbox[2] + 6, wbox[1] - 6, 'nesw-resize'], ['se', wbox[2] + 6, wbox[3] + 6, 'nwse-resize'], ['sw', wbox[0] - 6, wbox[3] + 6, 'nesw-resize']].map(([c, hx, hy, cur]) => (
+              <rect key={c} data-testid={`whole-${c}`} x={hx - 11} y={hy - 11} width="22" height="22" rx="4" fill="#F28C28" stroke="#fff" strokeWidth="3" style={{ pointerEvents: 'auto', cursor: cur }} onPointerDown={(ev) => startWhole(ev, c)}><title>끌어서 그림 전체의 크기를 조절합니다(글자·선 굵기도 함께)</title></rect>))}
+            {wInfo && (() => { const cx = (wbox[0] + wbox[2]) / 2; const cy = (wbox[1] + wbox[3]) / 2; return (<g data-testid="whole-label"><rect x={cx - 40} y={cy - 14} width="80" height="28" rx="7" fill="rgba(30,30,30,0.85)" /><text x={cx} y={cy + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(wInfo.k * 100)}%</text></g>); })()}
+          </g>)}
+        </svg>
+        <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+        </div>
+        {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>(모서리를 끌면 크기, 빈 곳을 끌면 위치가 바뀝니다). 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
+      </div>
+      </ZoomView>
+      </div>
+
+      {sideHost && !sideOpen && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontSize: 12, color: 'var(--text-secondary)' }} data-testid="side-hint">
+          <span>요소 추가 · 속성 · 정렬은 왼쪽 <b>③ 도형 편집</b> 탭에 있습니다(요소를 누르면 자동으로 열립니다).</span>
+          <button type="button" style={{ ...smallBtn(false), padding: '3px 10px' }} onClick={() => onOpenSide && onOpenSide()}>도형 편집 열기</button>
+        </div>
+      )}
+      {sideHost ? createPortal(sidePanel, sideHost) : sidePanel}
     </div>
   );
 }

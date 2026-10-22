@@ -289,6 +289,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   // 편집을 크게: ① 편집 집중(편집기가 전체 폭, 페이지는 위쪽 띠) ② 설정 패널 접기 ③ 나란히 보기의 분할선(편집기 몫). 모두 이 브라우저에 기억한다
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } };
   const [focusEdit, setFocusEdit] = useState(() => lsGet('cd_focus_edit', '0') === '1');
+  const [sideHost, setSideHost] = useState(null); // ③ 도형 편집 탭 안의 자리(편집기가 속성 패널을 여기에 그린다)
   const [leftTab, setLeftTab] = useState('make'); // 왼쪽 패널 단계 탭. 다이어그램 탭에 들어올 때(처음 열 때·새로고침·다른 탭에서 돌아올 때)마다 ① 만들기로 시작한다
   useEffect(() => { if (active) setLeftTab('make'); }, [active]);
   const [leftHidden, setLeftHidden] = useState(() => lsGet('cd_left_hidden', '0') === '1');
@@ -736,6 +737,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const fields = useMemo(() => (result ? getTextFields(result.type, result.spec) : []), [result]);
   const showEditTab = !!result && (result.type === 'cards' || result.type === 'table'); // ③ 구성 수정은 카드·표처럼 구조를 고칠 결과가 있을 때만 — 글자는 그림 위에서 더블클릭으로 고친다
   useEffect(() => { if (!showEditTab) setLeftTab((t) => (t === 'edit' ? 'make' : t)); }, [showEditTab]);
+  useEffect(() => { if (!result && !pageOn) setLeftTab((t) => (t === 'shape' ? 'make' : t)); }, [result, pageOn]);
   useEffect(() => { if (result && (result.type === 'cards' || result.type === 'table')) setLeftTab((t) => (t === 'make' ? 'edit' : t)); }, [result?.ver]); // eslint-disable-line react-hooks/exhaustive-deps — 카드 보드·개요표는 만든 다음이 폼 수정이다(① 에서 만들었을 때만 자동으로 넘어간다)
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
@@ -1256,7 +1258,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
             <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setLeftHidden(true)} title="이 설정 패널을 접어 오른쪽 편집 화면을 넓힙니다(접어도 내용은 그대로이고, 왼쪽 ▶ 로 다시 펼칩니다)" data-testid="left-close">◀ 접기</button>
           </div>
           <div style={{ display: 'flex', gap: 4 }} role="tablist" data-testid="left-tabs">
-            {[['make', '① 만들기'], ['page', '② 페이지'], ...(showEditTab ? [['edit', '③ 구성 수정']] : [])].map(([id, label]) => (
+            {[['make', '① 만들기'], ['page', '② 페이지'], ...(result || pageOn ? [['shape', '③ 도형 편집']] : []), ...(showEditTab ? [['edit', '④ 구성 수정']] : [])].map(([id, label]) => (
               <button key={id} role="tab" aria-selected={leftTab === id} onClick={() => setLeftTab(id)} data-testid={`left-tab-${id}`}
                 style={{ flex: 1, padding: '6px 4px', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 7, border: leftTab === id ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', background: leftTab === id ? 'rgba(51,51,153,0.14)' : 'var(--surface)', color: leftTab === id ? 'var(--accent-cyan)' : 'var(--text-secondary)', position: 'relative' }}>
                 {label}{id === 'edit' && result && leftTab !== 'edit' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: 'var(--primary)' }} /> : null}{id === 'page' && pageOn && leftTab !== 'page' ? <span style={{ position: 'absolute', top: 3, right: 5, width: 6, height: 6, borderRadius: 3, background: '#2E7D32' }} /> : null}
@@ -1544,6 +1546,10 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
 
         </div>
 
+        <div style={{ display: leftTab === 'shape' ? 'contents' : 'none' }} data-tab="shape">
+          {!result && <p style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--text-tertiary, #64748b)', margin: 0 }} data-testid="shape-empty">그림이 있는 칸을 고르면 요소 추가 · 정렬 · 선택한 요소의 속성이 여기에 나옵니다.</p>}
+          <div ref={setSideHost} style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="shape-host" />
+        </div>
         <div style={{ display: leftTab === 'edit' ? 'contents' : 'none' }} data-tab="edit">
         {result && result.type === 'table' && (() => { const td = normalizeTableDoc(result.spec); return (
           <details data-testid="table-form-details">
@@ -1621,6 +1627,11 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
+          {sideOn && pageOn && result && (
+            <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
+              <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {focusOn ? '위쪽 띠에서 다른 칸을 누르면(◀ ▶ 도 됩니다)' : `${sideOn ? '오른쪽' : '아래'} “페이지 배치”에서 다른 칸을 누르면`} 그 칸의 그림으로 바뀝니다.
+            </p>
+          )}
           <div style={sideOn ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', columnGap: 20, alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'} data-focus={focusOn ? '1' : '0'}>
           <div style={{ minWidth: 0 }}>
           {focusOn && (() => { // 편집 집중: 페이지 배치를 위쪽 작은 띠로(칸 고르기 + 지금 모습 확인)
@@ -1656,7 +1667,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
               </span>
             </div>
           )}
-          {pageOn && result && (
+          {pageOn && result && !sideOn && (
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', margin: '0 0 8px' }} data-testid="edit-hint" ref={editorTopRef}>
               <b>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}</b>{pageModel?.preview?.cells.find((c) => c.id === selCell) ? ` (${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[2])}×${Math.round(pageModel.preview.cells.find((c) => c.id === selCell).rect[3])}mm)` : ''}의 그림을 바로 고칠 수 있습니다. {focusOn ? '위쪽 띠에서 다른 칸을 누르면(◀ ▶ 도 됩니다)' : `${sideOn ? '오른쪽' : '아래'} “페이지 배치”에서 다른 칸을 누르면`} 그 칸의 그림으로 바뀝니다.
             </p>
@@ -1690,12 +1701,12 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           )}
           {result?.type === 'sketch' && rendered?.svg && (
             <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SketchEditor key={`${selCell}:${result.ver}`} onCopy={onEditorCopy} pasteSignal={pasteSig} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
+              <SketchEditor key={`${selCell}:${result.ver}`} sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
             </div>
           )}
           {result?.type !== 'sketch' && rendered?.svg && (
             <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SvgEditor onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
+              <SvgEditor sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
                 shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'}
                 onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />

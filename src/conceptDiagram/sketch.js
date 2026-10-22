@@ -18,6 +18,7 @@ import { dimSvg, dimBox, DIM_COLOR, DIM_DEFAULT_TEXT } from './dim';
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx, clampPct } from './imgfx';
+import { TEXT_WEIGHTS, fontCssOf, isTextFont } from './fonts';
 import { northSvg, scaleBarSvg, scaleBarHeight, normalizeScale, NORTH_STYLES, SYMBOL_COLOR } from './symbols';
 
 const FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif";
@@ -555,7 +556,7 @@ export function normalizeSketch(raw) {
   const memoRaw = (Array.isArray(s.memos) ? s.memos : []).slice(0, 60);
   const tfmt = (m) => ({ ...(m.align === 'start' || m.align === 'end' ? { align: m.align } : m.align === 'middle' && m.callout ? { align: 'middle' } : {}), ...(Number(m.ls) ? { ls: num(m.ls, 0, -3, 30) } : {}) }); // 글자 정렬(왼쪽 start·오른쪽 end, 리더선은 가운데도)·자간
   const lhfmt = (m) => (Number(m.lh) > 0 && Math.abs(Number(m.lh) - 1) > 0.01 ? { lh: num(m.lh, 1, 0.6, 2.5) } : {}); // 리더선 설명 행간 배율
-  const memos = memoRaw.map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) })).map((mm, i) => { const m0 = memoRaw[i]; const plain = !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun' && !m0.dim; if (m0.dim && !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun') { const { rot, align, ls, ...rest } = mm; return { ...rest, dim: true, tx: num(m0.tx, mm.x + 20), ty: num(m0.ty, mm.y) }; } return plain ? { ...mm, ...tfmt(m0) } : mm.callout ? { ...mm, ...tfmt(m0), ...lhfmt(m0) } : mm; });
+  const memos = memoRaw.map((m, i) => ({ id: uid(m.id, `m${i + 1}`), x: num(m.x, 50), y: num(m.y, 50), text: BADGE_SHAPES.includes(m.badge) ? String(m.text ?? '').slice(0, 3) : String(m.text ?? ''), size: num(m.size, 14, 8, 48), color: isHex(m.color) ? m.color : '#222222', ...(isTextFont(m.font) ? { font: m.font } : {}), ...(TEXT_WEIGHTS.some((w) => w[0] === Number(m.fw)) ? { fw: Number(m.fw) } : {}), icon: m.icon === 'sun' ? 'sun' : '', ...(m.zone ? { zone: String(m.zone) } : {}), ...(m.icon === 'sun' || BADGE_SHAPES.includes(m.badge) || m.callout || ICON_NAMES.includes(m.chip) || m.table || m.symbol === 'scale' ? {} : rotOf(m.rot)), ...(BADGE_SHAPES.includes(m.badge) ? { badge: m.badge, auto: m.auto !== false } : {}), ...(m.callout && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? { callout: true, desc: String(m.desc ?? '').split('\n').slice(0, 3).join('\n').slice(0, 160), tx: num(m.tx, num(m.x, 50) - 8), ty: num(m.ty, num(m.y, 50) + 6), line: CALLOUT_LINES.includes(m.line) ? m.line : 'straight', end: CALLOUT_ENDS.includes(m.end) ? m.end : 'dot' } : {}), ...(ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && !m.callout && m.icon !== 'sun' ? { chip: m.chip, chipShape: CHIP_SHAPES.includes(m.chipShape) ? m.chipShape : 'rounded' } : {}), ...(m.table && typeof m.table === 'object' && !BADGE_SHAPES.includes(m.badge) && !m.callout && !ICON_NAMES.includes(m.chip) && m.icon !== 'sun' ? { table: normalizeTable(m.table) } : {}), ...(['north', 'scale'].includes(m.symbol) && !m.table && !m.callout && !ICON_NAMES.includes(m.chip) && !BADGE_SHAPES.includes(m.badge) && m.icon !== 'sun' ? (m.symbol === 'north' ? { symbol: 'north', ssize: num(m.ssize, 64, 30, 240), nstyle: NORTH_STYLES.includes(m.nstyle) ? m.nstyle : 'circle' } : { symbol: 'scale', ssize: num(m.ssize, 220, 60, 900), ...normalizeScale(m) }) : {}) })).map((mm, i) => { const m0 = memoRaw[i]; const plain = !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun' && !m0.dim; if (m0.dim && !mm.badge && !mm.callout && !mm.chip && !mm.table && !mm.symbol && mm.icon !== 'sun') { const { rot, align, ls, ...rest } = mm; return { ...rest, dim: true, tx: num(m0.tx, mm.x + 20), ty: num(m0.ty, mm.y) }; } return plain ? { ...mm, ...tfmt(m0) } : mm.callout ? { ...mm, ...tfmt(m0), ...lhfmt(m0) } : mm; });
   // 구역 색 층(AI 이미지 편집 결과): 색마다 농도 마스크 한 장 + 기준 색. 바탕 위에 곱하기(선 도면) 또는 색조 혼합(사진·3D, 밝기·질감 유지)으로 칠해지므로 색·농도를 바꾸면 다시 칠해진다
   const zones = (Array.isArray(s.zones) ? s.zones : []).slice(0, 8).filter((z) => z && typeof z.mask === 'string' && z.mask.length > 8 && z.mask.length < 6000000).map((z, i) => ({ id: uid(z.id, `z${i + 1}`), color: isHex(z.color) ? z.color : '#B7D7F5', label: String(z.label ?? ''), mask: z.mask, opacity: num(z.opacity, 1, 0, 1), hidden: !!z.hidden, blend: z.blend === 'color' ? 'color' : 'multiply', ...(z.band ? { band: String(z.band).slice(0, 12) } : {}) }));
   // 입체 바탕(분석 축측도): 평면에서 뽑은 벽체 SVG 조각과 그 그림 좌표계(vb), 다이어그램 좌표에서 놓이는 자리(rect)
@@ -573,7 +574,7 @@ export function normalizeSketch(raw) {
   if (frame[3] - frame[1] < 1) frame[3] = frame[1] + 1;
   // 스타일: concept = 참고 개념도(크림 배경·주황 강조, 기본), line = 도면용(흰 배경·검정 선). 발표용(그림자 카드)은 쓰지 않는다
   return {
-    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, zones, base, textBlock, ...(gscale ? { gscale } : {}),
+    title: String(s.title ?? ''), subtitle: String(s.subtitle ?? ''), ...(isTextFont(s.font) ? { font: s.font } : {}), style: s.style === 'line' ? 'line' : 'concept', layout: s.layout === 'axon' ? 'axon' : s.layout === 'image' ? 'image' : '', showLegend: !!s.showLegend, showNotes: !!s.showNotes, frame, blocks, lines, winds, memos, zones, base, textBlock, ...(gscale ? { gscale } : {}),
     legend: { wind: String(s.legend?.wind ?? '기류(흐름)'), core: String(s.legend?.core ?? '코어(계단·승강기)'), opening: String(s.legend?.opening ?? '개구부(창)') }, notes: (Array.isArray(s.notes) ? s.notes : []).slice(0, 4).map(String),
   };
 }
@@ -932,7 +933,7 @@ export function renderSketch(raw, opts = {}) {
       return;
     }
     const yc = y - m.size * 0.32; const MT = m.rot ? ` transform="rotate(${m.rot} ${x.toFixed(1)} ${yc.toFixed(1)})"` : ''; // 글자의 보이는 가운데를 중심으로 돈다
-    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${m.align || 'middle'}"${m.ls ? ` letter-spacing="${m.ls}"` : ''} font-family="${FONT}" font-size="${m.size}" font-weight="${concept ? 600 : 700}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${MT}${eid(m.id)}>${esc(m.text)}</text>`);
+    o.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${m.align || 'middle'}"${m.ls ? ` letter-spacing="${m.ls}"` : ''} font-family="${m.font ? fontCssOf(m.font) : FONT}" font-size="${m.size}" font-weight="${m.fw || (concept ? 600 : 700)}" fill="${m.color}" paint-order="stroke" stroke="${concept ? C.bg : '#fff'}" stroke-width="4" stroke-linejoin="round"${MT}${eid(m.id)}>${esc(m.text)}</text>`);
     if (selected === m.id) {
       const wd = [...m.text].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? m.size : m.size * 0.58) + (m.ls || 0), 0) + 12; const fx = m.align === 'start' ? x - 6 : m.align === 'end' ? x - wd + 6 : x - wd / 2; sel.push(wrapG(MT, `<rect x="${fx.toFixed(1)}" y="${(y - m.size - 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${(m.size + 12).toFixed(1)}" fill="none" stroke="#F28C28" stroke-width="2" stroke-dasharray="6 4" rx="3"/>`));
       if (interactive) handles.push(wrapG(MT, rotHandle(m.id, x, y - m.size - 28, y - m.size - 2)));
@@ -986,7 +987,7 @@ export function renderSketch(raw, opts = {}) {
     let sy2 = ly + 58; tb.subs.forEach((t) => { const sfs = Math.max(18, Math.min(26, 372 / wlen(t))); o.push(`<text x="${cxm}" y="${sy2}" text-anchor="middle" font-family="${FONT}" font-size="${sfs.toFixed(1)}" font-weight="500" fill="${C.text}">${esc(t)}</text>`); sy2 += 46; });
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${C.bg}"${interactive ? ' data-bg="1"' : ''}/>${(spec.gscale ? [`<g data-gscale="1" transform="translate(${spec.gscale.t[0].toFixed(2)} ${spec.gscale.t[1].toFixed(2)}) scale(${spec.gscale.k.toFixed(4)})">`, ...o, '</g>'] : o).join('')}</svg>`;
-  return { svg, width: W, height: H };
+  return { svg: spec.font ? svg.split(FONT).join(fontCssOf(spec.font)) : svg, width: W, height: H }; // 그림 전체 글씨체(spec.font): 기본 글꼴 값을 통째로 바꾼다(글자마다 따로 정한 글씨체는 그대로)
 }
 
 // ── 전체 크기 조절 도우미 ──────────────────────────────────
@@ -1317,6 +1318,66 @@ export function sketchSnapGuides(spec, id, box, tol = 1.4, extra = []) {
 export function sketchSnapPointG(spec, id, pt, tol = 1.4, extra = []) {
   const r = sketchSnapGuides(spec, id, [pt[0], pt[1], pt[0], pt[1]], tol, extra);
   return { pt: [pt[0] + r.dx, pt[1] + r.dy], guides: r.guides };
+}
+
+// ── 여러 요소를 한꺼번에 다루기(Shift·Ctrl+클릭으로 여러 개 고른 뒤) ──
+// 일반 글자(번호·리더선·치수·아이콘·표 등이 아닌 메모). 글자 크기·색·글씨체·정렬을 한꺼번에 바꾸는 대상
+export const isPlainMemo = (e) => !!e && !(e.badge || e.callout || e.dim || e.chip || e.table || e.symbol || e.icon === 'sun');
+// 정렬·간격에 쓰는 요소의 바깥 상자(다이어그램 좌표). 일반 글자는 글자 폭·높이를 어림해서 정렬 기준이 글자 모양이 되게 한다(점 하나로만 보면 글자 길이가 달라 줄이 안 맞는다)
+export function sketchBoxFor(spec, id) {
+  const f = sketchFind(spec, id); if (!f) return null;
+  if (f.list === 'memos' && isPlainMemo(f.el)) {
+    const e = f.el; const K = sketchView(spec).K || 1;
+    const w = [...String(e.text ?? '')].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? e.size : e.size * 0.58) + (e.ls || 0), 0) / K; const h = e.size / K;
+    const x0 = e.align === 'start' ? e.x : e.align === 'end' ? e.x - w : e.x - w / 2;
+    return [x0, e.y - h * 0.8, x0 + w, e.y + h * 0.2];
+  }
+  return sketchBox(spec, id);
+}
+export function sketchUnionBox(spec, ids) {
+  const bs = ids.map((id) => sketchBoxFor(spec, id)).filter(Boolean); if (!bs.length) return null;
+  return [Math.min(...bs.map((b) => b[0])), Math.min(...bs.map((b) => b[1])), Math.max(...bs.map((b) => b[2])), Math.max(...bs.map((b) => b[3]))];
+}
+// 고른 요소들끼리 서로 맞춘다(가장 바깥 상자 기준): mode = left|hcenter|right|top|vcenter|bottom
+export function sketchAlignMany(spec, ids, mode) {
+  const items = ids.map((id) => ({ id, b: sketchBoxFor(spec, id) })).filter((x) => x.b); if (items.length < 2) return spec;
+  const U = sketchUnionBox(spec, items.map((x) => x.id)); let next = spec;
+  items.forEach(({ id, b }) => {
+    const d = { left: [U[0] - b[0], 0], right: [U[2] - b[2], 0], hcenter: [(U[0] + U[2]) / 2 - (b[0] + b[2]) / 2, 0], top: [0, U[1] - b[1]], bottom: [0, U[3] - b[3]], vcenter: [0, (U[1] + U[3]) / 2 - (b[1] + b[3]) / 2] }[mode];
+    if (d) next = sketchMoveBy(next, id, d[0], d[1]);
+  });
+  return next;
+}
+// 가운데 요소들을 처음~끝 사이에 같은 간격(요소 사이 빈틈)으로: dir = 'h'(가로) | 'v'(세로). 3개 이상일 때만
+export function sketchDistribute(spec, ids, dir) {
+  const h = dir === 'h'; const items = ids.map((id) => ({ id, b: sketchBoxFor(spec, id) })).filter((x) => x.b); if (items.length < 3) return spec;
+  items.sort((p, q) => (h ? (p.b[0] + p.b[2]) - (q.b[0] + q.b[2]) : (p.b[1] + p.b[3]) - (q.b[1] + q.b[3])));
+  const k = h ? 0 : 1; const lo = items[0].b[k]; const hi = items[items.length - 1].b[k + 2]; const sum = items.reduce((a, x) => a + (x.b[k + 2] - x.b[k]), 0);
+  const gap = (hi - lo - sum) / (items.length - 1); let cur = lo; let next = spec;
+  items.forEach(({ id, b }) => { const d = cur - b[k]; next = sketchMoveBy(next, id, h ? d : 0, h ? 0 : d); cur += (b[k + 2] - b[k]) + gap; });
+  return next;
+}
+export const sketchMoveMany = (spec, ids, dx, dy) => ids.reduce((sp, id) => sketchMoveBy(sp, id, dx, dy), spec);
+export function sketchDeleteMany(spec, ids) { return ids.reduce((sp, id) => sketchDelete(sp, id), spec); }
+// 고른 요소들 중 해당 종류(kinds: 'block'|'line'|'wind'|'memo', 'text' = 일반 글자)에만 속성을 입힌다. patch 는 값 또는 (요소) => 값
+export function sketchUpdateMany(spec, ids, patch, kinds) {
+  let next = spec;
+  ids.forEach((id) => {
+    const f = sketchFind(next, id); if (!f) return;
+    const kind = { blocks: 'block', lines: 'line', winds: 'wind', memos: 'memo' }[f.list];
+    if (kinds && !kinds.some((k) => (k === 'text' ? f.list === 'memos' && isPlainMemo(f.el) : k === kind))) return;
+    const pt = typeof patch === 'function' ? patch(f.el) : patch; if (pt) next = sketchUpdate(next, id, pt);
+  });
+  return next;
+}
+// 판·코어 안에 자동으로 그려지는 이름 글자를 따로 떼어, 어디든 옮기고 크기·색·글씨체를 바꿀 수 있는 글자(메모)로 만든다. 돌려주는 값: { spec, id }
+export function sketchDetachName(spec, id) {
+  const f = sketchFind(spec, id); if (!f || f.list !== 'blocks' || !f.el.name) return { spec, id: '' };
+  const b = f.el; const V = sketchView(spec); const a = V.toScreen([b.rect[0], b.rect[1]]); const z = V.toScreen([b.rect[2], b.rect[3]]); const w = z[0] - a[0]; const hh = z[1] - a[1];
+  const len = [...b.name].reduce((t, ch) => t + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0) || 1; const fs = Math.max(10, Math.min(22, (w - 10) / len, hh - 8));
+  const strong = b.kind === 'core' || !!b.fill; let n = 1; while ((spec.memos || []).some((m) => m.id === `m${n}`)) n += 1; const mid = `m${n}`;
+  const memo = { id: mid, x: Math.round(((b.rect[0] + b.rect[2]) / 2) * 100) / 100, y: Math.round(((b.rect[1] + b.rect[3]) / 2 + (fs * 0.35) / V.K) * 100) / 100, text: b.name, size: Math.round(fs), color: strong ? '#222222' : '#8A8580', fw: strong ? 600 : 400 };
+  return { spec: { ...sketchUpdate(spec, id, { showName: false }), memos: [...(spec.memos || []), memo] }, id: mid };
 }
 
 // 기준(요소 id 또는 'axis'=그림 틀)에 맞춰 정렬: mode = left|hcenter|right|top|vcenter|bottom

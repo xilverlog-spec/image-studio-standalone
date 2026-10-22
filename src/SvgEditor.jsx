@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, DASH_GAP_MIN, DASH_GAP_MAX, dashKind, dashNumsEven, dashSameParts, dashGapFactor, dashScaled, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
@@ -52,7 +53,7 @@ function Colors({ value, onChange, none, onNone }) {
 
 let SV_CLIP = null; let SV_PASTE_N = 0; // 복사해 둔 요소(다른 칸의 그림에도 붙일 수 있게 모듈에 둔다)와 연속 붙여넣기 횟수
 
-export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick, onCopy, pasteSignal }) {
+export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
   const view = useMemo(() => applyEdits(svg, edits, { ids: true }), [svg, edits]);
   const html = useMemo(() => ({ __html: responsiveSvg(view.svg) }), [view.svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다(다시 만들면 표시·마우스 올림이 사라진다)
   const E = useMemo(() => (edits && edits.sig === view.sig ? edits : { sig: view.sig, ops: {}, ...(edits?.adds ? { adds: edits.adds } : {}), ...(edits?.shapes ? { shapes: edits.shapes } : {}) }), [edits, view.sig]); // 구조가 달라져도 내가 넣은 이미지는 남긴다
@@ -78,9 +79,11 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const hostRef = useRef(null); const bodyRef = useRef(null); const drag = useRef(null); const keyRef = useRef(null);
   const Eref = useRef(E); Eref.current = E;
   const selIds = multi.length > 1 ? multi : sel ? [sel] : [];
+  useEffect(() => { if (selIds.length && onPick) onPick(); }, [selIds.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps — 요소를 누르면 왼쪽 ③ 도형 편집 탭을 연다
   const flash = (t) => { setNote(t); setTimeout(() => setNote((n) => (n === t ? '' : n)), 2600); };
   const sigRef = useRef(view.sig); sigRef.current = view.sig;
   const [edWide, setEdWide] = useState(true); const edRoOff = useRef(null); // 편집기가 넓을 때(900px 이상)만 속성 패널을 오른쪽에 두고, 좁으면 그림 아래에 가로로 펼친다
+  const rowMode = edWide && !sideHost; // 속성 패널이 편집기 안쪽에 있고 편집기가 넓을 때만 그림 | 패널 가로 한 줄
   const edRootRef = useCallback((el) => { // 콜백 ref: 편집기 뿌리 상자가 (처음 그려질 때든 나중에든) 생기면 폭을 지켜본다
     if (edRoOff.current) { edRoOff.current(); edRoOff.current = null; }
     if (el) setEdWide(el.getBoundingClientRect().width >= 900); // 처음 그려질 때 바로 정한다(깜빡임 없이)
@@ -668,54 +671,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     else if (e.key === 'Escape') { setSel(''); setMulti([]); setNode(-1); }
   };
 
-  return (
-    <div ref={edRootRef} style={{ display: 'flex', flexDirection: edWide ? 'row' : 'column', gap: 14, alignItems: edWide ? 'flex-start' : 'stretch' }} data-testid="svg-editor" data-wide={edWide ? '1' : '0'}>
-      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
-      <div style={edWide ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
-        <ZoomView testid="sv-zoom" baseWidth={maxWidth || undefined}>
-        <div ref={hostRef} onPointerDown={onDown} onDoubleClick={onDbl} style={{ position: 'relative', width: '100%', border: '1px solid var(--border-color)', borderRadius: 8, background: '#fff' }} data-testid="inline-svg">
-          <style>{'.sv-ed [data-eid]{cursor:move}.sv-ed text[data-editable]{cursor:text}.sv-ed [data-eid]:not([data-hit]):hover{filter:drop-shadow(0 0 2px #F28C28)}.sv-ed [data-hit]{cursor:move}'}</style>
-          <div ref={bodyRef} className="sv-ed" dangerouslySetInnerHTML={html} data-testid="sv-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
-          {marq && hostRef.current && (() => { const hr = hostRef.current.getBoundingClientRect(); return (
-            <svg width={hr.width} height={hr.height} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 4 }} data-testid="sv-marquee">
-              <rect x={Math.min(marq.x0, marq.x1) - hr.left} y={Math.min(marq.y0, marq.y1) - hr.top} width={Math.abs(marq.x1 - marq.x0)} height={Math.abs(marq.y1 - marq.y0)} fill="rgba(242,140,40,0.12)" stroke="#F28C28" strokeWidth="1.5" strokeDasharray="5 3" />
-            </svg>); })()}
-          {guides.length > 0 && hostRef.current && (() => { const hr = hostRef.current.getBoundingClientRect(); return (
-            <svg width={hr.width} height={hr.height} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 4 }} data-testid="sv-guides">
-              {guides.map((g, i) => (g.dim === 'x'
-                ? <line key={i} x1={g.v - hr.left} y1={0} x2={g.v - hr.left} y2={hr.height} stroke="#E0368A" strokeWidth="1.2" strokeDasharray="6 4" />
-                : <line key={i} x1={0} y1={g.v - hr.top} x2={hr.width} y2={g.v - hr.top} stroke="#E0368A" strokeWidth="1.2" strokeDasharray="6 4" />))}
-            </svg>); })()}
-          {ov && (
-            <svg width={ov.w} height={ov.h} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 3 }} data-testid="sv-overlay">
-              {(ov.multi || []).map((b, i) => <rect key={i} x={b[0] - 2} y={b[1] - 2} width={b[2] + 4} height={b[3] + 4} fill="rgba(242,140,40,0.08)" stroke="#F28C28" strokeWidth="1.2" rx="2" />)}
-              <rect x={ov.box[0] - 3} y={ov.box[1] - 3} width={ov.box[2] + 6} height={ov.box[3] + 6} fill="none" stroke="#F28C28" strokeWidth="1.6" strokeDasharray="6 4" rx="3" />
-              {ov.ctrls.map((c) => (<g key={c.h}><line x1={c.from[0]} y1={c.from[1]} x2={c.p[0]} y2={c.p[1]} stroke="#F28C28" strokeWidth="1" strokeDasharray="3 3" />{c.from2 && <line x1={c.from2[0]} y1={c.from2[1]} x2={c.p[0]} y2={c.p[1]} stroke="#F28C28" strokeWidth="1" strokeDasharray="3 3" />}
-                <circle data-h={c.h} cx={c.p[0]} cy={c.p[1]} r="5" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'crosshair' }} /></g>))}
-              {ov.pts.map((p) => (p.sq
-                ? <rect key={p.h} data-h={p.h} x={p.p[0] - 5} y={p.p[1] - 5} width="10" height="10" rx="2" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'nwse-resize' }} />
-                : <circle key={p.h} data-h={p.h} cx={p.p[0]} cy={p.p[1]} r="6" fill={p.sel ? '#F28C28' : '#fff'} stroke="#F28C28" strokeWidth="2.2" style={{ pointerEvents: 'auto', cursor: 'move' }} />))}
-              {ov.scaleH && [['nw', ov.box[0] - 3, ov.box[1] - 3, 'nwse-resize'], ['ne', ov.box[0] + ov.box[2] + 3, ov.box[1] - 3, 'nesw-resize'], ['se', ov.box[0] + ov.box[2] + 3, ov.box[1] + ov.box[3] + 3, 'nwse-resize'], ['sw', ov.box[0] - 3, ov.box[1] + ov.box[3] + 3, 'nesw-resize']].map(([k, px, py, cur]) => (
-                <rect key={k} data-h={`ms:${k}`} data-testid={`sv-scale-${k}`} x={px - 6} y={py - 6} width="12" height="12" rx="2.5" fill="#F28C28" stroke="#fff" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: cur }}><title>끌어서 선택한 것 전체의 크기를 조절합니다(글자·선 굵기도 함께, Shift: 가로·세로 따로)</title></rect>))}
-              {ov.rot && (<g>
-                <line x1={ov.rot[0]} y1={ov.rot[1] + 8} x2={ov.rot[0]} y2={ov.box[1] - 3} stroke="#F28C28" strokeWidth="1.6" />
-                <circle data-h="rot" data-testid="sv-rot-handle" cx={ov.rot[0]} cy={ov.rot[1]} r="8.5" fill="#fff" stroke="#F28C28" strokeWidth="2.4" style={{ pointerEvents: 'auto', cursor: 'grab' }} />
-                <path d={`M${ov.rot[0] - 3.4} ${ov.rot[1] + 0.4} a3.4 3.4 0 1 1 1.2 2.6`} fill="none" stroke="#F28C28" strokeWidth="1.8" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
-              </g>)}
-              {scaleInfo && ov.rotC && (<g data-testid="sv-scale-label"><rect x={ov.rotC[0] - 38} y={ov.rotC[1] - 13} width="76" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{Math.abs(scaleInfo.kx - scaleInfo.ky) < 0.005 ? `${Math.round(scaleInfo.kx * 100)}%` : `${Math.round(scaleInfo.kx * 100)}×${Math.round(scaleInfo.ky * 100)}%`}</text></g>)}
-              {rotInfo && ov.rotC && (<g data-testid="sv-rot-label"><rect x={ov.rotC[0] - 30} y={ov.rotC[1] - 13} width="60" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{rotInfo.multi && rotInfo.deg > 0 ? '+' : ''}{Math.round(rotInfo.deg * 10) / 10}°</text></g>)}
-            </svg>
-          )}
-          {ed && hostRef.current && (
-            <InlineInput host={hostRef.current} target={ed.target} value={ed.field.value} multiline={!!ed.field.multiline || /\n/.test(ed.field.value)}
-              onCommit={(v) => { const fl = ed.field; const sid = ed.shapeId; const aid = ed.addId; setEd(null); if (v === fl.value) return; if (aid && ed.addCell) { const tb = (Eref.current.adds || []).find((a) => a.id === aid); if (tb) commit(editUpdateAdd(Eref.current, aid, { table: tableSetCell(tb.table, ed.addCell[0], ed.addCell[1], v) })); return; } if (aid && ed.addKey) { commit(editUpdateAdd(Eref.current, aid, { [ed.addKey]: ed.addKey === 'desc' ? String(v).split('\n').slice(0, 3).join('\n') : String(v) })); return; } if (aid) { commit(editRenumber(editUpdateAdd(Eref.current, aid, { text: String(v).slice(0, 3), auto: false }))); return; } if (sid) { const sh = shapes.find((q) => q.id === sid); commit(editUpdateShape(Eref.current, sid, sh && sh.kind === 'raw' ? { el: rawSetText(sh, v).el } : { text: v })); } else onTextEdit?.(fl, v); }} onCancel={() => setEd(null)} />
-          )}
-        </div>
-        </ZoomView>
-        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>, 모서리를 끌면 크기가, 상자 안쪽을 끌면 위치가 바뀝니다. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
-      </div>
-
-      <div className={edWide ? undefined : 'ed-cols'} style={edWide ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sv-side">
+  const sidePanel = (
+      <div className={rowMode || sideHost ? undefined : 'ed-cols'} style={sideHost ? { display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' } : rowMode ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sv-side">
         <div style={sec} data-testid="sv-add-panel">
           <span style={title}>요소 추가</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1112,6 +1069,61 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
         )}
         <p style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.5 }}>고친 모양은 SVG·PNG 저장에 그대로 담깁니다. 글자를 고쳐도 도형 수정은 유지됩니다(그림 구조가 같을 때).</p>
       </div>
+  );
+  return (
+    <div ref={edRootRef} style={{ display: 'flex', flexDirection: rowMode ? 'row' : 'column', gap: 14, alignItems: rowMode ? 'flex-start' : 'stretch' }} data-testid="svg-editor" data-wide={rowMode ? '1' : '0'}>
+      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
+      <div style={rowMode ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
+        <ZoomView testid="sv-zoom" baseWidth={maxWidth || undefined}>
+        <div ref={hostRef} onPointerDown={onDown} onDoubleClick={onDbl} style={{ position: 'relative', width: '100%', border: '1px solid var(--border-color)', borderRadius: 8, background: '#fff' }} data-testid="inline-svg">
+          <style>{'.sv-ed [data-eid]{cursor:move}.sv-ed text[data-editable]{cursor:text}.sv-ed [data-eid]:not([data-hit]):hover{filter:drop-shadow(0 0 2px #F28C28)}.sv-ed [data-hit]{cursor:move}'}</style>
+          <div ref={bodyRef} className="sv-ed" dangerouslySetInnerHTML={html} data-testid="sv-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
+          {marq && hostRef.current && (() => { const hr = hostRef.current.getBoundingClientRect(); return (
+            <svg width={hr.width} height={hr.height} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 4 }} data-testid="sv-marquee">
+              <rect x={Math.min(marq.x0, marq.x1) - hr.left} y={Math.min(marq.y0, marq.y1) - hr.top} width={Math.abs(marq.x1 - marq.x0)} height={Math.abs(marq.y1 - marq.y0)} fill="rgba(242,140,40,0.12)" stroke="#F28C28" strokeWidth="1.5" strokeDasharray="5 3" />
+            </svg>); })()}
+          {guides.length > 0 && hostRef.current && (() => { const hr = hostRef.current.getBoundingClientRect(); return (
+            <svg width={hr.width} height={hr.height} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 4 }} data-testid="sv-guides">
+              {guides.map((g, i) => (g.dim === 'x'
+                ? <line key={i} x1={g.v - hr.left} y1={0} x2={g.v - hr.left} y2={hr.height} stroke="#E0368A" strokeWidth="1.2" strokeDasharray="6 4" />
+                : <line key={i} x1={0} y1={g.v - hr.top} x2={hr.width} y2={g.v - hr.top} stroke="#E0368A" strokeWidth="1.2" strokeDasharray="6 4" />))}
+            </svg>); })()}
+          {ov && (
+            <svg width={ov.w} height={ov.h} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 3 }} data-testid="sv-overlay">
+              {(ov.multi || []).map((b, i) => <rect key={i} x={b[0] - 2} y={b[1] - 2} width={b[2] + 4} height={b[3] + 4} fill="rgba(242,140,40,0.08)" stroke="#F28C28" strokeWidth="1.2" rx="2" />)}
+              <rect x={ov.box[0] - 3} y={ov.box[1] - 3} width={ov.box[2] + 6} height={ov.box[3] + 6} fill="none" stroke="#F28C28" strokeWidth="1.6" strokeDasharray="6 4" rx="3" />
+              {ov.ctrls.map((c) => (<g key={c.h}><line x1={c.from[0]} y1={c.from[1]} x2={c.p[0]} y2={c.p[1]} stroke="#F28C28" strokeWidth="1" strokeDasharray="3 3" />{c.from2 && <line x1={c.from2[0]} y1={c.from2[1]} x2={c.p[0]} y2={c.p[1]} stroke="#F28C28" strokeWidth="1" strokeDasharray="3 3" />}
+                <circle data-h={c.h} cx={c.p[0]} cy={c.p[1]} r="5" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'crosshair' }} /></g>))}
+              {ov.pts.map((p) => (p.sq
+                ? <rect key={p.h} data-h={p.h} x={p.p[0] - 5} y={p.p[1] - 5} width="10" height="10" rx="2" fill="#fff" stroke="#F28C28" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: 'nwse-resize' }} />
+                : <circle key={p.h} data-h={p.h} cx={p.p[0]} cy={p.p[1]} r="6" fill={p.sel ? '#F28C28' : '#fff'} stroke="#F28C28" strokeWidth="2.2" style={{ pointerEvents: 'auto', cursor: 'move' }} />))}
+              {ov.scaleH && [['nw', ov.box[0] - 3, ov.box[1] - 3, 'nwse-resize'], ['ne', ov.box[0] + ov.box[2] + 3, ov.box[1] - 3, 'nesw-resize'], ['se', ov.box[0] + ov.box[2] + 3, ov.box[1] + ov.box[3] + 3, 'nwse-resize'], ['sw', ov.box[0] - 3, ov.box[1] + ov.box[3] + 3, 'nesw-resize']].map(([k, px, py, cur]) => (
+                <rect key={k} data-h={`ms:${k}`} data-testid={`sv-scale-${k}`} x={px - 6} y={py - 6} width="12" height="12" rx="2.5" fill="#F28C28" stroke="#fff" strokeWidth="2" style={{ pointerEvents: 'auto', cursor: cur }}><title>끌어서 선택한 것 전체의 크기를 조절합니다(글자·선 굵기도 함께, Shift: 가로·세로 따로)</title></rect>))}
+              {ov.rot && (<g>
+                <line x1={ov.rot[0]} y1={ov.rot[1] + 8} x2={ov.rot[0]} y2={ov.box[1] - 3} stroke="#F28C28" strokeWidth="1.6" />
+                <circle data-h="rot" data-testid="sv-rot-handle" cx={ov.rot[0]} cy={ov.rot[1]} r="8.5" fill="#fff" stroke="#F28C28" strokeWidth="2.4" style={{ pointerEvents: 'auto', cursor: 'grab' }} />
+                <path d={`M${ov.rot[0] - 3.4} ${ov.rot[1] + 0.4} a3.4 3.4 0 1 1 1.2 2.6`} fill="none" stroke="#F28C28" strokeWidth="1.8" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+              </g>)}
+              {scaleInfo && ov.rotC && (<g data-testid="sv-scale-label"><rect x={ov.rotC[0] - 38} y={ov.rotC[1] - 13} width="76" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{Math.abs(scaleInfo.kx - scaleInfo.ky) < 0.005 ? `${Math.round(scaleInfo.kx * 100)}%` : `${Math.round(scaleInfo.kx * 100)}×${Math.round(scaleInfo.ky * 100)}%`}</text></g>)}
+              {rotInfo && ov.rotC && (<g data-testid="sv-rot-label"><rect x={ov.rotC[0] - 30} y={ov.rotC[1] - 13} width="60" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={ov.rotC[0]} y={ov.rotC[1] + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">{rotInfo.multi && rotInfo.deg > 0 ? '+' : ''}{Math.round(rotInfo.deg * 10) / 10}°</text></g>)}
+            </svg>
+          )}
+          {ed && hostRef.current && (
+            <InlineInput host={hostRef.current} target={ed.target} value={ed.field.value} multiline={!!ed.field.multiline || /\n/.test(ed.field.value)}
+              onCommit={(v) => { const fl = ed.field; const sid = ed.shapeId; const aid = ed.addId; setEd(null); if (v === fl.value) return; if (aid && ed.addCell) { const tb = (Eref.current.adds || []).find((a) => a.id === aid); if (tb) commit(editUpdateAdd(Eref.current, aid, { table: tableSetCell(tb.table, ed.addCell[0], ed.addCell[1], v) })); return; } if (aid && ed.addKey) { commit(editUpdateAdd(Eref.current, aid, { [ed.addKey]: ed.addKey === 'desc' ? String(v).split('\n').slice(0, 3).join('\n') : String(v) })); return; } if (aid) { commit(editRenumber(editUpdateAdd(Eref.current, aid, { text: String(v).slice(0, 3), auto: false }))); return; } if (sid) { const sh = shapes.find((q) => q.id === sid); commit(editUpdateShape(Eref.current, sid, sh && sh.kind === 'raw' ? { el: rawSetText(sh, v).el } : { text: v })); } else onTextEdit?.(fl, v); }} onCancel={() => setEd(null)} />
+          )}
+        </div>
+        </ZoomView>
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>, 모서리를 끌면 크기가, 상자 안쪽을 끌면 위치가 바뀝니다. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+      </div>
+
+      {sideHost && !sideOpen && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontSize: 12, color: 'var(--text-secondary)' }} data-testid="side-hint">
+          <span>요소 추가 · 속성 · 정렬은 왼쪽 <b>③ 도형 편집</b> 탭에 있습니다(요소를 누르면 자동으로 열립니다).</span>
+          <button type="button" style={{ ...smallBtn(false), padding: '3px 10px' }} onClick={() => onOpenSide && onOpenSide()}>도형 편집 열기</button>
+        </div>
+      )}
+      {sideHost ? createPortal(sidePanel, sideHost) : sidePanel}
     </div>
   );
 }

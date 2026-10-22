@@ -31,7 +31,7 @@ const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
-export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
+export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, isPlainMemo, sketchBoxFor, sketchUnionBox, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
@@ -1501,6 +1501,53 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(bad.crop === null && nan.crop === null, '너무 작거나 엉뚱한 영역은 무시(전체 그림)');
   const svg = m.composePage(page, [{ id: 'c1', render: lay, crop: [10, 10, 40, 20] }, { id: 'c2', render: lay }], { layoutId: '2x1' }).svg;
   expect(!/NaN|Infinity/.test(svg), '저장용 그림에 NaN 이 없음');
+}
+// 손스케치: 여러 요소 한꺼번에(정렬·간격·일괄 속성·삭제·이름 분리)와 글씨체
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`손스케치 여러 개: ${label}`); };
+  const spec = m.normalizeSketch({
+    blocks: [{ id: 'b1', kind: 'slab', rect: [10, 10, 40, 30], name: '거실', showName: true }, { id: 'b2', kind: 'core', rect: [50, 10, 70, 30], name: '코어' }],
+    lines: [{ id: 'p1', pts: [[10, 40], [40, 40]], dash: 'solid', width: 2 }],
+    winds: [{ id: 'w1', pts: [[10, 50], [40, 52]], head: 'end', dash: 'dashed', width: 4, color: '#1E88C8' }],
+    memos: [{ id: 'm1', x: 20, y: 20, text: '가나다', size: 20 }, { id: 'm2', x: 60, y: 30, text: '라마바사아자', size: 30, align: 'start' }, { id: 'm3', x: 40, y: 45, text: '하', size: 16, align: 'end' }, { id: 'm4', x: 80, y: 20, text: '1', size: 20, badge: 'circle' }],
+  });
+  expect(m.isPlainMemo(spec.memos[0]) && !m.isPlainMemo(spec.memos[3]), '일반 글자와 번호 마커를 구분');
+  const w = (id) => m.sketchBoxFor(spec, id);
+  expect(w('m2')[0] === 60 && w('m2')[2] > 60 && w('m3')[2] === 40 && w('m3')[0] < 40 && Math.abs((w('m1')[0] + w('m1')[2]) / 2 - 20) < 1e-9, '글자 상자: 시작·끝·가운데 정렬 글자는 기준점에 맞춰 폭을 어림');
+  const ids = ['m1', 'm2', 'm3'];
+  for (const [mode, k, which] of [['left', 0, 'min'], ['right', 2, 'max'], ['top', 1, 'min'], ['bottom', 3, 'max']]) {
+    const out = m.sketchAlignMany(spec, ids, mode); const edges = ids.map((id) => m.sketchBoxFor(out, id)[k]);
+    const U = m.sketchUnionBox(spec, ids)[k];
+    expect(edges.every((v) => Math.abs(v - U) < 1e-6), `정렬 ${mode}: 모든 글자가 가장 바깥 ${which} 에 맞춰짐`);
+  }
+  const hc = m.sketchAlignMany(spec, ids, 'hcenter'); const cs = ids.map((id) => { const b = m.sketchBoxFor(hc, id); return (b[0] + b[2]) / 2; });
+  expect(cs.every((v) => Math.abs(v - cs[0]) < 1e-6), '가로 가운데 정렬: 가운데가 모두 같음');
+  expect(m.sketchAlignMany(spec, ['m1'], 'left') === spec, '하나만 고르면 정렬해도 변화 없음');
+  const dist = m.sketchDistribute(spec, ids, 'h'); const bb = ids.map((id) => m.sketchBoxFor(dist, id)).sort((p, q) => p[0] - q[0]);
+  expect(Math.abs((bb[1][0] - bb[0][2]) - (bb[2][0] - bb[1][2])) < 1e-6 && m.sketchDistribute(spec, ['m1', 'm2'], 'h') === spec, '가로 간격 같게(3개 이상일 때만)');
+  const mv = m.sketchMoveMany(spec, ['m1', 'p1'], 5, -3);
+  expect(Math.abs(mv.memos[0].x - 25) < 1e-9 && Math.abs(mv.memos[0].y - 17) < 1e-9 && Math.abs(mv.lines[0].pts[0][0] - 15) < 1e-9, '여러 개 한꺼번에 옮기기');
+  const up = m.sketchUpdateMany(spec, ['m1', 'm2', 'm4', 'w1', 'b1'], { size: 33 }, ['text']);
+  expect(up.memos[0].size === 33 && up.memos[1].size === 33 && up.memos[3].size === 20 && up.winds[0].width === 4, "'글자' 종류에만 속성을 입힘(번호 마커·화살표는 그대로)");
+  const fnUp = m.sketchUpdateMany(spec, ids, (e) => ({ size: Math.round(e.size * 1.5) }), ['text']);
+  expect(fnUp.memos[0].size === 30 && fnUp.memos[1].size === 45 && fnUp.memos[2].size === 24, '요소마다 값을 계산하는 함수로 입힘(크기 ×1.5)');
+  const wi = m.sketchUpdateMany(spec, ['w1', 'p1'], { color: '#D6453D' }, ['wind']);
+  expect(wi.winds[0].color === '#D6453D' && wi.lines[0].color === spec.lines[0].color, '종류를 정하면 그 종류에만(화살표만)');
+  const del = m.sketchDeleteMany(spec, ['m1', 'm4', 'p1']);
+  expect(del.memos.length === 2 && del.lines.length === 0 && del.memos.every((q) => q.id !== 'm1'), '여러 개 한꺼번에 지우기');
+  // 글씨체·굵기
+  const fx = m.normalizeSketch({ ...spec, font: 'batang', memos: [{ id: 'm1', x: 20, y: 20, text: '가', size: 20, font: 'nanum', fw: 800 }, { id: 'm2', x: 30, y: 20, text: '나', size: 20, font: 'nope', fw: 555 }] });
+  expect(fx.font === 'batang' && fx.memos[0].font === 'nanum' && fx.memos[0].fw === 800 && !('font' in fx.memos[1]) && !('fw' in fx.memos[1]), '글씨체·굵기는 목록 안의 값만 저장(엉뚱한 값은 버림)');
+  const svg = m.renderSketch(fx).svg;
+  expect(svg.includes("font-family=\"'NanumGothic'") && svg.includes('font-weight="800"') && svg.includes("'Batang'"), '그리기: 글자마다 고른 글씨체·굵기가 들어가고, 그림 전체 글씨체는 기본 글자에 적용');
+  expect(!m.renderSketch(spec).svg.includes('Batang') && !/font:/.test(JSON.stringify(m.normalizeSketch(spec))), '글씨체를 안 정하면 예전과 같음');
+  // 이름 분리
+  const dn = m.sketchDetachName(spec, 'b2');
+  expect(dn.id && dn.spec.memos.some((q) => q.id === dn.id && q.text === '코어' && q.fw === 600 && Math.abs(q.x - 60) < 1e-9) && dn.spec.blocks[1].showName === false && dn.spec.blocks[1].name === '코어', '코어 이름을 글자로 분리(가운데에 놓이고 블록 이름 표시는 꺼짐)');
+  const dn2 = m.sketchDetachName(spec, 'b1'); const memo2 = dn2.spec.memos.find((q) => q.id === dn2.id);
+  expect(memo2 && memo2.color === '#8A8580' && memo2.fw === 400 && memo2.size >= 10 && memo2.size <= 22 && dn2.id !== 'm1' && dn2.spec.memos.length === spec.memos.length + 1, '판 이름도 분리(새 번호로, 회색 글자)');
+  expect(m.sketchDetachName(spec, 'p1').id === '' && m.sketchDetachName(spec, 'zz').id === '' && m.sketchDetachName(m.normalizeSketch({ blocks: [{ id: 'b1', kind: 'slab', rect: [0, 0, 10, 10] }] }), 'b1').id === '', '이름이 없거나 판이 아니면 분리하지 않음');
+  const afterDetach = m.renderSketch(dn.spec).svg; expect(!/NaN/.test(afterDetach), '분리 뒤에도 그려짐(NaN 없음)');
 }
 // 번호 마커(R3-2)
 {

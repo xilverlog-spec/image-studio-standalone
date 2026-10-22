@@ -1,7 +1,8 @@
 // 출력 크기(용지)·칸 나누기·글자 위계 (2026-10-19)
 // 어떤 렌더러가 만든 SVG 든 정해진 가로·세로(mm)의 페이지 안에, 칸으로 나눠 넣고, 제목·소제목(칸 제목)을 pt 로 그리고, 글씨체를 바꾼다.
 // 렌더러 안의 글자(블록 이름·범례·칩)는 렌더러가 정한 크기라서 바꾸지 않고, 칸에 맞춘 뒤의 '실제 pt' 를 계산해 추천값과 견주어 알려 준다.
-export const ENGINE_FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif"; // 모든 렌더러가 쓰는 글꼴 값(바꿔 끼울 때 이 문자열을 찾는다)
+import { ENGINE_FONT, TEXT_FONTS } from './fonts';
+export { ENGINE_FONT };
 export const PT_MM = 25.4 / 72;                                                                 // 1pt = 0.3528mm
 export const MM_PX = 96 / 25.4;                                                                 // 96dpi 화면 픽셀
 
@@ -189,14 +190,7 @@ export function bestCols(n, cellAspect, panelW, panelH, maxCols = 3) {
   return best;
 }
 
-export const FONT_OPTIONS = [
-  { id: 'malgun', label: '맑은 고딕 (Windows 기본)', css: ENGINE_FONT },
-  { id: 'noto', label: 'Noto Sans KR (본고딕)', css: "'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif" },
-  { id: 'pretendard', label: 'Pretendard (사내 보드 기본 · 그 PC에 설치돼 있어야 보임)', css: "'Pretendard','Malgun Gothic','Noto Sans KR',sans-serif" },
-  { id: 'nanum', label: '나눔고딕', css: "'NanumGothic','Nanum Gothic','Malgun Gothic',sans-serif" },
-  { id: 'dotum', label: '돋움', css: "'Dotum','Malgun Gothic',sans-serif" },
-  { id: 'batang', label: '바탕 (명조 계열)', css: "'Batang','Noto Serif KR','Malgun Gothic',serif" },
-];
+export const FONT_OPTIONS = TEXT_FONTS; // 글씨체 목록은 fonts.js
 export const fontById = (id) => FONT_OPTIONS.find((f) => f.id === id) || FONT_OPTIONS[0];
 export const presetById = (id) => PAGE_PRESETS.find((p) => p.id === id) || PAGE_PRESETS[0];
 
