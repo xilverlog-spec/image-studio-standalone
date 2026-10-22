@@ -11,7 +11,11 @@ export function cancelPendingPaste() {
   if (timer) { clearTimeout(timer); timer = null; }
 }
 
-export function markInternalCopy() {
+let lastElem = null; // 편집기에서 마지막으로 요소를 복사한 때 { kind: 'sketch'|'svg', at } — 페이지 칸에서 Ctrl+V 할 때 칸 복사와 어느 쪽이 더 새로운지 가린다
+export const lastElemCopy = () => lastElem;
+
+export function markInternalCopy(kind = '') {
+  if (kind) lastElem = { kind, at: Date.now() };
   try {
     if (typeof document === 'undefined') return false;
     const prev = document.activeElement;

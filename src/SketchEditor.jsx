@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DASHES, DASH_LABEL, DGAP_MIN, DGAP_MAX, HEAD_LABEL, SHAPES, SHAPE_LABEL, renderSketch, normalizeSketch, sketchFind, sketchKind, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, sketchView, sketchMoveBy, sketchResizeRect, sketchSetEnd, sketchSetAmp, sketchSetVia, sketchLockAspect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone, sketchSnapToWall, SIDES, SIDE_LABEL, sketchSnapshot, sketchPaste, sketchSnapGuides, sketchSnapPointG, sketchBox, sketchAxes, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, SKETCH_SIZE } from './conceptDiagram/sketch';
 
 // 손스케치 다이어그램 편집기(1단계): 요소를 클릭하면 오른쪽에 속성이 뜨고, 바꾸는 즉시 다시 그린다.
@@ -59,9 +59,15 @@ import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResi
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
-export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal }) {
   const [selected, setSelected] = useState('');
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
+  const [edWide, setEdWide] = useState(true); const edRoOff = useRef(null); // 편집기가 넓을 때(900px 이상)만 속성 패널을 오른쪽에 두고, 좁으면 그림 아래에 가로로 펼친다
+  const edRootRef = useCallback((el) => { // 콜백 ref: 편집기 뿌리 상자가 (처음 그려질 때든 나중에든) 생기면 폭을 지켜본다
+    if (edRoOff.current) { edRoOff.current(); edRoOff.current = null; }
+    if (el) setEdWide(el.getBoundingClientRect().width >= 900); // 처음 그려질 때 바로 정한다(깜빡임 없이)
+    if (el && typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver((es) => setEdWide(es[0].contentRect.width >= 900)); ro.observe(el); edRoOff.current = () => ro.disconnect(); }
+  }, []);
   const regionDrag = useRef(null);
   const [rotInfo, setRotInfo] = useState(null);   // 회전 손잡이를 끄는 동안 보여 줄 각도 { deg, c(다이어그램 좌표 중심) }
   const [whole, setWhole] = useState(false);     // 전체 크기 조절 모드(그림 속 내용 전체를 감싸는 상자와 모서리 손잡이)
@@ -262,16 +268,25 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
   // 복사(Ctrl+C)·잘라내기(Ctrl+X)·붙여넣기(Ctrl+V)·복제(Ctrl+D). 붙인 요소는 3칸씩 비껴 놓이고 곧바로 선택된다
-  const copySel = () => { const sn = selected ? sketchSnapshot(norm, selected) : null; if (sn) { CLIP = sn; PASTE_N = 0; tick((n) => n + 1); } return !!sn; };
+  const selBoxDiag = (id) => { // 고른 요소의 바깥 상자(그림 좌표). 페이지 칸에 붙여넣을 때 그 부분을 보여 주는 데 쓴다
+    const sv = canvasRef.current?.querySelector('svg'); const el = canvasRef.current?.querySelector(`[data-eid="${id}"]`); if (!sv || !el || !sv.getScreenCTM || !sv.getScreenCTM()) return null;
+    const r = el.getBoundingClientRect(); const inv = sv.getScreenCTM().inverse(); const pt = (x, y) => { const q = sv.createSVGPoint(); q.x = x; q.y = y; return q.matrixTransform(inv); };
+    const a = pt(r.left, r.top); const b = pt(r.right, r.bottom); return [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y)];
+  };
+  const copySel = () => { const sn = selected ? sketchSnapshot(norm, selected) : null; if (sn) { CLIP = sn; PASTE_N = 0; tick((n) => n + 1); if (onCopy) onCopy(selBoxDiag(selected)); } return !!sn; };
+  const pasteSigRef = useRef(pasteSignal); // 페이지 칸에서 Ctrl+V 하면 ConceptDiagram 이 이 숫자를 올린다 → 복사해 둔 요소를 이 그림에 붙인다
+  useEffect(() => { if (pasteSignal !== pasteSigRef.current) { pasteSigRef.current = pasteSignal; pasteClipRef.current?.(); } }, [pasteSignal]);
+  const pasteClipRef = useRef(null);
   const pasteClip = (offset) => { if (!CLIP) return; PASTE_N += 1; const k = offset ?? 3 * PASTE_N; const r = sketchPaste(norm, CLIP, k, k); if (r.id) { commit(r.spec); setSelected(r.id); } };
+  pasteClipRef.current = pasteClip;
   const onKey = (e) => {
     if (shortcutsEnabled && !shortcutsEnabled()) return; // 페이지 미리보기를 만지는 중이면 페이지 단축키가 받는다
     if (cropFor) return; // 이미지 자르기 창이 열려 있는 동안은 편집 단축키(Delete 등)를 받지 않는다
     const tag = e.target?.tagName || '';
     const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
-    if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) { e.preventDefault(); markInternalCopy(); } }
-    else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); markInternalCopy(); remove(); } }
+    if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) { e.preventDefault(); markInternalCopy('sketch'); } }
+    else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); markInternalCopy('sketch'); remove(); } }
     else if (mod && !typing && k === 'v' && CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
     else if (mod && !typing && k === 'd' && selected) { e.preventDefault(); if (copySel()) pasteClip(3); }
     else if (mod && !typing && k === 'a') { e.preventDefault(); setSelected(''); setWhole(true); }
@@ -332,8 +347,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const kindName = { block: { core: '코어(빗금 도형)', opening: '개구부(점선 캡슐)', image: '내 이미지' }[sel?.el?.kind] || '판(큰 도형)', line: '선', wind: '바람·흐름 화살표', memo: sel?.el?.badge ? '번호 마커' : sel?.el?.dim ? '치수선' : sel?.el?.callout ? '리더선 라벨' : sel?.el?.chip ? '아이콘 칩' : sel?.el?.table ? '개요표' : sel?.el?.symbol === 'north' ? '방위표' : sel?.el?.symbol === 'scale' ? '축척 막대' : '글자 메모' }[kind];
 
   return (
-    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="sketch-editor">
-      <div style={{ flex: '1 1 480px', minWidth: 360 }}>
+    <div ref={edRootRef} style={{ display: 'flex', flexDirection: edWide ? 'row' : 'column', gap: 14, alignItems: edWide ? 'flex-start' : 'stretch' }} data-testid="sketch-editor" data-wide={edWide ? '1' : '0'}>
+      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
+      <div style={edWide ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
       <ZoomView testid="sk-zoom">
       <div ref={hostRef} style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'visible', background: '#fff', position: 'relative' }}>
         <div style={{ position: 'relative' }}>{/* 안내선 층과 그림이 정확히 같은 크기가 되도록(아래 힌트 줄이 층을 늘이지 않게) 한 틀로 묶는다 */}
@@ -366,7 +382,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       </ZoomView>
       </div>
 
-      <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sk-side">
+      <div className={edWide ? undefined : 'ed-cols'} style={edWide ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sk-side">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={smallBtn(false)} disabled={!past.current.length} onClick={undo} title="Ctrl+Z" data-testid="undo">↶ 되돌리기</button>
           <button style={smallBtn(false)} disabled={!future.current.length} onClick={redo} title="Ctrl+Y">↷ 다시</button>
@@ -765,7 +781,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={smallBtn(false)} onClick={() => setSelected('')}>선택 해제</button>
               <button style={smallBtn(false)} onClick={() => { if (copySel()) pasteClip(3); }} title="Ctrl+D" data-testid="duplicate">복제</button>
-              <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy(); }} title="Ctrl+C" data-testid="copy">복사</button>
+              <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy('sketch'); }} title="Ctrl+C" data-testid="copy">복사</button>
               <button style={smallBtn(false, true)} onClick={remove} data-testid="delete">삭제</button>
             </div>
           </div>

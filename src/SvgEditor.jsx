@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, DASH_GAP_MIN, DASH_GAP_MAX, dashKind, dashNumsEven, dashSameParts, dashGapFactor, dashScaled, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
@@ -52,7 +52,7 @@ function Colors({ value, onChange, none, onNone }) {
 
 let SV_CLIP = null; let SV_PASTE_N = 0; // 복사해 둔 요소(다른 칸의 그림에도 붙일 수 있게 모듈에 둔다)와 연속 붙여넣기 횟수
 
-export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick }) {
+export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick, onCopy, pasteSignal }) {
   const view = useMemo(() => applyEdits(svg, edits, { ids: true }), [svg, edits]);
   const html = useMemo(() => ({ __html: responsiveSvg(view.svg) }), [view.svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다(다시 만들면 표시·마우스 올림이 사라진다)
   const E = useMemo(() => (edits && edits.sig === view.sig ? edits : { sig: view.sig, ops: {}, ...(edits?.adds ? { adds: edits.adds } : {}), ...(edits?.shapes ? { shapes: edits.shapes } : {}) }), [edits, view.sig]); // 구조가 달라져도 내가 넣은 이미지는 남긴다
@@ -80,6 +80,12 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const selIds = multi.length > 1 ? multi : sel ? [sel] : [];
   const flash = (t) => { setNote(t); setTimeout(() => setNote((n) => (n === t ? '' : n)), 2600); };
   const sigRef = useRef(view.sig); sigRef.current = view.sig;
+  const [edWide, setEdWide] = useState(true); const edRoOff = useRef(null); // 편집기가 넓을 때(900px 이상)만 속성 패널을 오른쪽에 두고, 좁으면 그림 아래에 가로로 펼친다
+  const edRootRef = useCallback((el) => { // 콜백 ref: 편집기 뿌리 상자가 (처음 그려질 때든 나중에든) 생기면 폭을 지켜본다
+    if (edRoOff.current) { edRoOff.current(); edRoOff.current = null; }
+    if (el) setEdWide(el.getBoundingClientRect().width >= 900); // 처음 그려질 때 바로 정한다(깜빡임 없이)
+    if (el && typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver((es) => setEdWide(es[0].contentRect.width >= 900)); ro.observe(el); edRoOff.current = () => ro.disconnect(); }
+  }, []);
   const dashBaseRef = useRef({}); // 사용자 지정 파선의 처음 모습(도형 번호 → 숫자들). 간격 슬라이더의 100% 기준
   const dashBaseOf = (id, attr) => { // 파선의 간격을 배율로 바꿀 때 기준이 되는 숫자들(실선이면 null)
     const kind = dashKind(attr); if (kind === 'solid') return null;
@@ -534,7 +540,14 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     const items = [];
     selIds.forEach((id) => { const ad = adds.find((a) => a.id === id); if (ad) { items.push({ type: 'add', a: { ...ad } }); return; } leafIdsOf([id]).forEach((lid) => { if (isBg(lid)) return; const sh = rawOf(lid); if (sh) items.push({ type: 'raw', sh }); }); });
     if (!items.length) { flash('복사할 요소를 먼저 고르세요'); return false; }
-    SV_CLIP = { items }; SV_PASTE_N = 0; flash(`${items.length}개를 복사했습니다 (Ctrl+V 로 붙여넣기)`); return true;
+    SV_CLIP = { items }; SV_PASTE_N = 0; flash(`${items.length}개를 복사했습니다 (Ctrl+V 로 붙여넣기)`);
+    if (onCopy) { // 고른 요소들의 바깥 상자(그림 좌표): 페이지 칸에 붙여넣을 때 그 부분을 보여 주는 데 쓴다
+      const sv = bodyRef.current?.querySelector('svg'); const ctm = sv && sv.getScreenCTM ? sv.getScreenCTM() : null;
+      if (ctm) { const inv = ctm.inverse(); const pt = (x, y) => { const q = sv.createSVGPoint(); q.x = x; q.y = y; return q.matrixTransform(inv); }; let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+        selIds.forEach((id) => { const n = elOf(id); if (!n) return; const r = n.getBoundingClientRect(); const a = pt(r.left, r.top); const b = pt(r.right, r.bottom); x0 = Math.min(x0, a.x, b.x); y0 = Math.min(y0, a.y, b.y); x1 = Math.max(x1, a.x, b.x); y1 = Math.max(y1, a.y, b.y); });
+        if (Number.isFinite(x0) && x1 > x0 && y1 > y0) onCopy([x0, y0, x1, y1]); }
+    }
+    return true;
   };
   const pasteClip = (n0) => {
     if (!SV_CLIP || !SV_CLIP.items.length) { flash('복사해 둔 요소가 없습니다'); return; }
@@ -546,6 +559,9 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     });
     next = editRenumber(next); commit(next); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); flash(`${ids.length}개를 붙여넣었습니다`);
   };
+  const pasteSigRef = useRef(pasteSignal); // 페이지 칸에서 Ctrl+V 하면 ConceptDiagram 이 이 숫자를 올린다 → 복사해 둔 요소를 이 그림에 붙인다
+  const pasteClipRef = useRef(null); pasteClipRef.current = pasteClip;
+  useEffect(() => { if (pasteSignal !== pasteSigRef.current) { pasteSigRef.current = pasteSignal; pasteClipRef.current?.(); } }, [pasteSignal]);
   const duplicateSel = () => { if (copySel()) pasteClip(1); };
   const selectAll = () => { const ids = []; bodyRef.current?.querySelectorAll('[data-eid]:not([data-hit])').forEach((n) => { const id = n.getAttribute('data-eid'); const info = byId[id]; if (info && info.kind !== 'g' && !isBg(id) && n.getAttribute('display') !== 'none') ids.push(id); }); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); };
   const nudgeAll = (dx, dy, key) => {
@@ -641,7 +657,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     if (typing || ed || cropFor) return; // 이미지 자르기 창이 열려 있는 동안은 편집 단축키(Delete 등)를 받지 않는다
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod) { // Ctrl+C 복사 · Ctrl+V 붙여넣기 · Ctrl+D 복제 · Ctrl+A 모두 선택 (Ctrl+Z/Y 는 부모가 처리)
-      if (k === 'c' && selIds.length && !window.getSelection?.()?.toString()) { e.preventDefault(); if (copySel()) markInternalCopy(); }
+      if (k === 'c' && selIds.length && !window.getSelection?.()?.toString()) { e.preventDefault(); if (copySel()) markInternalCopy('svg'); }
       else if (k === 'v' && SV_CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
       else if (k === 'd' && selIds.length) { e.preventDefault(); duplicateSel(); }
       else if (k === 'a') { e.preventDefault(); selectAll(); }
@@ -653,8 +669,9 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   };
 
   return (
-    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="svg-editor">
-      <div style={{ flex: '1 1 480px', minWidth: 360 }}>
+    <div ref={edRootRef} style={{ display: 'flex', flexDirection: edWide ? 'row' : 'column', gap: 14, alignItems: edWide ? 'flex-start' : 'stretch' }} data-testid="svg-editor" data-wide={edWide ? '1' : '0'}>
+      <style>{'.ed-cols>*{break-inside:avoid;margin:0 0 10px}'}</style>
+      <div style={edWide ? { flex: '1 1 360px', minWidth: 360 } : { minWidth: 0 }}>
         <ZoomView testid="sv-zoom" baseWidth={maxWidth || undefined}>
         <div ref={hostRef} onPointerDown={onDown} onDoubleClick={onDbl} style={{ position: 'relative', width: '100%', border: '1px solid var(--border-color)', borderRadius: 8, background: '#fff' }} data-testid="inline-svg">
           <style>{'.sv-ed [data-eid]{cursor:move}.sv-ed text[data-editable]{cursor:text}.sv-ed [data-eid]:not([data-hit]):hover{filter:drop-shadow(0 0 2px #F28C28)}.sv-ed [data-hit]{cursor:move}'}</style>
@@ -698,7 +715,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
         <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '8px 0 0' }} data-testid="inline-hint">도형을 <b>클릭</b>하면 오른쪽에서 색·선 종류를 고치고, <b>끌어서 옮기고</b>, 주황 점(마디)을 끌어 <b>곡선·모양</b>을 고칩니다. 글자는 <b>더블클릭</b>해서 고칩니다. <b>Shift+클릭</b>이나 <b>빈 곳을 끌어 만든 상자</b>로 여러 개를 고릅니다(Ctrl+A: 모두) — <b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>, 모서리를 끌면 크기가, 상자 안쪽을 끌면 위치가 바뀝니다. 끌면 다른 요소·그림 가운데에 <b>자석처럼 붙고 분홍 안내선</b>이 뜹니다(Alt: 끄기). Alt+클릭: 묶음 선택 · Shift 끌기: 수평·수직 · 방향키: 미세 이동 · Ctrl+C / V / D: 복사·붙여넣기·복제 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
       </div>
 
-      <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 }} data-testid="sv-side">
+      <div className={edWide ? undefined : 'ed-cols'} style={edWide ? { width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', maxHeight: 'min(74vh, 780px)', overflowY: 'auto', paddingRight: 4 } : { display: 'block', columns: '280px', columnGap: 12, opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }} data-testid="sv-side">
         <div style={sec} data-testid="sv-add-panel">
           <span style={title}>요소 추가</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -716,7 +733,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             {onAddImageClick && <button style={smallBtn(false)} onClick={onAddImageClick} data-testid="sv-add-image">＋ 이미지</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy(); }} data-testid="sv-copy" title="Ctrl+C">복사</button>
+            <button style={smallBtn(false)} onClick={() => { if (copySel()) markInternalCopy('svg'); }} data-testid="sv-copy" title="Ctrl+C">복사</button>
             <button style={smallBtn(false)} onClick={() => pasteClip()} data-testid="sv-paste" title="Ctrl+V">붙여넣기</button>
             <button style={smallBtn(false)} onClick={duplicateSel} data-testid="sv-dup" title="Ctrl+D">복제</button>
             <button style={smallBtn(false)} onClick={selectAll} data-testid="sv-select-all-btn" title="Ctrl+A — 모두 고른 뒤 주황 상자의 모서리를 끌면 그림 전체의 크기를 조절합니다(글자·선 굵기도 함께, Shift: 가로·세로 따로)">전체 선택</button>

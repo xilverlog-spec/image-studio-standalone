@@ -427,23 +427,27 @@ export function composePage(page, items, opts = {}) {
     inner = stripBg(inner, vw0, vh0);                                                                    // 페이지 모드: 그림 바탕(크림 등)을 빼고 흰 종이 위에 그림만 올린다(칸마다 다른 바탕색이 얼룩지지 않는다)
     if (multi) inner = scopeIds(inner, `c${idx}_`);                                                       // 여러 칸에 같은 id(화살촉·마스크·무늬)가 겹쳐 서로를 덮어쓰지 않게 칸마다 접두어를 붙인다
     // 보이는 영역: 실제 내용 상자(재면 그것, 약간 여유) → 아니면 제목 자리로 비워 둔 위쪽 띠만 자른다
+    // 영역 복사로 붙여넣은 그림(item.crop = [x, y, w, h], 그림 좌표): 고른 영역만 보인다(내용을 재서 줄이지 않고 그 영역 그대로)
+    let cropBox = null;
+    if (Array.isArray(item.crop) && item.crop.length === 4) { const c = item.crop.map(Number); if (c.every(Number.isFinite)) { const x0 = Math.max(vx0, c[0]); const y0 = Math.max(vy0, c[1]); const x1 = Math.min(vx0 + vw0, c[0] + c[2]); const y1 = Math.min(vy0 + vh0, c[1] + c[3]); if (x1 - x0 > 1 && y1 - y0 > 1) cropBox = [x0, y0, x1 - x0, y1 - y0]; } }
     let vx = vx0; let vy = vy0; let vw = vw0; let vh = vh0;
-    const mb = measure ? measure(inner, [vx0, vy0, vw0, vh0]) : null;
-    if (mb) { const pad = Math.max(vw0, vh0) * 0.012; vx = Math.max(vx0, mb.x - pad); vy = Math.max(vy0, mb.y - pad); vw = Math.min(vx0 + vw0, mb.x + mb.w + pad) - vx; vh = Math.min(vy0 + vh0, mb.y + mb.h + pad) - vy; }
+    const mb = !cropBox && measure ? measure(inner, [vx0, vy0, vw0, vh0]) : null;
+    if (cropBox) { [vx, vy, vw, vh] = cropBox; } else if (mb) { const pad = Math.max(vw0, vh0) * 0.012; vx = Math.max(vx0, mb.x - pad); vy = Math.max(vy0, mb.y - pad); vw = Math.min(vx0 + vw0, mb.x + mb.w + pad) - vx; vh = Math.min(vy0 + vh0, mb.y + mb.h + pad) - vy; }
     else { const crop = Math.max(0, Math.min(Number(item.cropTop) || 0, vh0 * 0.5)); vy = vy0 + crop; vh = vh0 - crop; }
     const tiers = typeTiers(inner);
     let s = Math.min(cw / vw, ch / vh); // 그림 좌표 1 단위가 몇 mm 가 되는지
     // 맞춤 방식: 'fill' 칸을 꽉 채움(글자 크기는 그림 배율을 따름) / 'text' 본문 글자를 목표 pt 에 맞춤(그림이 칸보다 작아질 수 있음) / 'both' 칸을 꽉 채우고 그림 속 글자만 본문 목표 pt 에 맞춤(권장)
     const mode = opts.fit || (opts.fill === false ? 'text' : 'fill');
     if (mode === 'text' && tiers) { const target = (pt.label * PT_MM) / tiers.label; if (target < s) s = target; }
-    const zk = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((cellMeta && cellMeta[cell.id] || {}).zoom) > 0 ? Number(cellMeta[cell.id].zoom) : 1)); // 이 칸의 그림 배율(칸 크기는 그대로)
-    s *= zk;
     let textK = 1;
     if (mode === 'both' && tiers) { // 글자만 따로: 그림 배율 s 에서 본문이 목표 pt 가 되게 하는 비율. 키울 때는 글자가 칸 밖으로 넘칠 수 있어 1.3배까지, 줄일 때는 0.3배까지
       textK = Math.min(1.3, Math.max(0.3, (pt.label * PT_MM) / (s * tiers.label)));
       if (Math.abs(textK - 1) >= 0.005) inner = scaleTexts(inner, textK);
     }
-    const ow = vw * s; const oh = vh * s; const ox = cell.x + (cw - ow) / 2; const oy = cy + (ch - oh) / 2;
+    const zm = (cellMeta && cellMeta[cell.id]) || {}; // 이 칸의 그림 크기·위치(칸 크기는 그대로): zoom 배율(칸에 맞춘 크기 = 1), zx·zy 가운데에서 옮긴 mm
+    const zk = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(zm.zoom) > 0 ? Number(zm.zoom) : 1)); const zxo = Number.isFinite(Number(zm.zx)) ? Number(zm.zx) : 0; const zyo = Number.isFinite(Number(zm.zy)) ? Number(zm.zy) : 0;
+    const s0 = s; s *= zk; // 글자 맞춤은 칸에 맞춘 크기로 정한 뒤, 배율을 도형·글자에 똑같이 곱한다
+    const ow = vw * s; const oh = vh * s; const ox = cell.x + (cw - ow) / 2 + zxo; const oy = cy + (ch - oh) / 2 + zyo;
     const eng = tiers ? { heading: tiers.heading * textK * s / PT_MM, label: tiers.label * textK * s / PT_MM, small: tiers.small * textK * s / PT_MM } : null;
     const tag = multi ? `칸 ${idx + 1}: ` : '';
     if (eng) {
@@ -456,7 +460,7 @@ export function composePage(page, items, opts = {}) {
     const cid = `pgclip${idx}`;
     const kx0 = Math.max(ox, cell.x); const ky0 = Math.max(oy, cy); const kx1 = Math.min(ox + ow, cell.x + cw); const ky1 = Math.min(oy + oh, cy + ch); // 보이는 그림 = 그림 상자 ∩ 칸(그림 자리)
     body.push(`<clipPath id="${cid}"><rect x="${kx0.toFixed(3)}" y="${ky0.toFixed(3)}" width="${(kx1 - kx0).toFixed(3)}" height="${(ky1 - ky0).toFixed(3)}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${(ox - vx * s).toFixed(4)} ${(oy - vy * s).toFixed(4)}) scale(${s.toFixed(6)})">${inner}</g></g>`);
-    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, art: [kx0, ky0, kx1 - kx0, ky1 - ky0], center: [ox + ow / 2, oy + oh / 2], zoom: zk, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, labRect, descRect, labelText, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
+    reports.push({ id: cell.id, rect: [cell.x, cell.y, cell.w, cell.h], raw: cell.raw, art: [kx0, ky0, kx1 - kx0, ky1 - ky0], center: [ox + ow / 2, oy + oh / 2], zoom: zk, zx: zxo, zy: zyo, fit: { bx: cell.x, by: cy, bw: cw, bh: ch, vx, vy, vw, vh, s0 }, xf: [s, ox - vx * s, oy - vy * s], inner, vb: [vx0, vy0, vw0, vh0], crop: cropBox, scale: s, textScale: textK, caption: capPt ? r1(capPt) : null, capRect, captionText: capPt ? item.caption : null, labRect, descRect, labelText, engine: eng ? { heading: r1(eng.heading), label: r1(eng.label), small: r1(eng.small) } : null });
   });
   const first = reports.find((r) => !r.empty);
   // 꼬리말: 오른쪽 아래에 '프로젝트명  02'(쪽번호는 숫자면 두 자리). 아래 여백 안쪽 가운데에 놓는다
@@ -473,6 +477,16 @@ export function composePage(page, items, opts = {}) {
     cells: reports, slots,
     report: { rec, pt, used: { title: used.title ? r1(used.title) : null, sub: used.sub ? r1(used.sub) : null }, engine: first ? first.engine : null, scale: first ? first.scale : null, margin: mg, marginAuto: autoM, warnings },
   };
+}
+
+// 그림 크기를 바꿀 때 page 좌표(mm)의 한 점 P 가 제자리에 있도록 하는 배율(zoom)과 위치(zx, zy). rep = composePage 가 돌려준 그 칸의 보고서(fit·xf 필요)
+export function pageZoomAbout(rep, kNew, P) {
+  const f = rep.fit; const [s, tx, ty] = rep.xf; const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(kNew) > 0 ? Number(kNew) : 1));
+  const ax = (P[0] - tx) / s; const ay = (P[1] - ty) / s; // 제자리에 둘 점(그림 좌표)
+  const s2 = f.s0 * k;
+  const ox2 = P[0] - (ax - f.vx) * s2; const oy2 = P[1] - (ay - f.vy) * s2;
+  const cl = (v, lim) => Math.min(lim, Math.max(-lim, v)); // 그림 가운데가 칸 밖으로 나가지 않게
+  return { zoom: Math.round(k * 1000) / 1000, zx: Math.round(cl(ox2 - f.bx - (f.bw - f.vw * s2) / 2, f.bw / 2) * 100) / 100, zy: Math.round(cl(oy2 - f.by - (f.bh - f.vh * s2) / 2, f.bh / 2) * 100) / 100 };
 }
 
 // 한 칸짜리 페이지(제목은 페이지 제목)

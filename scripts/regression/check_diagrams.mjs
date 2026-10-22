@@ -71,7 +71,7 @@ export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCurs
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
-export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, sketchTranslateAll, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
@@ -1456,6 +1456,51 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const svg = m.renderSketch(n).svg;
   expect(svg.includes('stroke-dasharray="1.5 3"') && svg.includes('stroke-dasharray="9 12"') && svg.includes('stroke-dasharray="9 6"'), '그리기: 직선·화살표에 고른 간격이 들어가고, 안 고른 것은 기본 간격 그대로');
   expect(m.renderSketch(m.sketchUpdate(n, 'p2', { dgap: 3 })).svg.includes('stroke-dasharray="9 18"') && !/NaN/.test(svg), '편집: 간격을 바꾸면 그 선만 바뀌고 NaN 이 없음');
+}
+// 칸 안의 그림 위치·기준점 크기 조절(그림을 직접 끌어 크기를 바꾸기)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`그림 크기(직접): ${label}`); };
+  const lay = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/><rect x="10" y="10" width="80" height="40" fill="#cde"/><text x="50" y="30" font-size="6" text-anchor="middle">가나다</text></svg>' };
+  const page = { w: 420, h: 297, medium: 'print' };
+  const rep = (cellMeta, fit = 'both') => m.composePage(page, [{ id: 'c1', render: lay }, { id: 'c2', render: lay }], { layoutId: '2x1', preview: true, cellMeta, fit }).cells.find((c) => c.id === 'c1');
+  const b = rep(undefined);
+  expect(b.xf.length === 3 && b.fit && b.fit.s0 > 0 && b.zx === 0 && b.zy === 0 && typeof b.inner === 'string' && b.inner.includes('<text') && b.vb.length === 4, '보고서에 변환(xf)·맞춤 정보(fit)·그림 속 내용(inner)·원래 범위(vb)가 담김');
+  const o = rep({ c1: { zx: 12, zy: -7 } });
+  expect(Math.abs(o.center[0] - b.center[0] - 12) < 0.01 && Math.abs(o.center[1] - b.center[1] + 7) < 0.01 && o.zx === 12 && o.zy === -7 && Math.abs(o.xf[0] - b.xf[0]) < 1e-9, '위치(zx, zy)만큼 그림이 옮겨짐(크기는 그대로)');
+  expect(Math.abs(rep({ c1: { zx: 'x', zy: null } }).center[0] - b.center[0]) < 0.001, '위치가 엉뚱한 값이면 0');
+  // 글자 맞춤('both')에서도 배율은 도형·글자에 똑같이 곱해짐(글자만 따로 안 맞춰짐)
+  const half = rep({ c1: { zoom: 0.5 } });
+  expect(Math.abs(half.engine.label / b.engine.label - 0.5) < 0.02, "'both' 맞춤에서 그림을 절반으로 줄이면 그림 속 글자 크기(pt)도 절반");
+  // 기준점 크기 조절: 점 P 가 제자리에 남는다
+  const P = [b.art[0], b.art[1]]; // 그림 상자의 왼쪽 위(보이는 그림 모서리)
+  for (const k of [0.5, 0.75, 1.3]) {
+    const z = m.pageZoomAbout(b, k, P);
+    const r2 = rep({ c1: z });
+    const ax = (P[0] - b.xf[1]) / b.xf[0]; const ay = (P[1] - b.xf[2]) / b.xf[0];
+    const nx = ax * r2.xf[0] + r2.xf[1]; const ny = ay * r2.xf[0] + r2.xf[2];
+    expect(Math.abs(nx - P[0]) < 0.05 && Math.abs(ny - P[1]) < 0.05 && Math.abs(r2.zoom - k) < 0.001, `배율 ${k}: 잡지 않은 모서리(기준점)가 제자리에 남음`);
+  }
+  const big = m.pageZoomAbout(b, 99, P); const tiny = m.pageZoomAbout(b, 0.001, P);
+  expect(big.zoom === m.ZOOM_MAX && tiny.zoom === m.ZOOM_MIN && Math.abs(big.zx) <= b.fit.bw / 2 + 0.01 && Math.abs(big.zy) <= b.fit.bh / 2 + 0.01, '배율은 범위로, 위치는 그림 가운데가 칸 안에 있게 맞춰짐');
+  expect(!/NaN|Infinity/.test(JSON.stringify(m.pageZoomAbout(b, 'x', P))) && m.pageZoomAbout(b, 'x', P).zoom === 1, '엉뚱한 배율은 1');
+}
+// 영역 복사(고른 영역만 다른 칸에 보이기)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`영역 복사: ${label}`); };
+  const lay = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/><rect x="10" y="10" width="80" height="40" fill="#cde"/><circle cx="25" cy="25" r="8" fill="#e44"/></svg>' };
+  const page = { w: 420, h: 297, medium: 'print' };
+  const rep = (crop) => m.composePage(page, [{ id: 'c1', render: lay, crop }, { id: 'c2', render: lay }], { layoutId: '2x1', preview: true }).cells.find((c) => c.id === 'c1');
+  const full = rep(undefined);
+  expect(full.crop === null, '영역이 없으면 crop 은 null(예전과 같음)');
+  const c = rep([10, 10, 40, 20]);
+  expect(JSON.stringify(c.crop) === '[10,10,40,20]' && Math.abs(c.fit.vw - 40) < 1e-9 && Math.abs(c.fit.vh - 20) < 1e-9 && Math.abs(c.fit.vx - 10) < 1e-9 && Math.abs(c.fit.vy - 10) < 1e-9, '고른 영역이 그림 자리의 기준 범위가 됨(내용 재기 없이 그 영역 그대로)');
+  expect(Math.abs(c.art[2] / c.art[3] - 2) < 0.02 || Math.abs((c.art[2] / c.art[3]) - 40 / 20) < 0.05, '보이는 그림의 가로세로 비가 영역과 같음');
+  expect(c.art[2] * c.art[3] > 0 && c.xf[0] > full.xf[0], '영역만 보이면 그림이 더 크게(배율 증가) 놓임');
+  const out = rep([-50, -50, 300, 300]); const bad = rep([5, 5, 0.2, 0.2]); const nan = rep(['x', 1, 2, 3]);
+  expect(JSON.stringify(out.crop) === '[0,0,100,60]', '그림 밖으로 나간 영역은 그림 안으로 잘림');
+  expect(bad.crop === null && nan.crop === null, '너무 작거나 엉뚱한 영역은 무시(전체 그림)');
+  const svg = m.composePage(page, [{ id: 'c1', render: lay, crop: [10, 10, 40, 20] }, { id: 'c2', render: lay }], { layoutId: '2x1' }).svg;
+  expect(!/NaN|Infinity/.test(svg), '저장용 그림에 NaN 이 없음');
 }
 // 번호 마커(R3-2)
 {

@@ -5,7 +5,7 @@ import { DIAGRAM_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonL
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
-import { composePage, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
+import { composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -18,8 +18,7 @@ import CardBoardForm from './CardBoardForm';
 import { CARD_PRESETS, normalizeCards, cardsInitialEdits, cardsRebase, cardsHeroAdds, renderCards } from './conceptDiagram/cardboard';
 import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
 import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
-import { cancelPendingPaste, imagesFromClipboard } from './conceptDiagram/clip';
-import { SPLIT_DEFAULT, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns } from './conceptDiagram/viewlayout';
+import { cancelPendingPaste, imagesFromClipboard, lastElemCopy } from './conceptDiagram/clip';
 import { InlineInput } from './InlineText';
 
 // 손스케치 읽기 결과 저장: 같은 그림을 다시 읽을 때 AI 를 다시 부르지 않는다(무료 Gemini 한도 절약). 최근 8개만, 이 브라우저에만 저장한다
@@ -33,6 +32,38 @@ const skCachePut = (k, v) => {
     localStorage.setItem(SK_CACHE_KEY, JSON.stringify(out));
   } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
 };
+// 테스트 버튼용 손스케치 예시(좌표는 0~100): 방 5개·칸막이 선 2개·바람 화살표 2개·글자 2개
+const testSketchSpec = () => normalizeSketch({
+  title: '', subtitle: '',
+  blocks: [
+    { id: 'b1', kind: 'slab', rect: [8, 14, 52, 60], name: '거실' }, { id: 'b2', kind: 'slab', rect: [54, 14, 92, 40], name: '주방' },
+    { id: 'b3', kind: 'slab', rect: [54, 42, 92, 60], name: '침실' }, { id: 'b4', kind: 'core', rect: [8, 62, 28, 88], name: '코어' }, { id: 'b5', kind: 'slab', rect: [30, 62, 92, 88], name: '테라스' },
+  ],
+  lines: [{ id: 'p1', pts: [[53, 14], [53, 60]], dash: 'solid', width: 2 }, { id: 'p2', pts: [[8, 61], [92, 61]], dash: 'dashed', width: 2 }],
+  winds: [
+    { id: 'w1', pts: [[12, 74], [40, 52], [72, 30]], smooth: true, head: 'end', dash: 'dashed', width: 4.5, color: '#1E88C8' },
+    { id: 'w2', pts: [[90, 76], [62, 80], [34, 76]], smooth: true, head: 'end', dash: 'solid', width: 4, color: '#F28C28' },
+  ],
+  memos: [{ id: 'm1', x: 24, y: 38, text: '맞통풍', size: 22 }, { id: 'm2', x: 68, y: 52, text: '채광', size: 22 }],
+});
+// 그림(안쪽 svg 조각)을 작은 비트맵으로 그려 투명하지 않은 곳의 바깥 상자를 그림 좌표로 돌려준다(실패하면 null)
+const measureInk = (inner, vb) => new Promise((resolve) => {
+  try {
+    const k = 360 / Math.max(vb[2], vb[3]); const cw = Math.max(8, Math.round(vb[2] * k)); const ch = Math.max(8, Math.round(vb[3] * k));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${cw}" height="${ch}" viewBox="${vb.join(' ')}">${inner}</svg>`;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = cw; c.height = ch; const g = c.getContext('2d'); g.drawImage(img, 0, 0, cw, ch);
+        const d = g.getImageData(0, 0, cw, ch).data; let x0 = cw; let y0 = ch; let x1 = -1; let y1 = -1;
+        for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) if (d[(y * cw + x) * 4 + 3] > 12) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        resolve(x1 < 0 ? null : [vb[0] + x0 / k, vb[1] + y0 / k, vb[0] + (x1 + 1) / k, vb[1] + (y1 + 1) / k]);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  } catch { resolve(null); }
+});
 // AI 이미지 편집(도면 위 표시) 작업 번호: 새로고침·탭 이동으로 화면이 사라져도 서버 작업은 계속되므로, 번호를 적어 두었다가 돌아오면 이어서 받는다(서버가 작업을 기억하는 시간 1시간보다 조금 짧게)
 const EDIT_JOB_KEY = 'cd_edit_job'; const EDIT_JOB_TTL_MS = 55 * 60 * 1000;
 const editJobSave = (v) => { try { localStorage.setItem(EDIT_JOB_KEY, JSON.stringify(v)); } catch { /* 저장 없이 진행 */ } };
@@ -172,7 +203,7 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
 // 설명·참고 이미지가 바뀌면 다시 정할 수 있는 자동 판단 결과(손스케치는 읽기가 비싸고 이 경로로 바뀌지 않으므로 제외)
 const AUTO_REROUTE = ['plan', 'axon', 'edit', 'form', 'site', 'freeform'];
 
-export default function ConceptDiagram({ addToast, apiFetch }) {
+export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
   const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
   const [subjectUse, setSubjectUse] = useState('read'); // 'read' = 형태를 읽어서 다시 그림 / 'asis' = 이미지를 그대로 바탕에 깔기
@@ -253,24 +284,15 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   };
   const undoRegion = () => setResult((cur) => (cur?.aiEdit?.undoSpec ? { ...cur, spec: cur.aiEdit.undoSpec, aiEdit: { ...cur.aiEdit, undoSpec: null } } : cur));
   const editorTopRef = useRef(null); // 고른 칸의 편집기 맨 위(칸을 더블클릭하면 여기로 스크롤)
-  // ── 화면 배치: 편집기와 페이지 배치를 위아래로 보거나 나란히 본다(자동: 오른쪽 화면이 충분히 넓으면 나란히) ──
-  const SIDE_MIN_W = 1280;
-  const paneRef = useRef(null); const [paneW, setPaneW] = useState(0);
-  const [viewMode, setViewMode] = useState(() => { try { const v = localStorage.getItem('cd_view_mode'); return ['auto', 'side', 'stack'].includes(v) ? v : 'auto'; } catch { return 'auto'; } });
-  useEffect(() => { try { localStorage.setItem('cd_view_mode', viewMode); } catch { /* 저장 없이 진행 */ } }, [viewMode]);
+  // ── 화면 배치: 페이지 모드에서는 항상 왼쪽 편집기 | 오른쪽 페이지 배치를 같은 폭으로 나란히 본다(위아래로 보기는 없앴다) ──
+  const paneRef = useRef(null);
   // 편집을 크게: ① 편집 집중(편집기가 전체 폭, 페이지는 위쪽 띠) ② 설정 패널 접기 ③ 나란히 보기의 분할선(편집기 몫). 모두 이 브라우저에 기억한다
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } };
   const [focusEdit, setFocusEdit] = useState(() => lsGet('cd_focus_edit', '0') === '1');
-  const [leftTab, setLeftTab] = useState(() => { try { const v = localStorage.getItem('cd_left_tab'); return ['make', 'page', 'edit'].includes(v) ? v : 'make'; } catch { return 'make'; } }); // 왼쪽 패널 단계 탭(① 만들기 ② 페이지 ③ 내용 수정)
-  useEffect(() => { try { localStorage.setItem('cd_left_tab', leftTab); } catch { /* 저장 없이 진행 */ } }, [leftTab]);
+  const [leftTab, setLeftTab] = useState('make'); // 왼쪽 패널 단계 탭. 다이어그램 탭에 들어올 때(처음 열 때·새로고침·다른 탭에서 돌아올 때)마다 ① 만들기로 시작한다
+  useEffect(() => { if (active) setLeftTab('make'); }, [active]);
   const [leftHidden, setLeftHidden] = useState(() => lsGet('cd_left_hidden', '0') === '1');
-  const [splitR, setSplitR] = useState(() => { const v = Number(lsGet('cd_split_r', '')); return v >= 0.3 && v <= 0.85 ? v : SPLIT_DEFAULT; });
-  useEffect(() => { try { localStorage.setItem('cd_focus_edit', focusEdit ? '1' : '0'); localStorage.setItem('cd_left_hidden', leftHidden ? '1' : '0'); localStorage.setItem('cd_split_r', String(Math.round(splitR * 1000) / 1000)); } catch { /* 저장 없이 진행 */ } }, [focusEdit, leftHidden, splitR]);
-  const workRef = useRef(null);
-  useEffect(() => {
-    const el = paneRef.current; if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver((es) => setPaneW(Math.round(es[0].contentRect.width))); ro.observe(el); return () => ro.disconnect();
-  }, []);
+  useEffect(() => { try { localStorage.setItem('cd_focus_edit', focusEdit ? '1' : '0'); localStorage.setItem('cd_left_hidden', leftHidden ? '1' : '0'); } catch { /* 저장 없이 진행 */ } }, [focusEdit, leftHidden]);
   const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
     const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', corner: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
@@ -413,19 +435,132 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   // 칸 복사·붙여넣기: 고른 칸의 그림(편집 내용 포함)을 복사해 다른 칸에 붙여넣거나 빈 칸에 복제한다. 붙여넣기는 페이지 되돌리기(Ctrl+Z)로 취소된다
   const [clipFilled, setClipFilled] = useState(false);
   const srcOfCell = () => result || cells[selCell] || null; // 고른 칸의 그림은 result 가 원본이다
+  const cellCopyAtRef = useRef(0); const [pasteSig, setPasteSig] = useState(0); // 칸·영역 복사를 한 때 / 편집기에 '요소를 붙여라'고 알리는 숫자
   const copyCell = () => {
     const src = srcOfCell(); if (!src) { addToast?.('info', '복사할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return false; }
-    cellClip.current = src; setClipFilled(true); addToast?.('success', '칸 내용을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"를 누르세요(Ctrl+V 도 됩니다).'); return true;
+    cellClip.current = src; cellCopyAtRef.current = Date.now(); setClipFilled(true); addToast?.('success', '칸 내용을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"를 누르세요(Ctrl+V 도 됩니다).'); return true;
   };
+  // 테스트: AI 없이 만든 것처럼 페이지 칸 4개에 예시 그림(손스케치·배치 개념도·프로그램 버블도·층별 조닝도)을 채워 페이지 편집 화면을 바로 시험한다(Ctrl+Z 로 되돌림)
+  const loadTestState = () => {
+    pushHistory();
+    const ids = cellIds('T3', null); const mk = (t) => ({ type: t, spec: JSON.parse(JSON.stringify(EXAMPLE_SPECS[t])), ver: Date.now() });
+    const work = { [ids[0]]: { type: 'sketch', spec: testSketchSpec(), ver: Date.now() }, [ids[1]]: mk('site'), [ids[2]]: mk('program'), [ids[3]]: mk('stack') };
+    setPageOn(true); setPg((q) => ({ ...q, layoutId: 'T3', custom: null, basePreset: 'T3', cellMeta: {} }));
+    setCells(work); setSelCell(ids[0]); setResult(work[ids[0]]); setLeftTab('page'); setGenError(''); setRegionSel(null);
+    addToast?.('info', '테스트 화면을 불러왔습니다', '손스케치·배치 개념도·프로그램 버블도·층별 조닝도 예시가 페이지 칸 4개에 들어갔습니다. 이전 상태는 Ctrl+Z 로 되돌릴 수 있습니다.');
+  };
+  // 영역 복사: 편집 화면 위에서 복사할 영역을 끌어 고르면, 그 영역만 보이는 그림이 복사된다(붙여넣은 칸에는 그 영역만 보임, 편집 내용은 그대로)
+  const [regionCopy, setRegionCopy] = useState(false); const [rcBand, setRcBand] = useState(null); const edWrapRef = useRef(null);
+  const endRegionCopy = () => { setRegionCopy(false); setRcBand(null); if (dragCancelRef.current && dragCancelRef.current.isRegionCopy) dragCancelRef.current = null; };
+  const startRegionCopy = () => {
+    if (!srcOfCell()) { addToast?.('info', '복사할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return; }
+    setRegionCopy(true); const cancel = () => endRegionCopy(); cancel.isRegionCopy = true; dragCancelRef.current = cancel; // Esc 로 취소
+  };
+  // 편집 화면의 가장 큰 svg(그림). 화면 좌표 ↔ 그림 좌표 변환에 쓴다
+  const edSvgRef = useRef(null); // 영역을 잡은 편집 화면의 그림 svg(좌표 변환·점선 상자에 같은 것을 쓴다)
+  const svgUpFrom = (node) => { let el = node; let found = null; while (el && el !== edWrapRef.current) { if (el.tagName && el.tagName.toLowerCase() === 'svg' && el.getAttribute && el.getAttribute('viewBox') && el.getScreenCTM) found = el; el = el.parentNode; } return found; }; // 눌린 요소에서 위로 가장 바깥 그림 svg
+  const editorSvg = (x, y) => { // 편집 화면에서 (x, y) 화면 좌표 아래에 있는 그림 svg. 없으면 가장 큰 것
+    const wrap = edWrapRef.current; if (!wrap) return null;
+    if (Number.isFinite(x) && Number.isFinite(y) && document.elementsFromPoint) { for (const el of document.elementsFromPoint(x, y)) { if (wrap.contains(el)) { const sv = svgUpFrom(el); if (sv) return sv; } } }
+    return [...wrap.querySelectorAll('svg')].filter((q) => q.getAttribute('viewBox') && q.getScreenCTM).sort((a, b) => { const ra = a.getBoundingClientRect(); const rb = b.getBoundingClientRect(); return rb.width * rb.height - ra.width * ra.height; })[0] || null;
+  };
+  const roundCrop = (x0, y0, x1, y1) => { const r2 = (v) => Math.round(v * 100) / 100; const c = [r2(x0), r2(y0), r2(x1 - x0), r2(y1 - y0)]; return c[2] >= 4 && c[3] >= 4 ? c : null; };
+  const clientRectToCrop = (ax, ay, bx, by) => { // 편집 화면 위에서 끈 사각형(화면 좌표) → 그림 좌표 영역 [x, y, w, h]. 못 읽으면 null
+    const sv = editorSvg(ax, ay); const vb = sv ? sv.getAttribute('viewBox').trim().split(/\s+/).map(Number) : null;
+    if (!vb || vb.length !== 4 || vb.some((n) => !Number.isFinite(n)) || !sv.getScreenCTM()) return null;
+    edSvgRef.current = sv;
+    const inv = sv.getScreenCTM().inverse(); const pt = (x, y) => { const q = sv.createSVGPoint(); q.x = x; q.y = y; return q.matrixTransform(inv); };
+    const p1 = pt(ax, ay); const p2 = pt(bx, by);
+    return roundCrop(Math.max(vb[0], Math.min(p1.x, p2.x)), Math.max(vb[1], Math.min(p1.y, p2.y)), Math.min(vb[0] + vb[2], Math.max(p1.x, p2.x)), Math.min(vb[1] + vb[3], Math.max(p1.y, p2.y)));
+  };
+  const cropFromPage = (id, ax, ay, bx, by) => { // 페이지 미리보기 위에서 끈 사각형 → 그 칸 그림의 그림 좌표 영역
+    const pm = pageModel?.preview; const el = previewRef.current; if (!pm || !el) return null;
+    const rep = pm.cells.find((q) => q.id === id); if (!rep || !rep.xf || !rep.vb) return null;
+    const rect = el.getBoundingClientRect(); const mm = pm.page.w / rect.width; const [sc, tx, ty] = rep.xf; const [vx, vy, vw, vh] = rep.vb;
+    const lc = (cx, cy) => [((cx - rect.left) * mm - tx) / sc, ((cy - rect.top) * mm - ty) / sc]; const a = lc(ax, ay); const b = lc(bx, by);
+    return roundCrop(Math.max(vx, Math.min(a[0], b[0])), Math.max(vy, Math.min(a[1], b[1])), Math.min(vx + vw, Math.max(a[0], b[0])), Math.min(vy + vh, Math.max(a[1], b[1])));
+  };
+  const finishRegionCopy = (ax, ay, bx, by) => { // 버튼으로 시작한 영역 복사: 끌어 고르면 바로 복사한다
+    const crop = clientRectToCrop(ax, ay, bx, by);
+    if (!crop) { addToast?.('info', '영역을 잡지 못했습니다', '그림 위에서 조금 더 크게 끌어 보세요.'); return; }
+    cellClip.current = { ...srcOfCell(), crop }; cellCopyAtRef.current = Date.now(); setClipFilled(true); endRegionCopy();
+    addToast?.('success', '선택한 영역을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"(Ctrl+V)를 누르면 그 칸에는 이 영역만 보입니다. 그림 전체는 "전체 보기"로 다시 볼 수 있습니다.');
+  };
+  // 단축키 방식: 그림 위(편집 화면 또는 페이지 미리보기)에서 Shift+드래그로 영역을 잡으면 점선 상자로 남고, Ctrl+C 로 복사한다. 다른 칸을 눌러 Ctrl+V 로 붙인다. Esc 로 해제
+  const [regionSel, setRegionSel] = useState(null); const regionSelRef = useRef(null); regionSelRef.current = regionSel; // { id(칸), crop }
+  const [selBand, setSelBand] = useState(null); // 끄는 중인 상자 { surface: 'editor'|'page', x, y, w, h }(그 화면의 픽셀)
+  const startSelectRegion = (e, surface, cellId) => {
+    const host = surface === 'editor' ? edWrapRef.current : previewRef.current; if (!host) return;
+    e.preventDefault(); e.stopPropagation();
+    const id = cellId || selCell; if (id !== selCell) selectCell(id);
+    const hr = host.getBoundingClientRect(); const x0 = e.clientX; const y0 = e.clientY; let moved = false;
+    const onMove = (ev) => { moved = true; setSelBand({ surface, x: Math.min(x0, ev.clientX) - hr.left, y: Math.min(y0, ev.clientY) - hr.top, w: Math.abs(ev.clientX - x0), h: Math.abs(ev.clientY - y0) }); };
+    const stop = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); setSelBand(null); dragCancelRef.current = null; };
+    const onUp = (ev) => {
+      stop(); if (!moved || Math.abs(ev.clientX - x0) < 8 || Math.abs(ev.clientY - y0) < 8) return;
+      const crop = surface === 'editor' ? clientRectToCrop(x0, y0, ev.clientX, ev.clientY) : cropFromPage(id, x0, y0, ev.clientX, ev.clientY);
+      if (crop) setRegionSel({ id, crop }); else addToast?.('info', '영역을 잡지 못했습니다', '그림 위에서 조금 더 크게 끌어 보세요.');
+    };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+    stop.isRegionSel = true; dragCancelRef.current = stop; // Esc 로 끌던 것을 취소
+  };
+  const onEdPointerDownCapture = (e) => { // 편집 화면: 빈 곳(또는 바탕)에서 Shift+드래그 = 영역 잡기. 도형 위는 편집기에 맡긴다(Shift+클릭 = 여러 개 고르기)
+    if (!pageOn || !e.shiftKey || regionCopy || (e.button !== undefined && e.button !== 0)) return;
+    const sv = editorSvg(e.clientX, e.clientY); if (!sv || !(e.target === sv || sv.contains(e.target))) return;
+    const hit = e.target.closest ? e.target.closest('[data-eid]') : null;
+    if (hit) { const a = hit.getBoundingClientRect(); const b = sv.getBoundingClientRect(); if (!(a.width >= b.width * 0.9 && a.height >= b.height * 0.9)) return; }
+    ctxRef.current = 'sketch'; startSelectRegion(e, 'editor');
+  };
+  const copyRegionNow = () => {
+    const rs = regionSelRef.current; if (!rs) return;
+    const src = rs.id === selCell ? srcOfCell() : cells[rs.id]; if (!src) { setRegionSel(null); return; }
+    cellClip.current = { ...src, crop: rs.crop }; cellCopyAtRef.current = Date.now(); setClipFilled(true); setRegionSel(null);
+    addToast?.('success', '선택한 영역을 복사했습니다', '붙여넣을 칸을 클릭하고 Ctrl+V 를 누르세요. 그 칸에는 이 영역만 보입니다.');
+  };
+  const copyRegionRef = useRef(null); copyRegionRef.current = copyRegionNow;
+  useEffect(() => { // 창 전체 단축키(편집기보다 먼저 받는다): 영역이 잡혀 있으면 Ctrl+C = 영역 복사, Esc = 해제(끌던 중이면 취소)
+    const h = (e) => {
+      if (rootRef.current && rootRef.current.getClientRects().length === 0) return;
+      const tag = e.target?.tagName || ''; if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable) return;
+      const k = (e.key || '').toLowerCase();
+      if (e.key === 'Escape' && dragCancelRef.current && dragCancelRef.current.isRegionSel) { e.preventDefault(); e.stopImmediatePropagation(); dragCancelRef.current(); return; }
+      if (!regionSelRef.current) return;
+      if ((e.ctrlKey || e.metaKey) && k === 'c' && !window.getSelection?.()?.toString()) { e.preventDefault(); e.stopImmediatePropagation(); copyRegionRef.current?.(); }
+      else if (e.key === 'Escape' && !dragCancelRef.current) { e.preventDefault(); e.stopImmediatePropagation(); setRegionSel(null); }
+    };
+    window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true);
+  }, []);
+  useEffect(() => { setRegionSel(null); }, [selCell, pageOn]); // 칸을 바꾸면 잡아 둔 영역은 해제
+  const pickRegion = (e) => {
+    if (e.button !== undefined && e.button !== 0) return; e.preventDefault(); e.stopPropagation();
+    const lr = e.currentTarget.getBoundingClientRect(); const x0 = e.clientX; const y0 = e.clientY; let moved = false;
+    const onMove = (ev) => { moved = true; setRcBand({ x: Math.min(x0, ev.clientX) - lr.left, y: Math.min(y0, ev.clientY) - lr.top, w: Math.abs(ev.clientX - x0), h: Math.abs(ev.clientY - y0) }); };
+    const onUp = (ev) => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); setRcBand(null); if (moved && Math.abs(ev.clientX - x0) > 8 && Math.abs(ev.clientY - y0) > 8) finishRegionCopy(x0, y0, ev.clientX, ev.clientY); };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+  };
+  const clearCrop = () => { pushHistory(); setResult((r) => (r ? { ...r, crop: undefined } : r)); };
+  useEffect(() => { if (regionCopy) endRegionCopy(); }, [selCell, pageOn]); // eslint-disable-line react-hooks/exhaustive-deps — 칸을 바꾸면 영역 고르기를 끝낸다
   const placeCell = (id) => { if (!cellClip.current) return; const copy = { ...cellClip.current, ver: Date.now() }; pushHistory(); setCells((c) => ({ ...c, [id]: copy })); setSelCell(id); setResult(copy); setGenError(''); };
+  const onEditorCopy = (box) => { // 편집기에서 요소를 복사했을 때(box = 그 요소들의 바깥 상자, 그림 좌표): 빈 칸에 붙일 때 보여 줄 그 부분을 영역 복사로도 준비해 둔다. cellCopyAt 은 그대로(요소 복사가 더 새로움)
+    const src = srcOfCell(); if (!src || !box) return;
+    const w0 = box[2] - box[0]; const h0 = box[3] - box[1]; const m = Math.max(w0, h0) * 0.05 + 6; const w = Math.max(40, w0 + 2 * m); const h = Math.max(40, h0 + 2 * m);
+    const r2 = (v) => Math.round(v * 100) / 100; cellClip.current = { ...src, crop: [r2((box[0] + box[2]) / 2 - w / 2), r2((box[1] + box[3]) / 2 - h / 2), r2(w), r2(h)] }; setClipFilled(true);
+  };
   const pasteCell = () => {
+    const ec = lastElemCopy();
+    if (ec && ec.at > cellCopyAtRef.current) { // 마지막에 한 복사가 편집기의 요소 복사: 그림이 있는 같은 종류 칸이면 그 그림에 요소를 붙이고, 빈 칸이면 그 부분을 넣는다
+      const here = srcOfCell();
+      if (here && (ec.kind === 'sketch') === (here.type === 'sketch')) { setPasteSig((n) => n + 1); return; }
+      if (!here && cellClip.current) { placeCell(selCell); addToast?.('info', '복사한 요소 부분을 이 칸에 넣었습니다', '그림 전체는 같고 이 부분만 보입니다. "전체 보기"로 풀 수 있고, Ctrl+Z 로 되돌릴 수 있습니다.'); return; }
+      addToast?.('info', '붙여넣을 수 없습니다', '복사한 요소는 같은 종류의 그림(손스케치↔손스케치, 구조형↔구조형)에만 붙일 수 있습니다. 빈 칸에는 그 부분이 들어갑니다.'); return;
+    }
     if (!cellClip.current) { addToast?.('info', '붙여넣을 그림이 없습니다', '먼저 그림이 있는 칸에서 "칸 복사"를 눌러 주세요.'); return; }
     const had = !!srcOfCell(); placeCell(selCell); if (had) addToast?.('info', '이 칸의 그림을 바꿨습니다', '이전 그림은 Ctrl+Z 로 되돌릴 수 있습니다.');
   };
   const duplicateCell = () => {
     const src = srcOfCell(); if (!src) { addToast?.('info', '복제할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return; }
     const ids = cellIds(pg.layoutId, pg.custom); const free = ids.find((id) => id !== selCell && !cells[id]);
-    cellClip.current = src; setClipFilled(true);
+    cellClip.current = src; cellCopyAtRef.current = Date.now(); setClipFilled(true);
     if (free) placeCell(free); else addToast?.('info', '빈 칸이 없습니다', '칸을 나누거나 비운 뒤 다시 시도하세요.');
   };
   const moveCellContent = (fromId, toId) => {
@@ -434,15 +569,14 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (!m) return;
     const no = (id) => ids.indexOf(id) + 1;
     pushHistory();
-    setPg((p) => { const cm = p.cellMeta || {}; return { ...p, cellMeta: { ...cm, [toId]: { ...(cm[toId] || {}), desc: cm[fromId]?.desc, zoom: cm[fromId]?.zoom }, [fromId]: { ...(cm[fromId] || {}), desc: cm[toId]?.desc, zoom: cm[toId]?.zoom } } }; }); // 칸 설명은 그림을 따라간다(맞바꿈이면 서로)
+    setPg((p) => { const cm = p.cellMeta || {}; return { ...p, cellMeta: { ...cm, [toId]: { ...(cm[toId] || {}), desc: cm[fromId]?.desc, zoom: cm[fromId]?.zoom, zx: cm[fromId]?.zx, zy: cm[fromId]?.zy }, [fromId]: { ...(cm[fromId] || {}), desc: cm[toId]?.desc, zoom: cm[toId]?.zoom, zx: cm[toId]?.zx, zy: cm[toId]?.zy } } }; }); // 칸 설명은 그림을 따라간다(맞바꿈이면 서로)
     setCells(m.items); setSelCell(toId); setResult(m.items[toId]); setGenError('');
     addToast?.('success', m.swapped ? `칸 ${no(fromId)}과 칸 ${no(toId)}의 그림을 맞바꿨습니다` : `칸 ${no(fromId)}의 그림을 칸 ${no(toId)}(으)로 옮겼습니다`, '칸 크기가 다르면 그림이 새 칸에 맞춰 다시 배치됩니다. 되돌리려면 Ctrl+Z.');
   };
-  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined, zoom: undefined } } })); setResult(null); };
+  const clearCell = () => { if (!cells[selCell]) return; pushHistory(); setCells((c) => { const n = { ...c }; delete n[selCell]; return n; }); setPg((p) => ({ ...p, cellMeta: { ...(p.cellMeta || {}), [selCell]: { ...((p.cellMeta || {})[selCell] || {}), desc: undefined, zoom: undefined, zx: undefined, zy: undefined } } })); setResult(null); };
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
-  const [liveZoom, setLiveZoom] = useState(null); // 끄는 중인 칸 안의 그림 배율 { id, k }
-  const liveZoomRef = useRef(null);
+  const [liveZoom, setLiveZoom] = useState(null); // 끄는 중인 칸 안의 그림 크기·위치 { id, k, zx, zy }
   const composeAll = (layoutId, custom, wantOut, zoomOv) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치)
     if (!pageOn) return null;
     try {
@@ -451,7 +585,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
       const ids = cellIds(layoutId, custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
       const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId, custom, gap: Number(pg.gap) || 0, measure: domMeasure,
-        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: zoomOv ? { ...(pg.cellMeta || {}), [zoomOv.id]: { ...((pg.cellMeta || {})[zoomOv.id] || {}), zoom: zoomOv.k } } : pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
+        margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: zoomOv ? { ...(pg.cellMeta || {}), [zoomOv.id]: { ...((pg.cellMeta || {})[zoomOv.id] || {}), zoom: zoomOv.k, zx: zoomOv.zx, zy: zoomOv.zy } } : pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
         const r = cells[id]; if (!r) return { id, render: null };
@@ -462,7 +596,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
         else if (r.type === 'site') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, SITE_PANEL_W, SITE_PANEL_H, 3);
         else if (r.type === 'massing') spec.cols = bestCols(Math.max(1, (spec.steps || []).length), aspect, MASSING_PANEL_W, MASSING_PANEL_H, 3);
         const eng = renderSpec(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined);
-        return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0 };
+        return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0, crop: Array.isArray(r.crop) ? r.crop : null };
       });
       const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
       const out = wantOut ? composePage(page, items, base) : null; // 저장용(칸 테두리·빈 칸 표시 없음)
@@ -474,20 +608,26 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
   const livePageSrc = useMemo(() => (livePage?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(livePage.preview.svg)}` : ''), [livePage]);
   const pageSrc0 = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]);
   const pageSrc = livePageSrc || pageSrc0; // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다). 칸 가장자리를 끄는 동안에는 바뀌는 크기가 그림에 바로 보인다
-  const focusOn = pageOn && !!pageModel?.preview && focusEdit; // 편집 집중: 편집기가 전체 폭이고 페이지는 위쪽 띠로 줄어든다
-  const sideOn = !focusOn && pageOn && !!result && !!pageModel?.preview && (viewMode === 'side' || (viewMode === 'auto' && paneW >= SIDE_MIN_W));
-  const splitAvail = Math.max(0, paneW - 32 - SPLIT_DIV_W); // 오른쪽 화면 안쪽 폭(여백 16×2)에서 분할선을 뺀 폭
-  const splitEff = clampSplit(splitR, splitAvail, EDITOR_MIN_W, PAGE_MIN_W); // 두 화면이 서로 찌그러지지 않는 범위 안의 편집기 몫
-  useEffect(() => { if (focusOn) { setPgEdit(null); ctxRef.current = 'sketch'; } }, [focusOn]); // 편집 집중에서는 방향키·Delete 가 칸이 아니라 그림에 듣는다
-  const onSplitDown = (e) => { // 분할선을 끌어 편집기와 페이지의 폭 비율을 바꾼다
-    if (e.button !== 0) return; const host = workRef.current; if (!host) return;
-    e.preventDefault(); const rect = host.getBoundingClientRect(); let last = splitEff;
-    const prevSel = document.body.style.userSelect; document.body.style.userSelect = 'none';
-    const mv = (ev) => { last = clampSplit(splitFromPointer(ev.clientX, rect.left, rect.width, SPLIT_DIV_W), rect.width - SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W); host.style.gridTemplateColumns = splitColumns(last, SPLIT_DIV_W); };
-    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); document.body.style.userSelect = prevSel; setSplitR(last); };
-    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  // 고른 칸 그림의 '실제로 보이는' 바깥 상자(그림 좌표): 그림을 작은 비트맵으로 그려 투명하지 않은 곳만 잰다. 그림 상자·모서리 점이 그림에 딱 맞게 하는 데 쓴다(못 재면 칸 맞춤 상자로 대신)
+  const [ink, setInk] = useState(null);
+  const selRep0 = pageOn && pageModel?.preview ? pageModel.preview.cells.find((q) => q.id === selCell) : null;
+  const selInner = selRep0 && selRep0.inner ? selRep0.inner : ''; const selVb = selRep0 && selRep0.vb ? selRep0.vb.join(' ') : '';
+  useEffect(() => {
+    if (!selInner) { setInk(null); return undefined; }
+    let dead = false; const vb = selVb.split(' ').map(Number); const id = selCell; const inner = selInner;
+    const t = setTimeout(() => { measureInk(inner, vb).then((box) => { if (!dead) setInk({ id, inner, box }); }); }, 120);
+    return () => { dead = true; clearTimeout(t); };
+  }, [selInner, selVb, selCell]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 보이는 그림 상자(page mm): 그림 속 실제 내용 상자 ∩ 칸(그림 자리). 못 쟀으면 칸 맞춤 상자(art)
+  const visRectOf = (rep, box0) => {
+    let box = box0; if (box && rep.crop) { const c = rep.crop; const bx0 = Math.max(box[0], c[0]); const by0 = Math.max(box[1], c[1]); const bx1 = Math.min(box[2], c[0] + c[2]); const by1 = Math.min(box[3], c[1] + c[3]); if (bx1 > bx0 && by1 > by0) box = [bx0, by0, bx1, by1]; } // 영역만 보이는 칸: 그 영역 안의 내용만
+    if (!box || !rep.xf) return [rep.art[0], rep.art[1], rep.art[0] + rep.art[2], rep.art[1] + rep.art[3]];
+    const [sc, tx, ty] = rep.xf; const f = rep.fit;
+    return [Math.max(f.bx, box[0] * sc + tx), Math.max(f.by, box[1] * sc + ty), Math.min(f.bx + f.bw, box[2] * sc + tx), Math.min(f.by + f.bh, box[3] * sc + ty)];
   };
-  const onSplitKey = (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setSplitR(clampSplit(splitEff + (e.key === 'ArrowLeft' ? -0.02 : 0.02), splitAvail, EDITOR_MIN_W, PAGE_MIN_W)); } else if (e.key === 'Home') { e.preventDefault(); setSplitR(SPLIT_DEFAULT); } };
+  const focusOn = pageOn && !!pageModel?.preview && focusEdit; // 편집 집중: 편집기가 전체 폭이고 페이지는 위쪽 띠로 줄어든다
+  const sideOn = !focusOn && pageOn && !!pageModel?.preview; // 편집 집중이 아니면 항상 나란히(그림 유무·화면 폭과 무관). 좁으면 두 화면이 같은 비율로 좁아진다
+  useEffect(() => { if (focusOn) { setPgEdit(null); ctxRef.current = 'sketch'; } }, [focusOn]); // 편집 집중에서는 방향키·Delete 가 칸이 아니라 그림에 듣는다
   // 페이지 제목·소제목·칸 제목을 미리보기 위에서 바로 고친다. 한 칸짜리 페이지에서 제목이 그림 자체의 제목(spec.title)에서 온 것이면 지울 때 그쪽도 비운다
   const commitPgEdit = (ed, raw) => {
     setPgEdit(null); const val = String(raw).replace(/\s*\n\s*/g, ' ').trim().slice(0, 120);
@@ -540,34 +680,44 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
     dragCancelRef.current = stop; // Esc 로 끌던 것을 취소(원래대로)
   };
-  // 칸 안의 그림 크기: 그림 모서리의 둥근 점을 끌면 그림 가운데를 기준으로 키우고 줄인다(칸 크기는 그대로, 놓으면 확정, Esc 취소). 1(칸에 맞춤) 근처에서는 붙는다
-  const commitZoom = (id, k) => {
+  // 칸 안의 그림 크기·위치(칸 크기는 그대로): 그림에 딱 맞는 상자의 모서리 점을 끌면 맞은편 모서리를 붙잡아 둔 채 그림 전체(도형·글자)가 같이 커지고 줄고, 상자 테두리를 끌면 그림이 칸 안에서 옮겨진다. 놓으면 확정, Esc 취소
+  const commitZoomMeta = (id, z) => {
     pushHistory();
-    setPg((p) => { const cm = { ...(p.cellMeta || {}) }; const cur = { ...(cm[id] || {}) }; if (Math.abs(k - 1) < 0.005) delete cur.zoom; else cur.zoom = Math.round(k * 1000) / 1000; cm[id] = cur; return { ...p, cellMeta: cm }; });
+    setPg((p) => { const cm = { ...(p.cellMeta || {}) }; const cur = { ...(cm[id] || {}) };
+      if (Math.abs(z.zoom - 1) < 0.005) delete cur.zoom; else cur.zoom = Math.round(z.zoom * 1000) / 1000;
+      if (Math.abs(z.zx) < 0.05) delete cur.zx; else cur.zx = Math.round(z.zx * 100) / 100;
+      if (Math.abs(z.zy) < 0.05) delete cur.zy; else cur.zy = Math.round(z.zy * 100) / 100;
+      cm[id] = cur; return { ...p, cellMeta: cm }; });
   };
-  const resetZoom = (id = selCell) => commitZoom(id, 1);
-  // 미리보기 위의 '그림 크기' 슬라이더: 움직이는 동안은 바로 보여 주고(live), 손을 떼거나 키보드를 떼면 한 번만 기록한다
-  const zoomSlide = (id, v) => { const k = Math.abs(v - 1) < 0.03 ? 1 : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v)); liveZoomRef.current = { id, k }; setLiveZoom({ id, k }); };
-  const zoomSlideEnd = () => { const z = liveZoomRef.current; liveZoomRef.current = null; if (z) { commitZoom(z.id, z.k); setLiveZoom(null); } };
-  const startZoom = (e, id) => {
+  const resetZoom = (id = selCell) => commitZoomMeta(id, { zoom: 1, zx: 0, zy: 0 });
+  // 한 번 끌기(공통): 모서리 점(corner)이면 크기, 테두리(corner 가 'pan')이면 위치
+  const startZoom = (e, id, corner) => {
     if (e.button !== undefined && e.button !== 0) return;
     const pm = pageModel?.preview; const el = previewRef.current; if (!pm || !el) return;
-    const cr = pm.cells.find((q) => q.id === id); if (!cr || !cr.center) return;
+    const rep = pm.cells.find((q) => q.id === id); if (!rep || !rep.xf) return;
     e.preventDefault(); e.stopPropagation();
     const rect = el.getBoundingClientRect(); const mmPerPx = pm.page.w / rect.width;
-    const cxp = rect.left + cr.center[0] / mmPerPx; const cyp = rect.top + cr.center[1] / mmPerPx; // 그림 가운데(화면 픽셀)
-    const d0 = Math.max(8, Math.hypot(e.clientX - cxp, e.clientY - cyp)); const k0 = cr.zoom || 1;
+    const vis = visRectOf(rep, ink && ink.id === id && ink.inner === rep.inner ? ink.box : null); // 지금 보이는 그림 상자(page mm)
     selectCell(id);
-    let last = k0; let moved = false; let raf = 0; let pending = null;
+    const x0 = e.clientX; const y0 = e.clientY; let moved = false; let raf = 0; let pending = null;
+    let last = { zoom: rep.zoom || 1, zx: rep.zx || 0, zy: rep.zy || 0 };
+    let calc;
+    if (corner === 'pan') {
+      const lim = [rep.fit.bw / 2, rep.fit.bh / 2];
+      calc = (ev) => ({ zoom: last.zoom, zx: Math.min(lim[0], Math.max(-lim[0], (rep.zx || 0) + (ev.clientX - x0) * mmPerPx)), zy: Math.min(lim[1], Math.max(-lim[1], (rep.zy || 0) + (ev.clientY - y0) * mmPerPx)) });
+    } else {
+      const opp = { nw: [vis[2], vis[3]], ne: [vis[0], vis[3]], se: [vis[0], vis[1]], sw: [vis[2], vis[1]] }[corner]; // 맞은편 모서리(제자리에 둘 점, page mm)
+      const apx = rect.left + opp[0] / mmPerPx; const apy = rect.top + opp[1] / mmPerPx;
+      const d0 = Math.max(12, Math.hypot(x0 - apx, y0 - apy)); const k0 = rep.zoom || 1;
+      calc = (ev) => pageZoomAbout(rep, k0 * (Math.hypot(ev.clientX - apx, ev.clientY - apy) / d0), opp);
+    }
     const flush = () => { raf = 0; if (pending) { setLiveZoom(pending); pending = null; } };
     const onMove = (ev) => {
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
-      moved = true; const v = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k0 * (Math.hypot(ev.clientX - cxp, ev.clientY - cyp) / d0)));
-      last = Math.abs(v - 1) < 0.03 ? 1 : v; pending = { id, k: last }; if (!raf) raf = requestAnimationFrame(flush);
+      moved = true; last = calc(ev); pending = { id, k: last.zoom, zx: last.zx, zy: last.zy, pan: corner === 'pan' }; if (!raf) raf = requestAnimationFrame(flush);
     };
-    const x0 = e.clientX; const y0 = e.clientY;
     const stop = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); dragCancelRef.current = null; setLiveZoom(null); };
-    const onUp = () => { stop(); if (moved) commitZoom(id, last); };
+    const onUp = () => { stop(); if (moved) commitZoomMeta(id, last); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
     dragCancelRef.current = stop;
   };
@@ -1080,7 +1230,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
     if (e.key === 'Tab') { e.preventDefault(); const i = Math.max(0, ids.indexOf(selCell)); selectCell(ids[(i + (e.shiftKey ? ids.length - 1 : 1)) % ids.length]); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (e.shiftKey) onRemove(); else clearCell(); return; }
     if (mod && k === 'c') { if (srcOfCell()) { e.preventDefault(); copyCell(); } return; }
-    if (mod && k === 'v') { if (cellClip.current) { e.preventDefault(); pasteCell(); } return; }
+    if (mod && k === 'v') { if (cellClip.current || lastElemCopy()) { e.preventDefault(); pasteCell(); } return; }
     if (mod && k === 'd') { e.preventDefault(); duplicateCell(); return; }
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { // 방향키: 칸 이동 1mm(Shift 10mm), Alt+방향키: 크기 1mm(Shift 10mm)
       const raw = pageModel?.preview?.cells.find((c) => c.id === selCell)?.raw; const box = pageModel?.preview?.box; if (!raw || !box) return;
@@ -1321,6 +1471,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '다이어그램 만들기'}
           </button>
+          <button style={{ ...btn(false, busy), fontSize: 11.5, padding: '5px 8px' }} disabled={busy} onClick={loadTestState} data-testid="test-fill" title="AI 없이, 다이어그램을 만든 것처럼 페이지 칸 4개에 예시 그림을 바로 채워서 페이지 편집 화면을 시험합니다. Ctrl+Z 로 되돌릴 수 있습니다">테스트: 만든 것처럼 바로 보기</button>
           {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note"><b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(평면 다이어그램·건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
           {editProg && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
@@ -1467,18 +1618,10 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                 title={leftHidden ? '왼쪽 설정 패널을 다시 펼칩니다' : '왼쪽 설정 패널을 접어 편집 화면을 넓힙니다(내용은 그대로 남습니다)'}>
                 {leftHidden ? '▶ 설정 열기' : '◀ 설정 접기'}
               </button>
-              {result && pageModel?.preview && !focusOn && (
-                <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11.5, color: 'var(--text-secondary)' }} title={`편집기와 페이지 배치를 위아래로 보거나 나란히 봅니다. 자동: 이 화면이 가로 ${SIDE_MIN_W}px 이상이면 나란히. 나란히 볼 때는 가운데 선을 끌어 폭을 바꿀 수 있습니다`}>
-                  화면 배치
-                  <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ ...inputBase, width: 'auto', fontSize: 12, padding: '4px 6px' }} data-testid="view-mode">
-                    <option value="auto">자동 (넓으면 나란히)</option><option value="side">편집기 | 페이지 나란히</option><option value="stack">위아래로</option>
-                  </select>
-                </label>
-              )}
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
           )}
-          <div ref={workRef} style={sideOn ? { display: 'grid', gridTemplateColumns: splitColumns(splitEff, SPLIT_DIV_W), alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'} data-focus={focusOn ? '1' : '0'}>
+          <div style={sideOn ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', columnGap: 20, alignItems: 'start' } : undefined} data-testid="work-area" data-side={sideOn ? '1' : '0'} data-focus={focusOn ? '1' : '0'}>
           <div style={{ minWidth: 0 }}>
           {focusOn && (() => { // 편집 집중: 페이지 배치를 위쪽 작은 띠로(칸 고르기 + 지금 모습 확인)
             const pm = pageModel.preview; const pw = pm.page.w; const ph = pm.page.h; const ids = cellIds(pg.layoutId, pg.custom);
@@ -1504,9 +1647,13 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               </div>
             );
           })()}
-          {focusOn && !result && (
-            <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--r-btn)', color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7 }} data-testid="focus-empty">
-              칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 위 <b>내 이미지 넣기</b>로 채우세요(이미지를 이 화면에 끌어다 놓아도 됩니다).
+          {(focusOn || sideOn) && !result && (
+            <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--r-btn)', color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }} data-testid="focus-empty">
+              <span>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽 <b>① 만들기</b>에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 다른 칸의 그림을 복사(Ctrl+C)해 이 칸에 붙여넣으세요(Ctrl+V). 이미지를 이 화면에 끌어다 놓아도 됩니다.</span>
+              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {clipFilled && <button style={{ ...btn(true, false), fontSize: 12 }} onClick={pasteCell} data-testid="empty-paste">복사한 그림 붙여넣기</button>}
+                <button style={{ ...btn(false, false), fontSize: 12 }} onClick={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} data-testid="empty-example">예시 그림 넣기</button>
+              </span>
             </div>
           )}
           {pageOn && result && (
@@ -1534,50 +1681,58 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
               {result.aiEdit.undoSpec && !busy && <button style={btn(false, false)} onClick={undoRegion} data-testid="region-undo" title="방금 다시 그린 영역을 이전 모습으로 되돌립니다">↩ 영역 다시 그리기 되돌리기</button>}
             </div>
           )}
+          <div ref={edWrapRef} onPointerDownCapture={onEdPointerDownCapture} style={{ position: 'relative' }}>
+          {pageOn && result?.crop && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontSize: 12, color: 'var(--text-secondary)' }} data-testid="crop-note">
+              <span>이 칸에는 그림의 <b>일부 영역만</b> 보입니다. 아래 편집 화면은 그림 전체입니다.</span>
+              <button style={{ ...btn(false, false), padding: '3px 10px', fontSize: 11.5 }} onClick={clearCrop} data-testid="cell-crop-clear" title="일부 영역만 보이게 한 것을 풀고 그림 전체를 보입니다">전체 보기</button>
+            </div>
+          )}
           {result?.type === 'sketch' && rendered?.svg && (
             <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SketchEditor key={`${selCell}:${result.ver}`} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
+              <SketchEditor key={`${selCell}:${result.ver}`} onCopy={onEditorCopy} pasteSignal={pasteSig} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
             </div>
           )}
           {result?.type !== 'sketch' && rendered?.svg && (
             <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SvgEditor onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
+              <SvgEditor onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
                 shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'}
                 onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
             </div>
           )}
-          </div>
-          {sideOn && (
-            <div role="separator" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={85} aria-valuenow={Math.round(splitEff * 100)} tabIndex={0} data-testid="splitter"
-              title="끌어서 편집기와 페이지의 폭을 바꿉니다(더블클릭: 처음 비율, 방향키: 조금씩)" onPointerDown={onSplitDown} onDoubleClick={() => setSplitR(SPLIT_DEFAULT)} onKeyDown={onSplitKey}
-              style={{ alignSelf: 'stretch', cursor: 'col-resize', touchAction: 'none', display: 'flex', justifyContent: 'center', outline: 'none' }}>
-              <div style={{ position: 'sticky', top: '38vh', alignSelf: 'flex-start', width: 6, height: 54, borderRadius: 3, background: 'var(--line-strong)', boxShadow: '0 0 0 1px #94a3b8 inset' }} />
+          {(() => { // 잡아 둔 영역(점선 상자). 그림 좌표 → 이 상자 안의 픽셀
+            const rs = regionSel && regionSel.id === selCell ? regionSel : null; const sv = rs ? (edSvgRef.current && edSvgRef.current.isConnected ? edSvgRef.current : editorSvg()) : null; const wrap = edWrapRef.current; const ctm = sv && sv.getScreenCTM ? sv.getScreenCTM() : null;
+            const band = selBand && selBand.surface === 'editor' ? selBand : null;
+            if (!(rs && ctm && wrap) && !band) return null;
+            let box = null;
+            if (rs && ctm && wrap) { const pt = (x, y) => { const q = sv.createSVGPoint(); q.x = x; q.y = y; return q.matrixTransform(ctm); }; const a = pt(rs.crop[0], rs.crop[1]); const b = pt(rs.crop[0] + rs.crop[2], rs.crop[1] + rs.crop[3]); const wr = wrap.getBoundingClientRect(); box = { x: a.x - wr.left, y: a.y - wr.top, w: b.x - a.x, h: b.y - a.y }; }
+            return (<>
+              {box && !band && <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, border: '2px dashed var(--primary)', background: 'rgba(51,51,153,0.08)', pointerEvents: 'none', zIndex: 20, boxSizing: 'border-box' }} data-testid="region-sel-editor"><span style={{ position: 'absolute', left: 0, top: -24, padding: '2px 8px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>영역 · Ctrl+C 복사 · Esc 해제</span></div>}
+              {band && <div style={{ position: 'absolute', left: band.x, top: band.y, width: band.w, height: band.h, border: '2px dashed var(--primary)', background: 'rgba(51,51,153,0.10)', pointerEvents: 'none', zIndex: 20 }} data-testid="region-sel-band" />}
+            </>);
+          })()}
+          {regionCopy && (
+            <div onPointerDown={pickRegion} data-testid="region-copy-layer" style={{ position: 'absolute', inset: 0, zIndex: 30, cursor: 'crosshair', background: 'rgba(51,51,153,0.05)', touchAction: 'none', userSelect: 'none' }}>
+              <div style={{ position: 'absolute', left: 8, top: 8, padding: '4px 10px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12.5, fontWeight: 700, pointerEvents: 'none' }}>복사할 영역을 끌어서 고르세요 (Esc: 취소)</div>
+              {rcBand && <div style={{ position: 'absolute', left: rcBand.x, top: rcBand.y, width: rcBand.w, height: rcBand.h, border: '2px dashed var(--primary)', background: 'rgba(51,51,153,0.10)', pointerEvents: 'none' }} data-testid="region-copy-band" />}
             </div>
           )}
+          </div>
+          </div>
           {pageOn && pageModel?.preview && !focusOn && (
             <div style={sideOn ? { position: 'sticky', top: 0, minWidth: 0, marginBottom: 14 } : { marginTop: result ? 18 : 0, paddingTop: result ? 12 : 0, borderTop: result ? '1px dashed var(--border-color)' : 'none', marginBottom: 14 }} data-testid="page-preview">
               <style>{'.pg-slot{outline:1.5px dashed transparent;border-radius:2px}.pg-slot:hover{outline-color:#F28C28;background:rgba(242,140,40,.10)}.pg-slot[data-has="0"]:hover::after{content:attr(data-hint);position:absolute;left:5px;top:50%;transform:translateY(-50%);font:700 12px sans-serif;color:#C2410C;white-space:nowrap;pointer-events:none}'}</style>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }} data-testid="cell-clip-bar">
                 {result && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>페이지 배치 · 칸 크기 조절</span>}
                 <span style={{ marginLeft: result ? 'auto' : 0, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {(() => { const m = pg.cellMeta?.[selCell] || {}; const z = Number(m.zoom) || 1; const moved = Math.abs(Number(m.zx) || 0) > 0.05 || Math.abs(Number(m.zy) || 0) > 0.05; return (z !== 1 || moved) ? <button style={{ ...btn(false, false), padding: '3px 10px', fontSize: 11.5 }} onClick={() => resetZoom()} data-testid="cell-zoom-reset" title="이 칸의 그림 크기·위치를 칸에 맞춘 처음 모습으로 되돌립니다(그림 모서리 점을 더블클릭해도 됩니다)">{z !== 1 ? `그림 크기 ${Math.round(z * 100)}%` : '그림 위치'} · 칸에 맞춤</button> : null; })()}
+                  <button style={{ ...btn(regionCopy, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={() => (regionCopy ? endRegionCopy() : startRegionCopy())} data-testid="cell-copy-region" title="편집 화면 위에서 복사할 영역을 끌어 고릅니다. 다른 칸에 붙여넣으면 그 칸에는 이 영역만 보입니다. (버튼 없이: 그림 위에서 Shift+드래그 → Ctrl+C → 다른 칸 클릭 → Ctrl+V)">{regionCopy ? '영역 고르기 취소' : '영역 복사'}</button>
                   <button style={{ ...btn(false, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={copyCell} data-testid="cell-copy" title="고른 칸의 그림(고친 내용 포함)을 복사합니다 (Ctrl+C)">칸 복사</button>
                   <button style={{ ...btn(false, !clipFilled), padding: '3px 10px', fontSize: 11.5 }} disabled={!clipFilled} onClick={pasteCell} data-testid="cell-paste" title="복사한 그림을 지금 고른 칸에 붙여넣습니다. 그 칸에 그림이 있으면 바뀌고 Ctrl+Z 로 되돌릴 수 있습니다 (Ctrl+V)">칸에 붙여넣기</button>
                   <button style={{ ...btn(false, !srcOfCell()), padding: '3px 10px', fontSize: 11.5 }} disabled={!srcOfCell()} onClick={duplicateCell} data-testid="cell-dup" title="고른 칸의 그림을 비어 있는 다른 칸에 복제합니다 (Ctrl+D)">빈 칸에 복제</button>
                 </span>
               </div>
-              {(() => { // 고른 칸 안의 그림만 키우고 줄이는 조절 칸(칸 크기는 그대로)
-                const cr = pageModel.preview.cells.find((q) => q.id === selCell); if (!cr || !cr.art) return null;
-                const z = liveZoom && liveZoom.id === selCell ? liveZoom.k : (cr.zoom || 1);
-                return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)' }} data-testid="cell-zoom-bar">
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }} title="고른 칸 안의 그림만 키우고 줄입니다(칸 크기는 그대로). 그림 모서리의 둥근 파란 점을 끌어도 됩니다">그림 크기</span>
-                    <input type="range" min={ZOOM_MIN} max={ZOOM_MAX} step="0.01" value={z} onChange={(e) => zoomSlide(selCell, Number(e.target.value))} onPointerUp={zoomSlideEnd} onKeyUp={zoomSlideEnd} onBlur={zoomSlideEnd} style={{ flex: 1, minWidth: 80 }} data-testid="cell-zoom-slider" aria-label="고른 칸 안의 그림 크기" />
-                    <span style={{ fontSize: 12, fontWeight: 700, minWidth: 38, textAlign: 'right', color: 'var(--text-primary)' }} data-testid="cell-zoom-value">{Math.round(z * 100)}%</span>
-                    <button style={{ ...btn(false, Math.abs(z - 1) < 0.005), padding: '3px 10px', fontSize: 11.5 }} disabled={Math.abs(z - 1) < 0.005} onClick={() => resetZoom()} data-testid="cell-zoom-reset" title="이 칸의 그림 크기를 칸에 맞춘 처음 크기(100%)로 되돌립니다">칸에 맞춤</button>
-                  </div>
-                );
-              })()}
               <div ref={previewRef} onPointerDownCapture={() => { ctxRef.current = 'page'; }} style={{ position: 'relative', width: '100%', maxWidth: sideOn ? `calc((100vh - 170px) * ${Math.round((pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 1000) / 1000})` : result ? `min(${pageModel.preview.width}px, ${Math.round(48 * (pageModel.preview.page.w / Math.max(1, pageModel.preview.page.h)) * 100) / 100}vh)` : pageModel.preview.width, margin: '0 auto', border: '1px solid #d5d9de', boxShadow: '0 1px 6px rgba(0,0,0,0.12)', userSelect: 'none' }}>
                 <img src={pageSrc} alt="페이지 미리보기" style={{ width: '100%', display: 'block' }} />
                 {(() => {
@@ -1588,7 +1743,7 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                     const [x, y, w, h] = c.rect; const sel = c.id === selCell;
                     return (
                       <React.Fragment key={c.id}>
-                        <div data-cellid={c.id} onPointerDown={(e) => startDrag(e, c.id, 'move')} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
+                        <div data-cellid={c.id} onPointerDown={(e) => ((e.shiftKey && (c.id === selCell ? !!(result || cells[c.id]) : !!cells[c.id])) ? startSelectRegion(e, 'page', c.id) : startDrag(e, c.id, 'move'))} onDoubleClick={() => { editorTopRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} data-testid={`cell-hit-${c.id}`} title={sel ? '끌어서 옮기기 (가장자리 점은 크기 조절, 더블클릭: 이 칸 편집)' : '이 칸 고르기 (더블클릭: 위 편집기로 이동)'}
                           style={{ position: 'absolute', left: `${(x / pw) * 100}%`, top: `${(y / ph) * 100}%`, width: `${(w / pw) * 100}%`, height: `${(h / ph) * 100}%`, cursor: sel ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none', outline: dropCell === c.id ? '3px dashed var(--primary)' : live && sel ? '2px solid var(--primary)' : 'none', background: dropCell === c.id ? 'var(--primary-soft)' : live && sel ? 'var(--primary-soft)' : 'transparent' }}>
                           {!live && (() => { const cr = pm.cells.find((q) => q.id === c.id); if (!cr) return null;
                             const mk = (kind, rect, value, title, tid) => { if (!rect) return null; const [rx, ry, rw, rh] = rect; return (
@@ -1598,18 +1753,26 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                         </div>
                         {sel && HANDLES.map(([mode, fx, fy, cur]) => (
                           <div key={mode} onPointerDown={(e) => startDrag(e, c.id, mode)} data-testid={`handle-${mode}`}
-                            style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid var(--primary)', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 2 }} />
+                            style={{ position: 'absolute', left: `${((x + fx * w) / pw) * 100}%`, top: `${((y + fy * h) / ph) * 100}%`, width: 11, height: 11, transform: 'translate(-50%, -50%)', background: '#fff', border: '2px solid var(--primary)', borderRadius: 3, cursor: cur, touchAction: 'none', zIndex: 5, zIndex: 2 }} />
                         ))}
-                        {sel && !live && (() => { // 이 칸 안의 그림 크기 조절: 그림 모서리 안쪽의 둥근 점(칸 크기 점과 겹치지 않게 14px 안쪽)
-                          const cr = (livePage?.preview || pm).cells.find((q) => q.id === c.id); const ar = cr && cr.art; if (!ar || ar[2] < 8 || ar[3] < 8) return null;
-                          const [ax, ay, aw, ah] = ar; const z = liveZoom && liveZoom.id === c.id ? liveZoom.k : (cr.zoom || 1);
+                        {sel && !live && (() => { // 이 칸 안의 그림 크기·위치: 그림에 딱 맞는 상자의 모서리 점(크기)과 테두리(위치)
+                          const cr = (livePage?.preview || pm).cells.find((q) => q.id === c.id); if (!cr || !cr.xf) return null;
+                          const [bx0, by0, bx1, by1] = visRectOf(cr, ink && ink.id === c.id && ink.inner === (pm.cells.find((q) => q.id === c.id) || {}).inner ? ink.box : null); const aw = bx1 - bx0; const ah = by1 - by0; if (aw < 6 || ah < 6) return null;
+                          const z = liveZoom && liveZoom.id === c.id ? liveZoom.k : (cr.zoom || 1);
+                          const pctX = (v) => `${(v / pw) * 100}%`; const pctY = (v) => `${(v / ph) * 100}%`;
+                          const nearCorner = (px, py) => Math.min(Math.abs(px - x), Math.abs(px - (x + w))) / pw < 0.016 && Math.min(Math.abs(py - y), Math.abs(py - (y + h))) / ph < 0.016; // 칸 모서리 점과 겹치면 안쪽으로 살짝 비킨다
                           return (<>
-                            <div style={{ position: 'absolute', left: `${(ax / pw) * 100}%`, top: `${(ay / ph) * 100}%`, width: `${(aw / pw) * 100}%`, height: `${(ah / ph) * 100}%`, border: '1px dashed var(--primary)', pointerEvents: 'none', boxSizing: 'border-box', zIndex: 2 }} data-testid="zoom-box" />
-                            {[[0, 0, 'nwse-resize'], [1, 0, 'nesw-resize'], [1, 1, 'nwse-resize'], [0, 1, 'nesw-resize']].map(([fx, fy, cur]) => (
-                              <div key={`z${fx}${fy}`} onPointerDown={(e) => startZoom(e, c.id)} onDoubleClick={(e) => { e.stopPropagation(); resetZoom(c.id); }} data-testid={`zoom-handle-${fx}${fy}`} title="끌어서 이 칸 안의 그림 크기를 키우고 줄입니다(칸 크기는 그대로). 더블클릭: 칸에 맞춤"
-                                style={{ position: 'absolute', left: `calc(${((ax + fx * aw) / pw) * 100}% + ${fx ? -16 : 16}px)`, top: `calc(${((ay + fy * ah) / ph) * 100}% + ${fy ? -16 : 16}px)`, width: 17, height: 17, transform: 'translate(-50%, -50%)', background: 'var(--primary)', border: '2px solid #fff', borderRadius: '50%', cursor: cur, touchAction: 'none', zIndex: 4, boxSizing: 'border-box' }} />
+                            <div style={{ position: 'absolute', left: pctX(bx0), top: pctY(by0), width: pctX(aw), height: pctY(ah), border: '1px dashed var(--primary)', pointerEvents: 'none', boxSizing: 'border-box', zIndex: 2 }} data-testid="zoom-box" />
+                            {[['n', bx0, by0, aw, 0], ['s', bx0, by1, aw, 0], ['w', bx0, by0, 0, ah], ['e', bx1, by0, 0, ah]].map(([k, ex, ey, ew, eh]) => (
+                              <div key={`pe${k}`} onPointerDown={(e) => startZoom(e, c.id, 'pan')} data-testid={`zoom-edge-${k}`} title="테두리를 끌어 그림을 칸 안에서 옮깁니다"
+                                style={{ position: 'absolute', left: pctX(ex), top: pctY(ey), width: ew ? pctX(ew) : 8, height: eh ? pctY(eh) : 8, transform: ew ? 'translateY(-4px)' : 'translateX(-4px)', cursor: 'move', touchAction: 'none', zIndex: 3 }} />
                             ))}
-                            {liveZoom && liveZoom.id === c.id && <div style={{ position: 'absolute', left: `${((ax + aw / 2) / pw) * 100}%`, top: `${((ay + ah / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 5 }} data-testid="zoom-label">{Math.abs(z - 1) < 0.005 ? '그림 크기: 칸에 맞춤' : `그림 크기 ${Math.round(z * 100)}%`}</div>}
+                            {[['nw', bx0, by0, 'nwse-resize'], ['ne', bx1, by0, 'nesw-resize'], ['se', bx1, by1, 'nwse-resize'], ['sw', bx0, by1, 'nesw-resize']].map(([k, hx, hy, cur]) => {
+                              const inX = (hx <= bx0 ? 1 : -1) * (nearCorner(hx, hy) ? 12 : 0); const inY = (hy <= by0 ? 1 : -1) * (nearCorner(hx, hy) ? 12 : 0);
+                              return (<div key={`zh${k}`} onPointerDown={(e) => startZoom(e, c.id, k)} onDoubleClick={(e) => { e.stopPropagation(); resetZoom(c.id); }} data-testid={`zoom-handle-${k}`} title="그림 모서리를 끌어 그림 크기를 키우고 줄입니다(칸 크기는 그대로, 맞은편 모서리가 고정). 더블클릭: 칸에 맞춤"
+                                style={{ position: 'absolute', left: `calc(${pctX(hx)} + ${inX}px)`, top: `calc(${pctY(hy)} + ${inY}px)`, width: 16, height: 16, transform: 'translate(-50%, -50%)', background: 'var(--primary)', border: '2px solid #fff', borderRadius: '50%', cursor: cur, touchAction: 'none', zIndex: 4, boxSizing: 'border-box' }} />);
+                            })}
+                            {liveZoom && liveZoom.id === c.id && <div style={{ position: 'absolute', left: pctX((bx0 + bx1) / 2), top: pctY((by0 + by1) / 2), transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 5 }} data-testid="zoom-label">{liveZoom.pan ? '그림 위치' : Math.abs(z - 1) < 0.005 ? '그림 크기: 칸에 맞춤' : `그림 크기 ${Math.round(z * 100)}%`}</div>}
                           </>);
                         })()}
                         {live && sel && <div style={{ position: 'absolute', left: `${((x + w / 2) / pw) * 100}%`, top: `${((y + h / 2) / ph) * 100}%`, transform: 'translate(-50%, -50%)', padding: '2px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 12, fontWeight: 700, pointerEvents: 'none', zIndex: 3 }} data-testid="drag-label">{live.label}</div>}
@@ -1620,9 +1783,16 @@ export default function ConceptDiagram({ addToast, apiFetch }) {
                       onClick={(e) => setPgEdit({ kind: k, el: e.currentTarget, value: sl.text || '' })}
                       style={{ position: 'absolute', left: `${(sx / pw) * 100}%`, top: `${(sy / ph) * 100}%`, width: `${(sw / pw) * 100}%`, height: `${(sh / ph) * 100}%`, cursor: 'text', zIndex: 1 }} />); }));
                 })()}
+                {(() => { // 잡아 둔 영역(점선 상자)·끄는 상자
+                  const pm = pageModel.preview; const rep = regionSel && !live ? pm.cells.find((q) => q.id === regionSel.id) : null; const band = selBand && selBand.surface === 'page' ? selBand : null;
+                  return (<>
+                    {rep && rep.xf && !band && (() => { const [sc, tx, ty] = rep.xf; const c = regionSel.crop; return <div style={{ position: 'absolute', left: `${((c[0] * sc + tx) / pm.page.w) * 100}%`, top: `${((c[1] * sc + ty) / pm.page.h) * 100}%`, width: `${((c[2] * sc) / pm.page.w) * 100}%`, height: `${((c[3] * sc) / pm.page.h) * 100}%`, border: '2px dashed var(--primary)', background: 'rgba(51,51,153,0.10)', pointerEvents: 'none', zIndex: 6, boxSizing: 'border-box' }} data-testid="region-sel-page"><span style={{ position: 'absolute', left: 0, top: -22, padding: '1px 7px', borderRadius: 6, background: 'rgba(30,30,30,0.82)', color: '#fff', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>영역 · Ctrl+C 복사 · Esc 해제</span></div>; })()}
+                    {band && <div style={{ position: 'absolute', left: band.x, top: band.y, width: band.w, height: band.h, border: '2px dashed var(--primary)', background: 'rgba(51,51,153,0.12)', pointerEvents: 'none', zIndex: 6 }} data-testid="region-sel-band-page" />}
+                  </>);
+                })()}
                 {pgEdit && previewRef.current && <InlineInput host={previewRef.current} target={pgEdit.el} value={pgEdit.value} multiline={false} onCommit={(v) => commitPgEdit(pgEdit, v)} onCancel={() => setPgEdit(null)} />}
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 네모 점을 끌면 칸 크기가, 그림 모서리의 둥근 파란 점을 끌면 칸 안의 그림 크기가 바뀝니다(Alt: 이 칸만){result ? `. 그림 속 도형·글자는 ${sideOn ? '왼쪽' : '이 위쪽'} 편집기에서 바로 고칩니다` : ''}. 제목·소제목은 눌러서, 칸 제목은 더블클릭해서 바로 고칩니다.</p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', textAlign: 'center', margin: '6px 0 0' }}>페이지 미리보기 — 주황 테두리가 고른 칸입니다. 칸을 누르면 고르고, 고른 칸의 네모 점을 끌면 칸 크기가, 그림에 딱 맞는 점선 상자의 둥근 파란 점을 끌면 칸 안의 그림 크기가(테두리를 끌면 그림 위치가) 바뀝니다(Alt: 이 칸만). <b>Shift+드래그</b>로 그림에서 영역을 잡고 Ctrl+C → 다른 칸을 눌러 Ctrl+V 하면 그 칸에 그 영역만 보입니다{result ? `. 그림 속 도형·글자는 ${sideOn ? '왼쪽' : '이 위쪽'} 편집기에서 바로 고칩니다` : ''}. 제목·소제목은 눌러서, 칸 제목은 더블클릭해서 바로 고칩니다.</p>
             </div>
           )}
           </div>
