@@ -64,7 +64,7 @@ import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conc
 
 export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
   const [selected, setSelected] = useState('');
-  const [multi, setMulti] = useState([]); const multiOn = multi.length >= 2; // 여러 개 고르기(Shift·Ctrl+클릭, Ctrl+끌기): 둘 이상 고르면 selected 는 비우고 아래 '여러 개 고름' 패널이 쓴다
+  const [multi, setMulti] = useState([]); const multiOn = multi.length >= 2; // 여러 개 고르기(Shift·Ctrl+클릭, 빈 곳 끌기): 둘 이상 고르면 selected 는 비우고 아래 '여러 개 고름' 패널이 쓴다
   const [mboxes, setMboxes] = useState([]); const [marq, setMarq] = useState(null); // 고른 요소들의 바깥 상자 / 끌고 있는 고르기 상자(그림 좌표 1200x760)
   useEffect(() => { if ((selected || multiOn) && onPick) onPick(); }, [selected, multiOn]); // eslint-disable-line react-hooks/exhaustive-deps — 요소를 누르면 왼쪽 ③ 도형 편집 탭을 연다
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
@@ -233,21 +233,34 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       window.addEventListener('pointermove', onRegionMove); window.addEventListener('pointerup', onRegionUp, { once: true }); return;
     }
     if (whole && wbox) { // 전체 크기 조절 모드에서 그림을 끌면 내용 전체가 함께 움직인다. 끌지 않고 누르기만 하면 모드를 끝내고 그 요소를 고른다
-      const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
+      const pc = toCanvas(e.clientX, e.clientY); if (!pc) return;
       const hitEl = e.target.closest?.('[data-eid]');
-      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: hitEl ? hitEl.getAttribute('data-eid') : '', fromBlank: !hitEl, wasWhole: true };
-      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+      const inBox = pc[0] >= wbox[0] - 6 && pc[0] <= wbox[2] + 6 && pc[1] >= wbox[1] - 6 && pc[1] <= wbox[3] + 6;
+      if (hitEl || inBox || e.altKey) { // 요소 위·주황 상자 안쪽·Alt+끌기는 전체 이동. 상자 바깥 빈 곳은 아래의 '끌어서 상자로 고르기'로 간다
+        e.preventDefault();
+        drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: hitEl ? hitEl.getAttribute('data-eid') : '', fromBlank: !hitEl, wasWhole: true };
+        window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+      }
     }
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
-    if (!el && (e.ctrlKey || e.metaKey) && !h) { // 빈 곳에서 Ctrl(⌘)+끌기: 사각형으로 여러 개 고르기
+    if (!el) { // 빈 곳(바탕 그림 위 포함): 끌면 사각형 상자로 여러 개를 고른다(Shift·Ctrl 은 지금 선택에 더함). 그냥 눌렀다 떼면 선택 해제 + 전체 크기 모드 켬/끔. Alt+끌기는 그림 전체 이동
       const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
-      drag.current = { kind: 'marquee', start: pc, cx: e.clientX, cy: e.clientY, moved: false };
-      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
-    }
-    if (!el) { // 빈 곳(바탕 그림 위 포함)을 끌면 그림 전체가 함께 움직인다. 그냥 눌렀다 떼면 선택 해제
-      setMulti([]); setSelected(''); const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
-      drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '', fromBlank: true, wasWhole: false };
+      const add = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (e.altKey && !add) {
+        setMulti([]); setSelected('');
+        drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '', fromBlank: true, wasWhole: false };
+        window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+      }
+      if (multiOn && !add && mboxes.length) { // 여러 개를 고른 상태에서 그 묶음의 상자 안쪽 빈 곳을 끌면 모두 함께 움직인다(끌지 않고 누르면 선택 해제)
+        const ux0 = Math.min(...mboxes.map((b) => b[0])) - 4; const uy0 = Math.min(...mboxes.map((b) => b[1])) - 4; const ux1 = Math.max(...mboxes.map((b) => b[2])) + 4; const uy1 = Math.max(...mboxes.map((b) => b[3])) + 4;
+        if (pc[0] >= ux0 && pc[0] <= ux1 && pc[1] >= uy0 && pc[1] <= uy1) {
+          const sm = toDiag(e.clientX, e.clientY); if (!sm) return;
+          drag.current = { kind: 'multi', ids: multi, start: sm, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '' };
+          window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+        }
+      }
+      drag.current = { kind: 'marquee', start: pc, cx: e.clientX, cy: e.clientY, moved: false, add, wasWhole: whole, base: add ? (multiOn ? multi : selected ? [selected] : []) : [] };
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
     }
     e.preventDefault();
@@ -325,15 +338,18 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   };
   const onUp = (ev) => {
     window.removeEventListener('pointermove', onMove); const dm = drag.current;
-    if (dm && dm.kind === 'marquee') { // 상자 안(조금이라도 걸친) 요소를 모두 고른다
+    if (dm && dm.kind === 'marquee') { // 상자 안에 통째로 들어온 요소를 모두 고른다(조금 걸친 것은 제외 — 큰 도형이 딸려 오지 않게)
       const r0 = marqRef.current; drag.current = null; setMarq(null); setDragging(false);
-      if (dm.moved && r0) {
-        const root = canvasRef.current; const sv = root?.querySelector('svg'); const rr = sv?.getBoundingClientRect();
-        if (rr && rr.width > 0) { const kx = SKETCH_SIZE[0] / rr.width; const ky = SKETCH_SIZE[1] / rr.height; const ids = [];
-          root.querySelectorAll('[data-eid]').forEach((n) => { const id = n.getAttribute('data-eid'); if (!id || ids.includes(id) || n.hasAttribute('data-bg')) return; const q = n.getBoundingClientRect(); if (!q.width && !q.height) return;
-            const b = [(q.left - rr.left) * kx, (q.top - rr.top) * ky, (q.right - rr.left) * kx, (q.bottom - rr.top) * ky]; if (b[0] <= r0[2] && b[2] >= r0[0] && b[1] <= r0[3] && b[3] >= r0[1] && sketchFind(specRef.current, id)) ids.push(id); });
-          setMulti(ids.length >= 2 ? ids : []); setSelected(ids.length === 1 ? ids[0] : ''); }
+      if (!dm.moved || !r0) { if (!dm.add) { setMulti([]); setSelected(''); setWhole(!dm.wasWhole); } tick((n) => n + 1); return; } // 끌지 않고 놓음
+      const root = canvasRef.current; const sv = root?.querySelector('svg'); const rr = sv?.getBoundingClientRect(); const ids = [];
+      if (rr && rr.width > 0) {
+        const kx = SKETCH_SIZE[0] / rr.width; const ky = SKETCH_SIZE[1] / rr.height; const bx = {}; // 요소 번호별로 보이는 자리를 합친 상자(판+이름 글자처럼 여러 조각이면 합친다)
+        root.querySelectorAll('[data-eid]').forEach((n) => { const id = n.getAttribute('data-eid'); if (!id || n.hasAttribute('data-bg')) return; const q = n.getBoundingClientRect(); if (!q.width && !q.height) return;
+          const b = [(q.left - rr.left) * kx, (q.top - rr.top) * ky, (q.right - rr.left) * kx, (q.bottom - rr.top) * ky]; const o = bx[id]; bx[id] = o ? [Math.min(o[0], b[0]), Math.min(o[1], b[1]), Math.max(o[2], b[2]), Math.max(o[3], b[3])] : b; });
+        Object.entries(bx).forEach(([id, b]) => { if (b[0] >= r0[0] - 3 && b[2] <= r0[2] + 3 && b[1] >= r0[1] - 3 && b[3] <= r0[3] + 3 && sketchFind(specRef.current, id)) ids.push(id); });
       }
+      const all = [...new Set([...(dm.base || []), ...ids])]; setWhole(false);
+      setMulti(all.length >= 2 ? all : []); setSelected(all.length === 1 ? all[0] : '');
       tick((n) => n + 1); return;
     }
     if (dm && dm.kind === 'multi' && !dm.moved) { setMulti([]); setSelected(dm.hitId || ''); drag.current = null; setDragging(false); tick((n) => n + 1); return; }
@@ -566,7 +582,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <div style={sec}>
             <span style={title}>전체</span>
             <button style={smallBtn(false)} onClick={selectAllText} disabled={norm.memos.filter(isPlainMemo).length < 2} data-testid="sk-select-text" title="그림 속 일반 글자를 모두 골라 크기·글씨체·정렬을 한꺼번에 바꿉니다">글자 모두 선택</button>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>Shift·Ctrl+클릭</b>으로 여러 개를 고르거나 빈 곳에서 <b>Ctrl+끌기</b>로 상자로 고를 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>Shift·Ctrl+클릭</b>으로 여러 개를 고르거나 빈 곳을 <b>끌어</b> 상자로 고를 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showLegend} onChange={(e) => setGlobal({ showLegend: e.target.checked })} />하단 범례 표시</label>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시</label>
             {norm.textBlock && (
@@ -935,8 +951,6 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
           {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
             <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
-          {multiOn && mboxes.map((b, i) => <rect key={`mb${i}`} x={b[0] - 4} y={b[1] - 4} width={b[2] - b[0] + 8} height={b[3] - b[1] + 8} fill="rgba(242,140,40,0.08)" stroke="#F28C28" strokeWidth="2.5" strokeDasharray="8 5" rx="3" data-testid="multi-box" />)}
-          {marq && <rect x={marq[0]} y={marq[1]} width={marq[2] - marq[0]} height={marq[3] - marq[1]} fill="rgba(51,51,153,0.10)" stroke="#333399" strokeWidth="2" strokeDasharray="8 5" data-testid="multi-marquee" />}
           {[...axisGuides, ...guides].map((g, i) => {
             const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
             const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
@@ -947,6 +961,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           })}
           {rotInfo && (() => { const q = view.toScreen(rotInfo.c); return (<g data-testid="rot-label"><rect x={q[0] - 28} y={q[1] - 13} width="56" height="24" rx="6" fill="rgba(30,30,30,0.85)" /><text x={q[0]} y={q[1] + 5} textAnchor="middle" fontSize="15" fontWeight="700" fill="#fff" style={{ fontFamily: 'sans-serif' }}>{Math.round(rotInfo.deg * 10) / 10}°</text></g>); })()}
           </g>
+          {/* 아래 두 상자는 화면 위치(전체 크기 변환 뒤) 좌표라서, 변환이 걸린 위 그룹 밖에 둔다 */}
+          {multiOn && mboxes.map((b, i) => <rect key={`mb${i}`} x={b[0] - 4} y={b[1] - 4} width={b[2] - b[0] + 8} height={b[3] - b[1] + 8} fill="rgba(242,140,40,0.08)" stroke="#F28C28" strokeWidth="2.5" strokeDasharray="8 5" rx="3" data-testid="multi-box" />)}
+          {marq && <rect x={marq[0]} y={marq[1]} width={marq[2] - marq[0]} height={marq[3] - marq[1]} fill="rgba(51,51,153,0.10)" stroke="#333399" strokeWidth="2" strokeDasharray="8 5" data-testid="multi-marquee" />}
           {whole && wbox && (<g data-testid="whole-overlay">
             <rect x={wbox[0] - 6} y={wbox[1] - 6} width={wbox[2] - wbox[0] + 12} height={wbox[3] - wbox[1] + 12} fill="none" stroke="#F28C28" strokeWidth="3" strokeDasharray="12 8" rx="4" />
             {[['nw', wbox[0] - 6, wbox[1] - 6, 'nwse-resize'], ['ne', wbox[2] + 6, wbox[1] - 6, 'nesw-resize'], ['se', wbox[2] + 6, wbox[3] + 6, 'nwse-resize'], ['sw', wbox[0] - 6, wbox[3] + 6, 'nesw-resize']].map(([c, hx, hy, cur]) => (
@@ -957,7 +974,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
         <div ref={canvasRef} onPointerDown={onDown} onDoubleClick={onDbl} dangerouslySetInnerHTML={html} data-testid="sketch-canvas" style={{ touchAction: 'none', userSelect: 'none', cursor: regionPick ? 'crosshair' : dragging ? 'grabbing' : 'default', borderRadius: 8, overflow: 'hidden' }} />
         </div>
         {ed && hostRef.current && <InlineInput host={hostRef.current} target={ed.target} value={ed.value} multiline={ed.multiline} onCommit={commitText} onCancel={() => setEd(null)} />}
-        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>그림의 빈 곳을 한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나오고</b>(모서리를 끌면 크기, 빈 곳을 끌면 위치가 바뀝니다). 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', padding: '4px 8px', borderTop: '1px solid var(--border-color)' }} data-testid="inline-hint"><b>그림의 빈 곳을 끌면 상자 안에 통째로 들어온 요소가 모두 선택되고</b>(Shift·Ctrl 은 더하기), <b>한 번 누르면 그림 전체가 선택되어 테두리와 모서리 손잡이가 나옵니다</b>(모서리를 끌면 크기, 상자 안쪽·Alt+끌기는 위치). 고른 묶음은 안쪽을 끌어 함께 옮깁니다. 글자를 <b>더블클릭</b>하면 그 자리에서 바로 고칠 수 있습니다(고른 글자는 Enter/F2). Enter 확정 · Esc 취소.</div>
       </div>
       </ZoomView>
       </div>
