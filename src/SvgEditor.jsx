@@ -15,6 +15,7 @@ import { CONTEXT_FX } from './conceptDiagram/imgfx';
 import IconPicker from './IconPicker';
 import { ICON_LABEL } from './conceptDiagram/icons';
 import { snapDeg, normDeg, rotRectKeep } from './conceptDiagram/rotate';
+import { TEXT_FONTS, TEXT_WEIGHTS, fontIdOfCss, fontCssOf } from './conceptDiagram/fonts';
 
 // 평면 다이어그램·배치 개념도·매스 과정도·버블도·층별 조닝도 같은 '구조형 결과'의 편집기.
 // 그림 속 도형을 하나씩 눌러 고른 뒤 색·위치(끌기)·곡선(마디 끌기)·선 종류·굵기·투명도를 고친다. 글자는 더블클릭으로 그 자리에서 고친다.
@@ -438,6 +439,8 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const fs = el && tag === 'text' ? num(cs?.fontSize, 14) : 0;
   const taOf = el && tag === 'text' ? (cs?.textAnchor || 'start') : '';                      // 글자 정렬: start | middle | end
   const lsOf = el && tag === 'text' ? num(el.getAttribute('letter-spacing'), 0) : 0;          // 자간(그림 단위)
+  const ffOf = el && tag === 'text' ? fontIdOfCss(cs?.fontFamily) : '';                        // 글씨체(fonts.js 의 id)
+  const fwOf = el && tag === 'text' ? (cs?.fontWeight === 'bold' ? 700 : cs?.fontWeight === 'normal' ? 400 : Math.round(num(cs?.fontWeight, 400))) : 400; // 굵기(숫자)
   const lineN = el && tag === 'text' ? [...el.querySelectorAll('tspan')].filter((t) => t.hasAttribute('dy') || t.hasAttribute('y')).length : 0; // 줄 수(2 줄 이상일 때만 행간을 보인다)
   const lhOf = sel ? (E.ops[sel]?.lh || 1) : 1;
   const tr = sel ? editTranslate(E, sel) : [0, 0]; const edited = !!(sel && E.ops[sel]);
@@ -589,6 +592,14 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
   const textIds = (ids) => ids.filter((i) => byId[i]?.tag === 'text' && !isBg(i));
   const multiAnchor = (k) => { let next = Eref.current; textIds(multi).forEach((id) => { next = anchorShift(next, id, k); }); commit(next); };
   const multiSpacing = (v) => { let next = Eref.current; textIds(multi).forEach((id) => { next = editSet(next, id, { 'letter-spacing': Number(v) === 0 ? null : String(v) }, sigRef.current); }); commit(next, 'multi:ls'); };
+  const multiFont = (id0) => { let next = Eref.current; textIds(multi).forEach((id) => { next = editSet(next, id, { 'font-family': fontCssOf(id0) }, sigRef.current); }); commit(next, 'multi:ff'); };
+  const multiWeight = (w) => { let next = Eref.current; textIds(multi).forEach((id) => { next = editSet(next, id, { 'font-weight': String(w) }, sigRef.current); }); commit(next, 'multi:fw'); };
+  const multiSize = (fn, key) => { // 고른 글자마다 지금 크기에서 fn 으로 새 크기를 구한다(배율 버튼) 또는 모두 같은 크기(슬라이더)
+    let next = Eref.current;
+    textIds(multi).forEach((id) => { const n = elOf(id); if (!n) return; const cur = num(getComputedStyle(n).fontSize, 14); const v = Math.max(6, Math.min(120, fn(cur))); next = editSet(next, id, { 'font-size': String(Math.round(v * 10) / 10) }, sigRef.current); });
+    commit(next, key ? `multi:${key}` : '');
+  };
+  const selectAllText = () => { const ids = []; bodyRef.current?.querySelectorAll('[data-eid]:not([data-hit])').forEach((n) => { const id = n.getAttribute('data-eid'); const info = byId[id]; if (info && info.tag === 'text' && !isBg(id) && n.getAttribute('display') !== 'none' && !ids.includes(id)) ids.push(id); }); setMulti(ids.length > 1 ? ids : []); setSel(ids[ids.length - 1] || ''); setNode(-1); };
   const geomOf = (id) => { const n = elOf(id); if (!n) return null; let bb = null; try { bb = n.getBBox(); } catch { return null; } return { bbox: [bb.x, bb.y, bb.width, bb.height], t0: byId[id]?.attrs?.transform || '' }; };
   const rotateSel = (delta) => { // 고른 것(들)을 delta° 돌린다(시계 방향 +). 여러 개면 묶음의 가운데를 중심으로 함께
     const ids = selIds.filter((i) => !isBg(i)); if (!ids.length || !delta) return;
@@ -749,7 +760,24 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             {(() => { const bid = els.find((x) => x.kind === 'e' && isBg(x.id))?.id; const bn = bid ? elOf(bid) : null; if (!bn || typeof getComputedStyle !== 'function') return null; return (<div style={lab} data-testid="sv-bg-color">바탕 색<Colors value={hexOf(getComputedStyle(bn).fill)} onChange={(c) => patch(bid, { fill: c }, 'bgfill')} none={false} /></div>); })()}
             {textIds(multi).length > 0 && (
               <div style={{ ...lab, gap: 6 }} data-testid="sv-multi-textfmt">
-                <span>글자 정렬·자간(고른 글자 {textIds(multi).length}개)</span>
+                <span>글자 크기·글씨체·정렬·자간(고른 글자 {textIds(multi).length}개)</span>
+                <label style={lab}>글자 크기(모두)
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <input type="range" min="6" max="60" step="1" defaultValue={Math.min(60, Math.max(6, Math.round(num(getComputedStyle(elOf(textIds(multi)[0]) || document.body).fontSize, 14))))} key={`mfs${multi.join()}`} onChange={(e) => multiSize(() => Number(e.target.value), 'fs')} data-testid="sv-multi-fs" style={{ flex: 1 }} />
+                    <button style={{ ...smallBtn(false), padding: '3px 7px' }} onClick={() => multiSize((v) => v * 0.9)} data-testid="sv-multi-fs-down">−10%</button>
+                    <button style={{ ...smallBtn(false), padding: '3px 7px' }} onClick={() => multiSize((v) => v * 1.1)} data-testid="sv-multi-fs-up">+10%</button>
+                  </div>
+                </label>
+                <label style={lab}>글씨체(모두)
+                  <select style={input} defaultValue="" key={`mff${multi.join()}`} onChange={(e) => { if (e.target.value) multiFont(e.target.value); }} data-testid="sv-multi-font">
+                    <option value="">바꾸지 않음</option>{TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label.split(' (')[0]}</option>)}
+                  </select>
+                </label>
+                <label style={lab}>굵기(모두)
+                  <select style={input} defaultValue="" key={`mfw${multi.join()}`} onChange={(e) => { if (e.target.value) multiWeight(e.target.value); }} data-testid="sv-multi-weight">
+                    <option value="">바꾸지 않음</option>{TEXT_WEIGHTS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                  </select>
+                </label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), flex: 1, padding: '4px 2px' }} onClick={() => multiAnchor(k)} data-testid={`sv-multi-ta-${k}`}>{t}</button>)}
                 </div>
@@ -771,6 +799,7 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
             <span style={title}>전체</span>
             <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림 속 <b>선·도형·원·글자</b>를 클릭하면 여기에 속성이 나옵니다. 여러 요소가 한 덩어리(칩·아이콘 등)로 묶여 있으면 <b>Alt+클릭</b> 또는 <b>↑ 묶음</b> 버튼으로 통째로 고릅니다.</p>
             <button style={smallBtn(false)} onClick={selectAll} data-testid="sv-select-all" title="Ctrl+A — 모두 고른 뒤 주황 상자의 모서리를 끌면 그림 전체의 크기를 글자·선 굵기까지 함께 조절합니다(Shift: 가로·세로 따로)">전체 선택 → 모서리를 끌어 크기 조절</button>
+            <button style={smallBtn(false)} onClick={selectAllText} data-testid="sv-select-text" title="그림 속 글자를 모두 골라 크기·글씨체·굵기·정렬·색을 한꺼번에 바꿉니다">글자 모두 선택</button>
           </div>
         )}
 
@@ -1016,6 +1045,20 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
               <label style={lab}>글자 크기 {r2(fs)}
                 <input type="range" min="6" max="60" step="1" value={Math.min(60, Math.max(6, fs))} onChange={(e) => patch(sel, { 'font-size': e.target.value }, 'fs')} data-testid="sv-fs" />
               </label>
+            )}
+            {tag === 'text' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 6 }}>
+                <label style={lab}>글씨체
+                  <select style={input} value={ffOf} onChange={(e) => patch(sel, { 'font-family': fontCssOf(e.target.value) }, 'ff')} data-testid="sv-font">
+                    {TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                </label>
+                <label style={lab}>굵기
+                  <select style={input} value={fwOf} onChange={(e) => patch(sel, { 'font-weight': e.target.value }, 'fw')} data-testid="sv-weight">
+                    {!TEXT_WEIGHTS.some(([v]) => v === fwOf) && <option value={fwOf}>{fwOf}</option>}{TEXT_WEIGHTS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                  </select>
+                </label>
+              </div>
             )}
             {tag === 'text' && (
               <div style={{ ...lab, gap: 6 }} data-testid="sv-textfmt">

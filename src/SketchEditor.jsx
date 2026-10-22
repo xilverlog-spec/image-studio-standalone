@@ -46,6 +46,8 @@ function Colors({ value, onChange, allowClear, swatches = SWATCHES }) {
 }
 
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
+import { isPlainMemo, sketchBoxFor, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName } from './conceptDiagram/sketch';
+import { TEXT_FONTS, TEXT_WEIGHTS } from './conceptDiagram/fonts';
 import { sketchReplaceImage, sketchCropImage } from './conceptDiagram/sketch';
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
@@ -62,7 +64,9 @@ import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conc
 
 export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
   const [selected, setSelected] = useState('');
-  useEffect(() => { if (selected && onPick) onPick(); }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps — 요소를 누르면 왼쪽 ③ 도형 편집 탭을 연다
+  const [multi, setMulti] = useState([]); const multiOn = multi.length >= 2; // 여러 개 고르기(Shift·Ctrl+클릭, Ctrl+끌기): 둘 이상 고르면 selected 는 비우고 아래 '여러 개 고름' 패널이 쓴다
+  const [mboxes, setMboxes] = useState([]); const [marq, setMarq] = useState(null); // 고른 요소들의 바깥 상자 / 끌고 있는 고르기 상자(그림 좌표 1200x760)
+  useEffect(() => { if ((selected || multiOn) && onPick) onPick(); }, [selected, multiOn]); // eslint-disable-line react-hooks/exhaustive-deps — 요소를 누르면 왼쪽 ③ 도형 편집 탭을 연다
   const [regionDraft, setRegionDraft] = useState(null); // '이 영역만 다시 그리기'에서 끌고 있는 상자(다이어그램 좌표 [x0, y0, x1, y1])
   const [edWide, setEdWide] = useState(true); const edRoOff = useRef(null); // 편집기가 넓을 때(900px 이상)만 속성 패널을 오른쪽에 두고, 좁으면 그림 아래에 가로로 펼친다
   const rowMode = edWide && !sideHost; // 속성 패널이 편집기 안쪽에 있고 편집기가 넓을 때만 그림 | 패널 가로 한 줄
@@ -83,6 +87,10 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const [, tick] = useState(0);
   const norm = useMemo(() => normalizeSketch(spec), [spec]);
   const specRef = useRef(norm); specRef.current = norm;
+  useEffect(() => { // 지우기·되돌리기로 없어진 요소가 고른 목록에 남지 않게
+    if (!multi.length) return; const keep = multi.filter((id) => sketchFind(norm, id));
+    if (keep.length !== multi.length) { setMulti(keep.length >= 2 ? keep : []); if (keep.length === 1) setSelected(keep[0]); }
+  }, [norm]); // eslint-disable-line react-hooks/exhaustive-deps
   // 도면용(흑백) 스타일은 없앴다 — 예전에 도면용으로 바꿔 둔 그림은 개념도로 되돌린다(AI 이미지 편집 결과의 이미지 배치는 그대로)
   useEffect(() => { if (norm.style === 'line' && norm.layout !== 'image') onChange({ ...norm, style: 'concept' }); }, [norm.style, norm.layout]); // eslint-disable-line react-hooks/exhaustive-deps
   const canvasRef = useRef(null);
@@ -129,6 +137,18 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const doAlign = (mode) => commit(sketchAlign(norm, selected, ref, mode));
   const doMirrorPlace = (dir) => { if (ref !== 'axis') commit(sketchMirrorPlace(norm, selected, ref, axisVal(dir), dir)); };
   const doMirrorCopy = (dir) => { const r = sketchMirrorCopy(norm, selected, axisVal(dir), dir); if (r.id) { commit(r.spec); setSelected(r.id); } };
+  const multiKinds = multi.map((id) => sketchKind(norm, id)); const mcount = (k) => multiKinds.filter((x) => x === k).length;
+  const multiTexts = multi.filter((id) => { const f = sketchFind(norm, id); return !!f && f.list === 'memos' && isPlainMemo(f.el); }); // 일반 글자
+  const mset = (patch, kinds, key) => commit(sketchUpdateMany(norm, multi, patch, kinds), key ? `multi:${key}` : '');
+  const multiAlignText = (k) => { // 고른 글자 모두의 정렬(왼쪽·가운데·오른쪽): 글자는 제자리에 둔다(기준점만 옮기고 위치를 보정)
+    let next = norm;
+    multiTexts.forEach((id) => { const f = sketchFind(next, id); if (!f) return; const e0 = f.el; const cur = e0.align || 'middle'; if (cur === k) return;
+      const t = canvasRef.current?.querySelector(`text[data-eid="${id}"]`); let dx = 0; let dy = 0;
+      try { if (t) { const w = t.getBBox().width / sketchView(norm).K; const v = (({ start: 0, middle: 0.5, end: 1 })[k] - ({ start: 0, middle: 0.5, end: 1 })[cur]) * w; const a = ((e0.rot || 0) * Math.PI) / 180; dx = v * Math.cos(a); dy = v * Math.sin(a); } } catch { /* 글자 상자를 못 구하면 정렬만 */ }
+      next = sketchUpdate(next, id, { align: k === 'middle' ? undefined : k, x: Math.round((e0.x + dx) * 100) / 100, y: Math.round((e0.y + dy) * 100) / 100 }); });
+    commit(next);
+  };
+  const selectAllText = () => { const ids = norm.memos.filter(isPlainMemo).map((m) => m.id); setWhole(false); setMulti(ids.length >= 2 ? ids : []); setSelected(ids.length === 1 ? ids[0] : ''); };
   const kind = sel ? sketchKind(norm, selected) : '';
   const set = (patch, key) => commit(sketchUpdate(norm, selected, patch), key ? `${selected}:${key}` : '');
   const TA_K = { start: 0, middle: 0.5, end: 1 };
@@ -168,6 +188,15 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     return [((clientX - r.left) * SKETCH_SIZE[0]) / r.width, ((clientY - r.top) * SKETCH_SIZE[1]) / r.height];
   };
   // 전체 크기 조절 모드: 바탕·정의를 뺀 그림 전체(제목·범례 글자까지)의 보이는 상자를 합쳐 바깥 상자를 구한다(그림이 바뀔 때마다 다시)
+  useLayoutEffect(() => { // 여러 개 고름: 요소마다 보이는 상자를 구해 점선으로 감싼다
+    if (!multiOn) { setMboxes([]); return; }
+    const root = canvasRef.current; const el = root?.querySelector('svg'); if (!el) { setMboxes([]); return; }
+    const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) { setMboxes([]); return; }
+    const kx = SKETCH_SIZE[0] / r.width; const ky = SKETCH_SIZE[1] / r.height;
+    setMboxes(multi.map((id) => { let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+      root.querySelectorAll(`[data-eid="${id}"]`).forEach((n) => { const q = n.getBoundingClientRect(); if (!q.width && !q.height) return; x0 = Math.min(x0, (q.left - r.left) * kx); y0 = Math.min(y0, (q.top - r.top) * ky); x1 = Math.max(x1, (q.right - r.left) * kx); y1 = Math.max(y1, (q.bottom - r.top) * ky); });
+      return x1 > x0 ? [x0, y0, x1, y1] : null; }).filter(Boolean));
+  }, [multi, svg]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (!whole) { setWbox(null); return; }
     const root = canvasRef.current; const el = root?.querySelector('svg'); if (!el) { setWbox(null); return; }
@@ -211,13 +240,28 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     }
     const h = e.target.closest?.('[data-handle]'); const el = e.target.closest?.('[data-eid]');
     const tx = e.target.closest?.('text'); setTextInfo(tx ? { text: tx.textContent, size: textUnitSize(tx) } : null);
+    if (!el && (e.ctrlKey || e.metaKey) && !h) { // 빈 곳에서 Ctrl(⌘)+끌기: 사각형으로 여러 개 고르기
+      const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
+      drag.current = { kind: 'marquee', start: pc, cx: e.clientX, cy: e.clientY, moved: false };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+    }
     if (!el) { // 빈 곳(바탕 그림 위 포함)을 끌면 그림 전체가 함께 움직인다. 그냥 눌렀다 떼면 선택 해제
-      setSelected(''); const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
+      setMulti([]); setSelected(''); const pc = toCanvas(e.clientX, e.clientY); if (!pc) return; e.preventDefault();
       drag.current = { kind: 'wholemove', start: pc, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: '', fromBlank: true, wasWhole: false };
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
     }
     e.preventDefault();
-    const id = el.getAttribute('data-eid'); setSelected(id);
+    const id = el.getAttribute('data-eid');
+    if (!h && (e.shiftKey || e.ctrlKey || e.metaKey)) { // 여러 개 고르기: Shift·Ctrl(⌘)+클릭으로 더하거나 뺀다
+      const base = multiOn ? multi : selected ? [selected] : []; const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+      setMulti(next.length >= 2 ? next : []); setSelected(next.length === 1 ? next[0] : ''); return;
+    }
+    if (!h && multiOn && multi.includes(id)) { // 이미 고른 여러 개 중 하나를 끌면 모두 함께 움직인다(끌지 않고 누르기만 하면 그것 하나만 고른다)
+      const sm = toDiag(e.clientX, e.clientY); if (!sm) return;
+      drag.current = { kind: 'multi', ids: multi, start: sm, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false, hitId: id };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp, { once: true }); return;
+    }
+    setMulti([]); setSelected(id);
     const start = toDiag(e.clientX, e.clientY); if (!start) return;
     drag.current = { id, handle: h ? h.getAttribute('data-handle') : '', start, cx: e.clientX, cy: e.clientY, orig: specRef.current, moved: false };
     if (drag.current.handle === 'rot') { const c = sketchPivot(specRef.current, id); drag.current.rot = { c, a0: Math.atan2(start[1] - c[1], start[0] - c[0]), ang0: sketchRotation(specRef.current, id) }; } // 중심 둘레로 마우스가 돈 각도만큼 처음 각도에서 더한다
@@ -225,6 +269,10 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   };
   const onMove = (e) => {
     const d = drag.current; if (!d) return;
+    if (d.kind === 'marquee') { // 고르기 상자는 그림을 바꾸지 않으므로 되돌리기 기록을 만들지 않는다
+      if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 4) return; d.moved = true;
+      const m = toCanvas(e.clientX, e.clientY); if (!m) return; setMarq([Math.min(d.start[0], m[0]), Math.min(d.start[1], m[1]), Math.max(d.start[0], m[0]), Math.max(d.start[1], m[1])]); return;
+    }
     if (!d.moved) {
       if (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 3) return; // 살짝 눌렀다 떼면 선택만
       d.moved = true; past.current = [...past.current.slice(-49), d.orig]; future.current = []; lastKey.current = ''; setDragging(true);
@@ -233,6 +281,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       const m = toCanvas(e.clientX, e.clientY); if (!m) return; let dx = m[0] - d.start[0]; let dy = m[1] - d.start[1];
       if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
       if (!whole) setWhole(true); onChange(sketchTranslateAll(d.orig, dx, dy)); tick((n) => n + 1); return;
+    }
+    if (d.kind === 'multi') { // 여러 개 함께 옮기기(Shift: 수평·수직으로만)
+      const pt = toDiag(e.clientX, e.clientY); if (!pt) return; let dx = pt[0] - d.start[0]; let dy = pt[1] - d.start[1];
+      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+      onChange(sketchMoveMany(d.orig, d.ids, dx, dy)); tick((n) => n + 1); return;
     }
     if (d.kind === 'whole') {
       const m = toCanvas(e.clientX, e.clientY); if (!m) return; const vx = d.grab[0] - d.piv[0]; const vy = d.grab[1] - d.piv[1];
@@ -270,7 +323,23 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     setGuides(gd);
     onChange(next); tick((n) => n + 1);
   };
-  const onUp = () => { window.removeEventListener('pointermove', onMove); const d0 = drag.current; if (d0 && d0.kind === 'wholemove' && !d0.moved) { if (d0.fromBlank) { setWhole(!d0.wasWhole); setSelected(''); } else { setWhole(false); setSelected(d0.hitId || ''); } } drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1); };
+  const onUp = (ev) => {
+    window.removeEventListener('pointermove', onMove); const dm = drag.current;
+    if (dm && dm.kind === 'marquee') { // 상자 안(조금이라도 걸친) 요소를 모두 고른다
+      const r0 = marqRef.current; drag.current = null; setMarq(null); setDragging(false);
+      if (dm.moved && r0) {
+        const root = canvasRef.current; const sv = root?.querySelector('svg'); const rr = sv?.getBoundingClientRect();
+        if (rr && rr.width > 0) { const kx = SKETCH_SIZE[0] / rr.width; const ky = SKETCH_SIZE[1] / rr.height; const ids = [];
+          root.querySelectorAll('[data-eid]').forEach((n) => { const id = n.getAttribute('data-eid'); if (!id || ids.includes(id) || n.hasAttribute('data-bg')) return; const q = n.getBoundingClientRect(); if (!q.width && !q.height) return;
+            const b = [(q.left - rr.left) * kx, (q.top - rr.top) * ky, (q.right - rr.left) * kx, (q.bottom - rr.top) * ky]; if (b[0] <= r0[2] && b[2] >= r0[0] && b[1] <= r0[3] && b[3] >= r0[1] && sketchFind(specRef.current, id)) ids.push(id); });
+          setMulti(ids.length >= 2 ? ids : []); setSelected(ids.length === 1 ? ids[0] : ''); }
+      }
+      tick((n) => n + 1); return;
+    }
+    if (dm && dm.kind === 'multi' && !dm.moved) { setMulti([]); setSelected(dm.hitId || ''); drag.current = null; setDragging(false); tick((n) => n + 1); return; }
+    const d0 = drag.current; if (d0 && d0.kind === 'wholemove' && !d0.moved) { if (d0.fromBlank) { setWhole(!d0.wasWhole); setSelected(''); } else { setWhole(false); setSelected(d0.hitId || ''); } } drag.current = null; setDragging(false); setGuides([]); setRotInfo(null); setWInfo(null); tick((n) => n + 1);
+  };
+  const marqRef = useRef(null); marqRef.current = marq;
   useEffect(() => () => { window.removeEventListener('pointermove', onMove); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 단축키는 포커스와 무관하게 창 전체에서 받는다(그림을 클릭해도 포커스가 옮겨지지 않기 때문). 입력칸에 글자를 칠 때는 무시한다
   useEffect(() => { const h = (e) => keyRef.current?.(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
@@ -292,6 +361,11 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
     const tag = e.target?.tagName || '';
     const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
+    if (!typing && multiOn && !mod) {
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); commit(sketchDeleteMany(norm, multi)); setMulti([]); return; }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); const st = e.shiftKey ? 2 : 0.5; commit(sketchMoveMany(norm, multi, e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0, e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0), 'nudge:multi'); return; }
+      if (e.key === 'Escape') { setMulti([]); return; }
+    }
     if (mod && !typing && k === 'c' && selected && !window.getSelection?.()?.toString()) { if (copySel()) { e.preventDefault(); markInternalCopy('sketch'); } }
     else if (mod && !typing && k === 'x' && selected) { if (copySel()) { e.preventDefault(); markInternalCopy('sketch'); remove(); } }
     else if (mod && !typing && k === 'v' && CLIP) { schedulePaste(() => pasteClip()); } // 클립보드에 이미지가 있으면 그쪽이 이긴다(ConceptDiagram 의 paste 처리)
@@ -306,7 +380,7 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
       commit(sketchMoveBy(norm, selected, dx, dy), `nudge:${selected}`);
     } else if (!typing && selected && kind === 'memo' && (e.key === 'Enter' || e.key === 'F2')) { // 고른 글자(메모)를 그 자리에서 고친다
       e.preventDefault(); const el = canvasRef.current?.querySelector(`[data-eid="${selected}"]`); if (el) openTextEdit(el);
-    } else if (e.key === 'Escape') { setSelected(''); setWhole(false); }
+    } else if (e.key === 'Escape') { setSelected(''); setMulti([]); setWhole(false); }
   };
   keyRef.current = onKey; // 창 단위 키 입력 리스너가 항상 최신 상태의 처리 함수를 부르게 한다
 
@@ -414,10 +488,85 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           </div>
         )}
 
-        {!sel && (
+        {multiOn && (
+          <div style={sec} data-testid="sk-multi">
+            <span style={title}>여러 개 고름 · {multi.length}개</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>{[['글자', multiTexts.length], ['화살표', mcount('wind')], ['선', mcount('line')], ['판', mcount('block')], ['기타', multi.length - multiTexts.length - mcount('wind') - mcount('line') - mcount('block')]].filter(([, n]) => n > 0).map(([t, n]) => `${t} ${n}`).join(' · ')} — 끌면 함께 움직이고, 방향키로 옮기고, Delete 로 지웁니다.</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={smallBtn(false)} onClick={() => setMulti([])} data-testid="sk-multi-clear">선택 해제</button>
+              <button style={smallBtn(false, true)} onClick={() => { commit(sketchDeleteMany(norm, multi)); setMulti([]); }} data-testid="sk-multi-delete">모두 지우기</button>
+            </div>
+            <div style={{ ...lab, gap: 5, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="sk-multi-align">
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>정렬 (고른 것끼리)</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {[['left', '⇤ 왼쪽'], ['hcenter', '⇔ 가운데'], ['right', '⇥ 오른쪽'], ['top', '⤒ 위'], ['vcenter', '↕ 중간'], ['bottom', '⤓ 아래']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), padding: '4px 2px' }} onClick={() => commit(sketchAlignMany(norm, multi, k))} data-testid={`sk-multi-align-${k}`}>{t}</button>)}
+              </div>
+              {multi.length > 2 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <button style={smallBtn(false)} onClick={() => commit(sketchDistribute(norm, multi, 'h'))} data-testid="sk-multi-dist-h" title="가운데 요소들을 처음~끝 사이에 같은 간격으로">↔ 가로 간격 같게</button>
+                  <button style={smallBtn(false)} onClick={() => commit(sketchDistribute(norm, multi, 'v'))} data-testid="sk-multi-dist-v" title="가운데 요소들을 처음~끝 사이에 같은 간격으로">↕ 세로 간격 같게</button>
+                </div>
+              )}
+            </div>
+            {multiTexts.length > 0 && (
+              <div style={{ ...lab, gap: 6, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="sk-multi-text">
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>글자 {multiTexts.length}개 한꺼번에</span>
+                <label style={lab}>크기(모두)
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <input type="range" min="9" max="40" step="1" defaultValue={sketchFind(norm, multiTexts[0]).el.size} key={`ms${multi.join()}`} onChange={(e) => mset({ size: Number(e.target.value) }, ['text'], 'size')} data-testid="sk-multi-size" style={{ flex: 1 }} />
+                    <button style={{ ...smallBtn(false), padding: '3px 7px' }} onClick={() => mset((q) => ({ size: Math.max(8, Math.round(q.size * 0.9)) }), ['text'])} data-testid="sk-multi-size-down">−10%</button>
+                    <button style={{ ...smallBtn(false), padding: '3px 7px' }} onClick={() => mset((q) => ({ size: Math.min(48, Math.round(q.size * 1.1)) }), ['text'])} data-testid="sk-multi-size-up">+10%</button>
+                  </div>
+                </label>
+                <div style={lab}>글자 정렬(모두)
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[['start', '왼쪽'], ['middle', '가운데'], ['end', '오른쪽']].map(([k, t]) => <button key={k} style={{ ...smallBtn(false), flex: 1, padding: '4px 2px' }} onClick={() => multiAlignText(k)} data-testid={`sk-multi-ta-${k}`}>{t}</button>)}
+                  </div>
+                </div>
+                <label style={lab}>글씨체(모두)
+                  <select style={input} defaultValue="" key={`mf${multi.join()}`} onChange={(e) => { if (e.target.value) mset({ font: e.target.value === 'malgun' ? undefined : e.target.value }, ['text']); }} data-testid="sk-multi-font">
+                    <option value="">바꾸지 않음</option>{TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label.split(' (')[0]}</option>)}
+                  </select>
+                </label>
+                <label style={lab}>굵기(모두)
+                  <select style={input} defaultValue="" key={`mw${multi.join()}`} onChange={(e) => { if (e.target.value) mset({ fw: e.target.value === 'auto' ? undefined : Number(e.target.value) }, ['text']); }} data-testid="sk-multi-weight">
+                    <option value="">바꾸지 않음</option><option value="auto">기본</option>{TEXT_WEIGHTS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                  </select>
+                </label>
+                <label style={lab}>자간(모두)
+                  <input type="range" min="-2" max="20" step="0.5" defaultValue="0" key={`ml${multi.join()}`} onChange={(e) => mset({ ls: Number(e.target.value) || undefined }, ['text'], 'ls')} data-testid="sk-multi-ls" />
+                </label>
+                <div style={lab}>색(모두)<Colors value="" onChange={(c) => mset({ color: c }, ['text'])} /></div>
+              </div>
+            )}
+            {(mcount('wind') + mcount('line')) > 0 && (
+              <div style={{ ...lab, gap: 6, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="sk-multi-lines">
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>선·화살표 {mcount('wind') + mcount('line')}개 한꺼번에</span>
+                <label style={lab}>선 종류(모두)
+                  <select style={input} defaultValue="" key={`md${multi.join()}`} onChange={(e) => { if (e.target.value) mset({ dash: e.target.value }, ['line', 'wind']); }} data-testid="sk-multi-dash">
+                    <option value="">바꾸지 않음</option>{Object.keys(DASHES).map((k) => <option key={k} value={k}>{DASH_LABEL[k]}</option>)}
+                  </select>
+                </label>
+                <label style={lab}>굵기(모두)
+                  <input type="range" min="1" max="14" step="0.5" defaultValue="4" key={`mwd${multi.join()}`} onChange={(e) => mset({ width: Number(e.target.value) }, ['line', 'wind'], 'width')} data-testid="sk-multi-width" />
+                </label>
+                <div style={lab}>색(모두)<Colors value="" onChange={(c) => mset({ color: c }, ['line', 'wind'])} /></div>
+              </div>
+            )}
+            {mcount('block') > 0 && (
+              <div style={{ ...lab, gap: 6, paddingTop: 6, borderTop: '1px dashed var(--border-color)' }} data-testid="sk-multi-blocks">
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>도형(판) {mcount('block')}개 한꺼번에</span>
+                <div style={lab}>채움색(모두)<Colors value="" onChange={(c) => mset({ fill: c }, ['block'])} allowClear /></div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!sel && !multiOn && (
           <div style={sec}>
             <span style={title}>전체</span>
-            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
+            <button style={smallBtn(false)} onClick={selectAllText} disabled={norm.memos.filter(isPlainMemo).length < 2} data-testid="sk-select-text" title="그림 속 일반 글자를 모두 골라 크기·글씨체·정렬을 한꺼번에 바꿉니다">글자 모두 선택</button>
+            <p style={{ fontSize: 11, color: 'var(--text-tertiary, #64748b)', margin: 0, lineHeight: 1.6 }}>그림의 화살표·선·도형·글자를 <b>클릭</b>하면 여기서 속성을 바꿀 수 있고, <b>Shift·Ctrl+클릭</b>으로 여러 개를 고르거나 빈 곳에서 <b>Ctrl+끌기</b>로 상자로 고를 수 있고, <b>끌어서 옮길</b> 수 있습니다. 선택하면 나타나는 <b>네모 점은 크기</b>, <b>동그라미는 화살표 끝점</b>, <b>큰 마름모는 S자 변곡점(자유롭게 이동)</b>, <b>작은 빈 마름모는 휘는 정도</b> 조절입니다.<br />Shift: 수평·수직 고정 · Alt: 자석 끄기 · 방향키: 미세 이동<br /><b>안내선</b>: 끌면 다른 요소의 변·가운데선, 그림 가운데, 좌우·상하 <b>대칭 위치</b>에 가까워질 때 안내선(분홍=정렬, 초록=중심축, 청록=대칭)이 뜨며 자동으로 붙습니다. 화살표 끝을 끌면 반대쪽 끝과 수평·수직으로 맞춰집니다.<br />Ctrl+C / Ctrl+V: 복사·붙여넣기 · Ctrl+D: 복제 · Ctrl+X: 잘라내기 · Delete: 삭제 · Ctrl+Z: 되돌리기</p>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showLegend} onChange={(e) => setGlobal({ showLegend: e.target.checked })} />하단 범례 표시</label>
             <label style={{ ...lab, flexDirection: 'row', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={norm.showNotes} onChange={(e) => setGlobal({ showNotes: e.target.checked })} />하단 핵심 메시지 표시</label>
             {norm.textBlock && (
@@ -581,6 +730,9 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                   <input type="checkbox" checked={sel.el.showName ?? sel.el.kind === 'core'} onChange={(e) => set({ showName: e.target.checked })} data-testid="show-name" />도형 안에 이름 표시(개념도)
                 </label>
               )}
+              {sel.el.kind !== 'opening' && sel.el.kind !== 'image' && sel.el.name && (sel.el.showName ?? sel.el.kind === 'core') && (
+                <button style={smallBtn(false)} onClick={() => { const r = sketchDetachName(norm, selected); if (r.id) { commit(r.spec); setSelected(r.id); } }} data-testid="detach-name" title="도형 안에 자동으로 그려지는 이름 글자를 따로 떼어, 다른 글자처럼 어디든 옮기고 크기·색·글씨체를 바꿀 수 있게 합니다">이름을 글자로 떼어 내기</button>
+              )}
               <div style={lab}>채움색<Colors value={sel.el.fill} onChange={(c) => set({ fill: c })} allowClear /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <Num label="왼쪽 X" value={sel.el.rect[0]} onChange={(v) => setRect(0, v)} />
@@ -704,6 +856,16 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
                   <input type="range" min="-2" max="20" step="0.5" value={sel.el.ls || 0} onChange={(e) => set({ ls: Number(e.target.value) || undefined }, 'ls')} data-testid="sk-ls" />
                 </label>
               </div>
+              <label style={lab}>글씨체
+                <select style={input} value={sel.el.font || 'malgun'} onChange={(e) => set({ font: e.target.value === 'malgun' ? undefined : e.target.value })} data-testid="sk-font">
+                  {TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
+              </label>
+              <label style={lab}>굵기
+                <select style={input} value={sel.el.fw || ''} onChange={(e) => set({ fw: e.target.value ? Number(e.target.value) : undefined })} data-testid="sk-weight">
+                  <option value="">기본</option>{TEXT_WEIGHTS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                </select>
+              </label>
               <div style={lab}>색<Colors value={sel.el.color} onChange={(c) => set({ color: c })} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <Num label="X" value={sel.el.x} onChange={(v) => set({ x: v }, 'x')} />
@@ -773,6 +935,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
           <g transform={norm.gscale ? `translate(${norm.gscale.t[0]} ${norm.gscale.t[1]}) scale(${norm.gscale.k})` : undefined}>
           {(regionDraft || regionRect) && (() => { const r = regionDraft || regionRect; const a = view.toScreen([r[0], r[1]]); const z = view.toScreen([r[2], r[3]]); return (
             <g data-testid="region-box"><rect x={a[0]} y={a[1]} width={Math.max(0, z[0] - a[0])} height={Math.max(0, z[1] - a[1])} fill="rgba(242,140,40,0.16)" stroke="#E8832A" strokeWidth="3" strokeDasharray="10 6" /></g>); })()}
+          {multiOn && mboxes.map((b, i) => <rect key={`mb${i}`} x={b[0] - 4} y={b[1] - 4} width={b[2] - b[0] + 8} height={b[3] - b[1] + 8} fill="rgba(242,140,40,0.08)" stroke="#F28C28" strokeWidth="2.5" strokeDasharray="8 5" rx="3" data-testid="multi-box" />)}
+          {marq && <rect x={marq[0]} y={marq[1]} width={marq[2] - marq[0]} height={marq[3] - marq[1]} fill="rgba(51,51,153,0.10)" stroke="#333399" strokeWidth="2" strokeDasharray="8 5" data-testid="multi-marquee" />}
           {[...axisGuides, ...guides].map((g, i) => {
             const a = g.dim === 'x' ? view.toScreen([g.v, g.lo]) : view.toScreen([g.lo, g.v]); const z = g.dim === 'x' ? view.toScreen([g.v, g.hi]) : view.toScreen([g.hi, g.v]);
             const col = GUIDE_COLOR[g.kind] || GUIDE_COLOR.edge; const label = GUIDE_LABEL[g.kind];
