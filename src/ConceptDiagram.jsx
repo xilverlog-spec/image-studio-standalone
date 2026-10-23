@@ -288,12 +288,13 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const paneRef = useRef(null);
   // 편집을 크게: ① 편집 집중(편집기가 전체 폭, 페이지는 위쪽 띠) ② 설정 패널 접기 ③ 나란히 보기의 분할선(편집기 몫). 모두 이 브라우저에 기억한다
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } };
-  const [focusEdit, setFocusEdit] = useState(() => lsGet('cd_focus_edit', '0') === '1');
+  // 편집 넓게(F): 왼쪽 설정 패널을 접고(페이지 모드면 페이지 배치도 위쪽 띠로 줄여) 편집 화면을 넓힌다. 예전 '편집 집중'과 '설정 접기' 두 장치를 하나로 합쳤다(예전에 한쪽이라도 켜 뒀으면 켠 채로 시작)
+  const [wide, setWide] = useState(() => { const v = lsGet('cd_wide', null); return v !== null ? v === '1' : (lsGet('cd_focus_edit', '0') === '1' || lsGet('cd_left_hidden', '0') === '1'); });
+  const focusEdit = wide; const setFocusEdit = setWide; const leftHidden = wide; const setLeftHidden = setWide; // 아래 코드가 쓰는 이름
   const [sideHost, setSideHost] = useState(null); // ③ 도형 편집 탭 안의 자리(편집기가 속성 패널을 여기에 그린다)
   const [leftTab, setLeftTab] = useState('make'); // 왼쪽 패널 단계 탭. 다이어그램 탭에 들어올 때(처음 열 때·새로고침·다른 탭에서 돌아올 때)마다 ① 만들기로 시작한다
   useEffect(() => { if (active) setLeftTab('make'); }, [active]);
-  const [leftHidden, setLeftHidden] = useState(() => lsGet('cd_left_hidden', '0') === '1');
-  useEffect(() => { try { localStorage.setItem('cd_focus_edit', focusEdit ? '1' : '0'); localStorage.setItem('cd_left_hidden', leftHidden ? '1' : '0'); } catch { /* 저장 없이 진행 */ } }, [focusEdit, leftHidden]);
+  useEffect(() => { try { localStorage.setItem('cd_wide', wide ? '1' : '0'); } catch { /* 저장 없이 진행 */ } }, [wide]);
   const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
     const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', corner: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
@@ -1218,7 +1219,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod && e.key === 'Enter') { if (canGenerate) { e.preventDefault(); generate(); } return; }
     if (mod && k === 's') { if (outRes?.svg) { e.preventDefault(); if (e.shiftKey) savePng(); else saveSvg(); } return; }
-    if (!typing && !mod && !e.altKey && !e.shiftKey && e.code === 'KeyF' && pageOn && pageModel?.preview) { e.preventDefault(); setFocusEdit((v) => !v); return; } // F: 편집 집중 ↔ 나란히/위아래 보기
+    if (!typing && !mod && !e.altKey && !e.shiftKey && e.code === 'KeyF') { e.preventDefault(); setWide((v) => !v); return; } // F: 편집 넓게 ↔ 설정·페이지 다시 보기
     if (!typing && mod && (k === 'z' || k === 'y') && result && result.type !== 'sketch' && (!pageOn || ctxRef.current !== 'page')) { // 그림 위에서 고친 글자 되돌리기·다시 하기
       const h = textHist.current; const redo = k === 'y' || e.shiftKey; const src = redo ? h.future : h.past; const top = src[src.length - 1];
       if (top && top.ver === result.ver) { e.preventDefault(); src.pop(); (redo ? h.past : h.future).push({ ver: result.ver, spec: result.spec, edits: result.edits }); setResult((r) => ({ ...r, spec: top.spec, edits: top.edits })); }
@@ -1247,7 +1248,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     <div ref={rootRef} style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0 }}>
       {leftHidden && (
         <div style={{ width: 34, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 10 }} data-testid="left-rail">
-          <button style={{ ...btn(false), padding: '4px 7px', fontSize: 12 }} onClick={() => setLeftHidden(false)} title="설정 패널을 다시 펼칩니다" data-testid="left-open">▶</button>
+          <button style={{ ...btn(false), padding: '4px 7px', fontSize: 12 }} onClick={() => setWide(false)} title="설정 패널과 페이지 배치를 다시 펼칩니다 (F)" data-testid="left-open">▶</button>
           <span style={{ writingMode: 'vertical-rl', fontSize: 11.5, fontWeight: 700, color: 'var(--text-tertiary, #64748b)', letterSpacing: 1 }}>설정 열기</span>
         </div>
       )}
@@ -1255,7 +1256,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)' }} title="설명만 써도 되고, 소재 이미지(내 건물·도면)와 스타일 참고 이미지(이런 느낌)를 따로 또는 함께 넣을 수 있습니다. AI가 구성을 정하고 프로그램이 그려서 글자가 깨지지 않습니다.">다이어그램 만들기</div>
-            <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setLeftHidden(true)} title="이 설정 패널을 접어 오른쪽 편집 화면을 넓힙니다(접어도 내용은 그대로이고, 왼쪽 ▶ 로 다시 펼칩니다)" data-testid="left-close">◀ 접기</button>
+            <button style={{ ...btn(false), padding: '3px 8px', fontSize: 11.5 }} onClick={() => setWide(true)} title="설정 패널을 접어 편집 화면을 넓힙니다(페이지 모드면 페이지 배치도 위쪽 띠로 줄어듭니다). 접어도 내용은 그대로이고, 왼쪽 ▶ 나 F 키로 되돌립니다" data-testid="left-close">◀ 편집 넓게</button>
           </div>
           <div style={{ display: 'flex', gap: 4 }} role="tablist" data-testid="left-tabs">
             {[['make', '① 만들기'], ['page', '② 페이지'], ...(result || pageOn ? [['shape', '③ 도형 편집']] : []), ...(showEditTab ? [['edit', '④ 구성 수정']] : [])].map(([id, label]) => (
@@ -1614,15 +1615,9 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           {pageOn && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} data-testid="view-toggle">
               <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>페이지 모드 켜짐{pageModel?.preview ? ` · ${Math.round(pageModel.preview.page.w)}×${Math.round(pageModel.preview.page.h)}mm` : ''}</span>
-              {pageModel?.preview && (
-                <button style={{ ...btn(focusOn, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setFocusEdit((v) => !v)} data-testid="focus-toggle"
-                  title={focusOn ? '편집기를 줄이고 페이지 배치를 다시 크게 봅니다 (단축키 F)' : '편집기를 전체 폭으로 크게 키웁니다. 페이지는 위쪽 띠로 줄고, 칸은 띠에서 고릅니다 (단축키 F)'}>
-                  {focusOn ? '⤡ 나란히 보기로 (F)' : '⤢ 편집 집중 (F)'}
-                </button>
-              )}
-              <button style={{ ...btn(leftHidden, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setLeftHidden((v) => !v)} data-testid="left-toggle"
-                title={leftHidden ? '왼쪽 설정 패널을 다시 펼칩니다' : '왼쪽 설정 패널을 접어 편집 화면을 넓힙니다(내용은 그대로 남습니다)'}>
-                {leftHidden ? '▶ 설정 열기' : '◀ 설정 접기'}
+              <button style={{ ...btn(wide, false), fontSize: 12, padding: '6px 10px' }} onClick={() => setWide((v) => !v)} data-testid="focus-toggle"
+                title={wide ? '왼쪽 설정과 페이지 배치를 다시 펼칩니다 (단축키 F)' : '왼쪽 설정을 접고 페이지 배치를 위쪽 띠로 줄여 편집 화면을 넓힙니다. 칸은 띠에서 고릅니다 (단축키 F)'}>
+                {wide ? '⤡ 설정·페이지 다시 보기 (F)' : '⤢ 편집 넓게 (F)'}
               </button>
               <button style={{ ...btn(false, false), marginLeft: 'auto', fontSize: 12, padding: '6px 10px' }} onClick={() => setPageOn(false)} data-testid="page-off" title="페이지 모드를 끄고 그림 하나만 보는 원래 화면으로 돌아갑니다(칸에 넣은 그림은 남아 있습니다)">페이지 모드 끄기</button>
             </div>
@@ -1654,13 +1649,13 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
                   ))}
                   {ids.length > 1 && <button style={{ ...btn(false, false), padding: '4px 8px', fontSize: 12 }} onClick={() => go(1)} title="다음 칸" data-testid="focus-next">▶</button>}
                 </div>
-                <span style={{ flex: '1 1 200px', fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>편집 집중 중입니다. 칸 크기·페이지 제목은 “⤡ 나란히 보기로”(F)에서 고칩니다. 띠의 그림은 지금 고치는 모습이 바로 반영됩니다.</span>
+                <span style={{ flex: '1 1 200px', fontSize: 11, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>편집을 넓게 보는 중입니다. 설정·칸 크기·페이지 제목은 “⤡ 설정·페이지 다시 보기”(F)에서 고칩니다. 띠의 그림은 지금 고치는 모습이 바로 반영됩니다.</span>
               </div>
             );
           })()}
           {(focusOn || sideOn) && !result && (
             <div style={{ padding: '28px 16px', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--r-btn)', color: 'var(--text-tertiary, #64748b)', fontSize: 13, lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }} data-testid="focus-empty">
-              <span>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽 <b>① 만들기</b>에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 다른 칸의 그림을 복사(Ctrl+C)해 이 칸에 붙여넣으세요(Ctrl+V). 이미지를 이 화면에 끌어다 놓아도 됩니다.</span>
+              <span>칸 {Math.max(1, cellIds(pg.layoutId, pg.custom).indexOf(selCell) + 1)}은 비어 있습니다.<br />왼쪽 <b>① 만들기</b>{wide ? '(접혀 있으면 F 또는 왼쪽 ▶ 로 펼치세요)' : ''}에서 설명을 쓰고 <b>다이어그램 만들기</b>를 누르거나, 다른 칸의 그림을 복사(Ctrl+C)해 이 칸에 붙여넣으세요(Ctrl+V). 이미지를 이 화면에 끌어다 놓아도 됩니다.</span>
               <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {clipFilled && <button style={{ ...btn(true, false), fontSize: 12 }} onClick={pasteCell} data-testid="empty-paste">복사한 그림 붙여넣기</button>}
                 <button style={{ ...btn(false, false), fontSize: 12 }} onClick={() => { const ts = Object.keys(EXAMPLE_SPECS); const t = ts[Object.keys(cells).length % ts.length]; setResult({ type: t, spec: EXAMPLE_SPECS[t], ver: Date.now() }); }} data-testid="empty-example">예시 그림 넣기</button>

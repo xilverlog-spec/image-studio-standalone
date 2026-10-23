@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
 import { judgeTextPt } from './conceptDiagram/page';
 
@@ -48,20 +48,72 @@ export function PtReadout({ size, ptInfo, text, testid = 'pt-readout', onFix }) 
   );
 }
 
-// 입력칸. host: position:relative 인 바깥 상자(입력칸이 이 안에 놓인다), target: 고칠 <text>
+// 글자를 그 자리에서 고치는 입력칸. host: position:relative 인 바깥 상자(입력칸이 이 안에 놓인다), target: 고칠 <text>
+// <text> 는 '상자 없이' 글자 자체가 고쳐지는 것처럼 보이게 한다: 글자와 같은 글꼴·크기·굵기·색·정렬·기울기로 그 위에 겹쳐 열고, 고치는 동안 원래 글자는 숨긴다(점선 밑줄과 커서만 보인다).
+// 표 칸처럼 <text> 가 아닌 것은 예전처럼 테두리 있는 칸으로 연다. 화면에 없는(숨었거나 이미 사라진) 글자는 엉뚱한 자리에 열지 않고 열지 않는다.
+let _mctx = null;
+const textWidthPx = (txt, font, ls) => { if (!_mctx) _mctx = document.createElement('canvas').getContext('2d'); _mctx.font = font; return _mctx.measureText(txt).width + (ls || 0) * Math.max(0, txt.length); };
+function inlineGeo(host, target, multiline, value) {
+  if (!host || !target || !target.isConnected) return null;
+  const tr = target.getBoundingClientRect(); const hr = host.getBoundingClientRect();
+  if (tr.width < 1 && tr.height < 1) return null; // 화면에 없는 글자
+  const sz = host.offsetWidth ? hr.width / host.offsetWidth : 1; // 확대·축소(CSS transform) 안에 있으면 화면 픽셀을 그 배율로 나눠야 제자리에 놓인다
+  const k = sz > 0.01 ? sz : 1;
+  const base = { tr, hr, k, plain: true };
+  if ((target.tagName || '').toLowerCase() !== 'text') return base;
+  let ctm = null; let bb = null; try { ctm = target.getScreenCTM(); bb = target.getBBox(); } catch { /* 못 구하면 상자 모양으로 */ }
+  if (!ctm || !bb || !(bb.width > 0)) return base;
+  const scale = Math.hypot(ctm.a, ctm.b) || 1; const cs = getComputedStyle(target);
+  const fs = (parseFloat(cs.fontSize) || 14) * scale / k;
+  const tsp = [...target.querySelectorAll('tspan')].filter((t) => t.hasAttribute('dy') || t.hasAttribute('y'));
+  if (multiline && !tsp.length && String(value ?? '').includes('\n')) return base; // 줄마다 따로 그려진 여러 줄 글자(리더선 설명 등)는 한 줄만 기준으로 위치를 잡을 수 없어 테두리 있는 칸으로 연다
+  const lines = Math.max(1, tsp.length ? tsp.length + (target.firstChild && target.firstChild.nodeType === 3 && target.firstChild.textContent.trim() ? 1 : 0) : 1);
+  let pitch = fs * 1.2; if (tsp.length >= 2) { const y0 = parseFloat(tsp[0].getAttribute('y') ?? NaN); const y1 = parseFloat(tsp[1].getAttribute('y') ?? NaN); const dy = parseFloat(tsp[1].getAttribute('dy') ?? NaN); const d = Number.isFinite(dy) ? dy : (Number.isFinite(y0) && Number.isFinite(y1) ? y1 - y0 : NaN); if (Number.isFinite(d) && d > 0) pitch = d * scale / k; }
+  const fill = cs.fill && cs.fill !== 'none' && !/^url/.test(cs.fill) ? cs.fill : '#111';
+  return {
+    plain: false, k, tr, hr, fs, pitch, lines,
+    family: cs.fontFamily, weight: cs.fontWeight, style: cs.fontStyle, ls: (parseFloat(cs.letterSpacing) || 0) * scale / k, color: fill,
+    anchor: cs.textAnchor || 'start', ang: Math.atan2(ctm.b, ctm.a) * 180 / Math.PI,
+    cx: (tr.left + tr.width / 2 - hr.left) / k, cy: (tr.top + tr.height / 2 - hr.top) / k, w0: bb.width * scale / k, h0: bb.height * scale / k,
+  };
+}
+
 export function InlineInput({ host, target, value, multiline, onCommit, onCancel }) {
   const [v, setV] = useState(value ?? '');
   const ref = useRef(null); const done = useRef(false);
-  const hr = host.getBoundingClientRect(); const tr = target.getBoundingClientRect();
+  const geo = useMemo(() => inlineGeo(host, target, multiline, value), []); // eslint-disable-line react-hooks/exhaustive-deps — 열 때 한 번 재서 그 자리에 고정
+  useLayoutEffect(() => {
+    if (!geo) { onCancel(); return undefined; }
+    if (geo.plain) return undefined;
+    const prev = target.style.visibility; target.style.visibility = 'hidden'; // 원래 글자는 고치는 동안 숨긴다(입력칸 글자와 겹쳐 두 겹으로 보이지 않게)
+    return () => { if (target.isConnected) target.style.visibility = prev; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
   const finish = (ok) => { if (done.current) return; done.current = true; if (ok) onCommit(v); else onCancel(); };
-  const style = {
-    position: 'absolute', left: Math.max(0, tr.left - hr.left - 5), top: Math.max(0, tr.top - hr.top - 4), minWidth: Math.max(110, tr.width + 26), maxWidth: Math.max(160, hr.width - 12),
-    height: multiline ? Math.max(tr.height + 10, 64) : tr.height + 8, fontSize: Math.max(12, Math.min(30, tr.height * 0.78)), lineHeight: 1.25, boxSizing: 'border-box', padding: '1px 6px',
-    border: '2px solid #F28C28', borderRadius: 5, background: '#fff', color: '#111', outline: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.25)', zIndex: 20, fontFamily: 'inherit', resize: 'none',
-  };
+  if (!geo) return null;
+  let style;
+  if (geo.plain) { // 표 칸 등: 테두리 있는 칸
+    const { tr, hr, k } = geo;
+    style = {
+      position: 'absolute', left: Math.max(0, (tr.left - hr.left) / k - 5), top: Math.max(0, (tr.top - hr.top) / k - 4), minWidth: Math.max(110, tr.width / k + 26), maxWidth: Math.max(160, hr.width / k - 12),
+      height: multiline ? Math.max(tr.height / k + 10, 64) : tr.height / k + 8, fontSize: Math.max(12, Math.min(30, (tr.height / k) * 0.78)), lineHeight: 1.25, boxSizing: 'border-box', padding: '1px 6px',
+      border: '2px solid #F28C28', borderRadius: 5, background: '#fff', color: '#111', outline: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.25)', zIndex: 20, fontFamily: 'inherit', resize: 'none',
+    };
+  } else {
+    const g = geo; const rows = (multiline ? Math.max(g.lines, String(v).split('\n').length) : 1);
+    const font = `${g.style} ${g.weight} ${g.fs}px ${g.family}`;
+    const wText = Math.max(...String(v).split('\n').map((l) => textWidthPx(l || ' ', font, g.ls)), 8);
+    const W = Math.max(wText + 4, 12); const H = multiline ? Math.max(g.h0, g.pitch * rows) : g.h0; const rot = Math.abs(g.ang) > 0.5;
+    const left = rot || g.anchor === 'middle' ? g.cx - W / 2 : g.anchor === 'end' ? g.cx + g.w0 / 2 - W : g.cx - g.w0 / 2; // 정렬 기준이 되는 쪽은 그대로 두고 글이 늘어난다
+    style = {
+      position: 'absolute', left, top: multiline ? g.cy - g.h0 / 2 : g.cy - H / 2, width: W, height: H, margin: 0, padding: 0, boxSizing: 'content-box', border: 'none', borderBottom: '1px dashed #F28C28', borderRadius: 0, background: 'transparent', outline: 'none', boxShadow: 'none',
+      color: g.color, caretColor: '#F28C28', fontFamily: g.family, fontWeight: g.weight, fontStyle: g.style, fontSize: g.fs, letterSpacing: g.ls ? `${g.ls}px` : undefined, lineHeight: multiline ? `${g.pitch}px` : `${H}px`,
+      textAlign: g.anchor === 'middle' ? 'center' : g.anchor === 'end' ? 'right' : 'left', whiteSpace: 'pre', overflow: 'visible', resize: 'none', zIndex: 20,
+      ...(rot ? { transform: `rotate(${g.ang}deg)`, transformOrigin: 'center' } : {}),
+    };
+  }
   const props = {
-    ref, value: v, style, 'data-testid': 'inline-input',
+    ref, value: v, style, 'data-testid': 'inline-input', spellCheck: false,
     onChange: (e) => setV(e.target.value),
     onBlur: () => finish(true),
     onKeyDown: (e) => {
@@ -71,7 +123,7 @@ export function InlineInput({ host, target, value, multiline, onCommit, onCancel
     },
     onPointerDown: (e) => e.stopPropagation(), onDoubleClick: (e) => e.stopPropagation(),
   };
-  return multiline ? <textarea {...props} /> : <input {...props} />;
+  return multiline ? <textarea {...props} wrap="off" /> : <input {...props} />;
 }
 
 // 클릭할 수 있는 SVG 보기: 고칠 수 있는 글자에 마우스를 올리면 색이 바뀌고, 누르면 입력칸이 열린다.
