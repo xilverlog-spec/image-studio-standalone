@@ -16,8 +16,8 @@ import TableEditor from './TableEditor';
 import { normalizeTableDoc } from './conceptDiagram/tabledoc';
 import CardBoardForm from './CardBoardForm';
 import { CARD_PRESETS, normalizeCards, cardsInitialEdits, cardsRebase, cardsHeroAdds, renderCards } from './conceptDiagram/cardboard';
-import { readImageFile, getImgQuality, setImgQuality } from './conceptDiagram/imgio';
-import { IMG_QUALITY, stagger } from './conceptDiagram/imgutil';
+import { readImageFile } from './conceptDiagram/imgio';
+import { stagger } from './conceptDiagram/imgutil';
 import { cancelPendingPaste, imagesFromClipboard, lastElemCopy } from './conceptDiagram/clip';
 import { InlineInput } from './InlineText';
 
@@ -210,7 +210,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const [styleImage, setStyleImage] = useState(null); // 스타일 참고 이미지: 이런 느낌·구성으로
   const [forcedType, setForcedType] = useState('auto');
   const [cardsPreset, setCardsPreset] = useState('plan'); // 카드 보드 시작 틀(plan 계획 요약형 / system 설비·시스템형)
-  const [model, setModel] = useState(AI_MODELS[0].id);
+  const model = AI_MODELS[0].id; // AI 모델은 고르게 하지 않는다. 서버(gemini_chat)가 한도·혼잡이면 다음 모델로 자동 전환한다
   const [busy, setBusy] = useState(false);
   const [staleText, setStaleText] = useState(false); // 소재 이미지를 바꿨는데 설명이 이전 그림에 쓴 것 그대로일 때
   const [genError, setGenError] = useState('');       // 마지막 생성/읽기 실패 사유(실패하면 이전 그림이 그대로 보이므로 화면에 계속 알린다)
@@ -357,7 +357,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   };
   // ── 내 이미지 넣기: 사진·로고·스케치 같은 내 파일을 다이어그램 안에(또는 빈 칸에) 넣는다. 버튼·끌어다 놓기·붙여넣기(Ctrl+V)로, 여러 장도 한 번에 ──
   const myImgFileRef = useRef(null);
-  const [imgQ, setImgQ] = useState(getImgQuality); // 큰 사진을 줄여 담는 정도(가볍게/보통/선명하게)
+  const imgQ = 'normal'; // 큰 사진을 줄여 담는 정도는 고르게 하지 않는다(긴 변 1600px 로 고정)
   const latest = useRef({}); latest.current = { cells, result, selCell, pageOn, pg }; // 파일을 읽는 동안 화면이 바뀔 수 있어, 읽은 뒤에는 이 최신 값으로 계산한다
   const MAX_IMGS = 12;
   const insertMyImages = async (fileList, cellId) => {
@@ -1504,14 +1504,6 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
               )}
             </div>
           )}
-          <details data-testid="advanced-make">
-            <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>고급 설정 (AI 모델)</summary>
-            <div style={{ marginTop: 6 }}>
-              <select value={model} onChange={(e) => setModel(e.target.value)} style={inputBase} title="AI 모델">
-                {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </div>
-          </details>
         </div>
 
         {coverage.length > 0 && (
@@ -1584,9 +1576,6 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
           <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>내 이미지 넣기</button>
           <input ref={myImgFileRef} type="file" accept="image/*" multiple hidden data-testid="my-image-input" onChange={(e) => { insertMyImages(e.target.files, ''); e.target.value = ''; }} />
-          <select value={imgQ} onChange={(e) => { setImgQ(e.target.value); setImgQuality(e.target.value); }} style={{ ...inputBase, width: 'auto', fontSize: 11.5, padding: '5px 6px' }} data-testid="img-quality" title="큰 사진을 줄여 담는 정도. 선명하게는 화질이 좋은 대신 큰 이미지가 여러 장이면 편집이 느려질 수 있습니다">
-            {Object.entries(IMG_QUALITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
           <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
         </div>
         <div ref={paneRef} style={{ flex: 1, overflow: 'auto', padding: 16, background: 'var(--bg)', position: 'relative', outline: dropCell === 'pane' ? '3px dashed var(--primary)' : 'none', outlineOffset: -6 }} data-testid="drop-pane"

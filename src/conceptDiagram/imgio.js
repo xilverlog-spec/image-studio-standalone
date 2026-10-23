@@ -1,9 +1,7 @@
 // 내 이미지 읽기·자르기(브라우저 전용: canvas 를 쓴다). 계산만 하는 부분은 imgutil.js.
 import { imgQualityOf, normCrop } from './imgutil';
 
-const QKEY = 'cd_img_quality';
-export const getImgQuality = () => { try { const v = localStorage.getItem(QKEY); return v === 'light' || v === 'high' ? v : 'normal'; } catch { return 'normal'; } };
-export const setImgQuality = (v) => { try { localStorage.setItem(QKEY, v); } catch { /* 저장 없이 진행 */ } };
+export const getImgQuality = () => 'normal'; // 화질 선택은 없앴다(예전에 이 브라우저에 저장한 선택도 무시한다)
 
 const loadImage = (src) => new Promise((resolve, reject) => {
   const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('이미지로 읽을 수 없는 파일입니다.')); im.src = src;
