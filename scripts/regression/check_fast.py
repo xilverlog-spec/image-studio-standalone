@@ -254,6 +254,183 @@ ImageDraw.Draw(_Q7).polygon([(300, 200), (330, 200), (315, 160)], fill=(20, 170,
 _L7 = dv.build_layers(de.tint_parts(_O5, _Q7), "overlay", _leg5[:1])
 check(len(_L7["arrows"]) == 1 and _L7["arrows"][0]["pts"][-1][1] < _L7["arrows"][0]["pts"][0][1] - 20, "위로 향한 화살촉의 방향(끝이 위)")
 
+# 구역 칠하기를 코드가 한다(2026-10-26): Gemini 는 '방 이름·방 범위·구역 묶음'만, 칠은 벽선에 맞춰 단색으로. 원본은 칠한 곳 밖에서 한 점도 바뀌지 않는다
+from services import diagram_zone as dz  # noqa: E402
+
+_zi = Image.new("RGB", (600, 400), "white")
+_zd = ImageDraw.Draw(_zi)
+for _r in ([40, 100, 240, 260], [240, 100, 440, 260], [40, 260, 440, 360]):          # 방 3개(아래 방은 가로로 긴 한 칸), 벽 2px
+    _zd.rectangle(_r, outline="black", width=2)
+_zd.line([240, 160, 240, 190], fill="white", width=3)                               # 가운데 벽에 문 틈(30px)
+_zd.rectangle([90, 150, 130, 190], outline=(80, 80, 80), width=1)                   # 방 안의 가구(가는 선) — 칠이 이 선 때문에 끊기면 안 됨
+_zd.text((100, 120), "A", fill="black")
+# 방 B 의 범위 상자는 위쪽 벽 밖(바깥 공간)으로 30px 넘치게 준다
+_plan = {"zones": [
+    {"color": "red", "label": "가공", "rooms": [{"name": "A", "label_box_2d": [295, 163, 330, 185], "room_box_2d": [240, 60, 660, 407]}]},
+    {"color": "blue", "label": "연구", "rooms": [{"name": "B", "label_box_2d": [425, 550, 475, 600], "room_box_2d": [175, 393, 665, 740]}, {"name": "C", "label_box_2d": [750, 333, 800, 400], "room_box_2d": [640, 60, 910, 740]}]},
+]}
+_Z = dz.parse_zone_plan(_plan, _zi.size)
+check(len(_Z) == 2 and _Z[0]["color"] == "red" and len(_Z[1]["rooms"]) == 2 and _Z[0]["rooms"][0]["room_box"] == (36, 96, 244, 264), f"구역 계획 해석(0~1000 상자 → 화소) {_Z[:1]}")
+check(dz.parse_zone_plan(None, (600, 400)) == [] and dz.parse_zone_plan({"zones": "x"}, (600, 400)) == [] and dz.parse_zone_plan({"zones": []}, (600, 400)) == [], "구역 계획이 비었거나 이상하면 빈 목록")
+_bad = {"zones": [{"color": "pink", "label": "x", "rooms": [{"name": "a", "label_box_2d": [0, 0, 10, 10], "room_box_2d": [0, 0, 100, 100]}]},
+                  {"color": "red", "label": "역전", "rooms": [{"name": "a", "label_box_2d": [0, 0, 10, 10], "room_box_2d": [500, 500, 400, 600]}, {"name": "큼", "label_box_2d": [0, 0, 10, 10], "room_box_2d": [0, 0, 1000, 1000]}]},
+                  {"color": "green", "label": "G" * 40, "rooms": [{"name": "ok", "label_box_2d": [100, 100, 120, 130], "room_box_2d": [90, 90, 300, 300]}]},
+                  {"color": "green", "label": "중복", "rooms": [{"name": "dup", "label_box_2d": [500, 500, 520, 530], "room_box_2d": [490, 490, 600, 600]}]}]}
+_B = dz.parse_zone_plan(_bad, (600, 400))
+check([z["color"] for z in _B] == ["green"] and len(_B[0]["rooms"]) == 2 and len(_B[0]["label"]) <= 20, f"모르는 색·뒤집힌 상자·화면 전체 상자는 버리고 같은 색은 합침 {_B}")
+check(len(dz.parse_zone_plan({"zones": [{"color": c, "label": c, "rooms": [{"name": c, "label_box_2d": [10, 10, 20, 20], "room_box_2d": [5 + i, 5, 100 + i, 100]}]} for i, c in enumerate(["red", "orange", "yellow", "green", "blue", "purple"])]}, (600, 400))) == 5, "구역은 최대 5개")
+# 상자가 벽에서 조금 벗어나 있어도 벽선에 붙는다
+_dark = _np.asarray(_zi.convert("L"), _np.float32) < 120
+_sn = dz.snap_box(_dark, (47, 108, 233, 252))
+check(all(abs(a - b) <= 1 for a, b in zip(_sn, (40, 100, 240, 260))), f"방 범위 상자가 벽선에 붙지 않음 {_sn}")
+check(dz.snap_box(_dark, (300, 300, 330, 330)) == (300, 300, 330, 330), "근처에 벽이 없으면 상자를 그대로")
+_pl, _lg2, _st = dz.build_plate(_zi, _Z)
+_plc = lambda x, y: tuple(int(round(v * 255)) for v in _pl[y, x])
+check(_pl.shape == (400, 600, 3) and _plc(150, 130) == dz.ZONE_FILL_RGB["red"] and _plc(350, 130) == dz.ZONE_FILL_RGB["blue"] and _plc(240, 310) == dz.ZONE_FILL_RGB["blue"], f"방 안이 구역 색 단색이 아님 {_plc(150, 130)} {_plc(350, 130)} {_plc(240, 310)}")
+check(_plc(110, 170) == dz.ZONE_FILL_RGB["red"], "방 안 가구 선의 안쪽까지 칠해져야 함(구멍 메우기)")
+check(_plc(300, 105 - 12) == (255, 255, 255) and _plc(300, 20) == (255, 255, 255) and _plc(500, 130) == (255, 255, 255), "벽 밖(범위 상자가 넘친 곳·바깥)은 칠하면 안 됨")
+check(_plc(246, 175) == dz.ZONE_FILL_RGB["blue"] and _plc(234, 175) == dz.ZONE_FILL_RGB["red"], "문 틈이 있어도 옆 방 색이 번지면 안 됨")
+check([(l["kind"], l["label"]) for l in _lg2] == [("zone", "가공"), ("zone", "연구")] and _lg2[0]["color"].upper() == "#%02X%02X%02X" % dz.ZONE_FILL_RGB["red"], f"구역 범례 {_lg2}")
+check(_st["rooms"] == 3 and _st["filled"] == 3 and _st["rect_fallback"] <= 1, f"방 통계 {_st}")
+# 방 이름이 작은 닫힌 칸(상자의 15% 미만)에 갇히면 상자 전체를 칠한다
+_zi2 = _zi.copy()
+ImageDraw.Draw(_zi2).line([40, 114, 240, 114], fill="black", width=2)
+ImageDraw.Draw(_zi2).line([40, 118, 240, 118], fill="black", width=2)
+_z2 = dz.parse_zone_plan({"zones": [{"color": "red", "label": "가공", "rooms": [{"name": "A", "label_box_2d": [260, 160, 280, 190], "room_box_2d": [250, 60, 650, 407]}]}]}, _zi2.size)
+_pl2, _l2, _s2 = dz.build_plate(_zi2, _z2)
+check(_s2["rect_fallback"] == 1 and tuple(int(round(v * 255)) for v in _pl2[235, 100]) == dz.ZONE_FILL_RGB["red"], f"칸이 아주 작게 갇히면 상자 전체 칠 {_s2}")
+# 상자가 방보다 훨씬 크게 잡혀도(칸이 상자의 절반 남짓) 방 칸만 칠하고 바깥으로 넘치지 않는다
+_oi = Image.new("RGB", (600, 400), "white")
+ImageDraw.Draw(_oi).rectangle([200, 120, 400, 280], outline="black", width=2)
+ImageDraw.Draw(_oi).text((290, 190), "R", fill="black")
+_oz = dz.parse_zone_plan({"zones": [{"color": "red", "label": "R", "rooms": [{"name": "R", "label_box_2d": [470, 480, 490, 500], "room_box_2d": [175, 100, 775, 600]}]}]}, _oi.size)
+_op, _ol, _os = dz.build_plate(_oi, _oz)
+_opc = lambda x, y: tuple(int(round(v * 255)) for v in _op[y, x])
+check(_opc(300, 200) == dz.ZONE_FILL_RGB["red"] and _opc(150, 200) == (255, 255, 255) and _opc(300, 90) == (255, 255, 255) and _opc(450, 200) == (255, 255, 255) and _os["rect_fallback"] == 0, f"상자가 방보다 크면 방 칸만 칠해야 함 {_os} {_opc(300, 200)} {_opc(150, 200)}")
+# 합성: 칠한 판을 곱한다 — 칠한 방 밖은 원본과 한 점도 다르지 않고, 벽은 그대로 검다
+_qz = _zi.copy()
+ImageDraw.Draw(_qz).line([60, 330, 400, 330], fill=(240, 20, 20), width=9)         # Qwen 이 그린 빨간 화살표(구역 칠은 쓰지 않는다)
+ImageDraw.Draw(_qz).rectangle([45, 105, 235, 255], fill=(200, 225, 250))             # Qwen 이 멋대로 칠한 연한 파랑 — 무시돼야 함
+_cz, _az = de.composite(_zi, _qz, plate=_pl)
+_oa2, _ca2 = _np.asarray(_zi), _np.asarray(_cz)
+_outside = (_pl.min(axis=2) >= 0.999) & ~__import__("scipy.ndimage", fromlist=["x"]).binary_dilation(_az, iterations=3)
+check(int(_np.abs(_oa2.astype(int) - _ca2.astype(int))[_outside].max()) == 0, "칠한 방과 화살표 밖의 원본이 바뀜(원본 보존)")
+check(max(_ca2[100, 100]) < 60 and tuple(_ca2[130, 150]) == dz.ZONE_FILL_RGB["red"] and _ca2[330, 200][0] > 200 and _ca2[330, 200][1] < 80, f"벽은 검고 방은 구역 색, 화살표는 빨강 {_ca2[100, 100]} {_ca2[130, 150]} {_ca2[330, 200]}")
+check(tuple(_ca2[230, 60]) == dz.ZONE_FILL_RGB["red"], "Qwen 이 칠한 파랑이 아니라 칠한 판의 색이어야 함")
+_f, _fa, _how = de.finish(_zi, _qz, plate=_pl)
+check(_how == "overlay" and _np.array_equal(_np.asarray(_f), _ca2), "finish 가 칠한 판을 합성에 쓰지 않음")
+check(de.composite(_zi, _qz)[0].getpixel((60, 230)) != dz.ZONE_FILL_RGB["red"], "칠한 판이 없으면 예전 방식(Qwen 채움)이어야 함")
+# 지시문: 구역을 코드가 칠하는 모드에서는 Qwen 에게 칠하라고 하지 않는다
+_pz = de._instruct_prompt("연구실을 기능별로 구역 표시", allow_zones=True)
+check("room_box_2d" in _pz and "label_box_2d" in _pz and '"zones"' in _pz and '"arrows"' in _pz and "must NOT ask the editing model to color" in _pz, "구역 모드 지시문에 방 범위·구역·arrows 안내가 없음")
+check("room_box_2d" not in de._instruct_prompt("동선 표시") and "room_box_2d" not in de._instruct_prompt("동선 표시", allow_zones=False), "구역 모드가 아니면 지시문이 예전 그대로여야 함")
+# build_plan: Gemini 응답을 흉내 내어 구역·화살표 여부를 읽는다
+import json as _json  # noqa: E402
+from services import gemini_chat as _G  # noqa: E402
+_g_saved = _G.gemini_chat_completion
+_calls = []
+
+
+def _fake_gemini(model, messages, **kw):
+    _calls.append(messages[0]["content"][:40])
+    return _json.dumps({"instruction": "", "title": "구역도", "legend": [], "zones": _plan["zones"], "arrows": False}, ensure_ascii=False)
+
+
+_G.gemini_chat_completion = _fake_gemini
+_saved = (de.run_qwen, de.verify_zone_legend, de._out_dir)
+try:
+    _buf = __import__("io").BytesIO()
+    _zi.save(_buf, "PNG")
+    _bp = de.build_plan(_buf.getvalue(), "구역 표시", allow_zones=True)
+    check(_bp["source"] == "gemini" and _bp["arrows"] is False and len(_bp["zones"]) == 2 and _bp["title"] == "구역도", f"build_plan 이 구역·arrows=false 를 읽지 못함 {_bp}")
+    # 구역만 요청: Qwen 을 부르면 안 되고, 합성·범례·층이 코드 칠로 만들어진다(검증 단계의 Gemini 도 부르지 않는다)
+    _tmp = __import__("tempfile").mkdtemp()
+
+    def _no_qwen(*a, **k):
+        raise AssertionError("구역만 요청인데 Qwen 을 불렀음")
+
+    def _no_verify(*a, **k):
+        raise AssertionError("코드가 칠했는데 범례 확인(Gemini)을 또 불렀음")
+
+    de.run_qwen, de.verify_zone_legend, de._out_dir = _no_qwen, _no_verify, (lambda: _tmp)
+    de.JOBS["zt"] = {"status": "queued", "created": 0}
+    de._run("zt", _buf.getvalue(), "구역 표시", 25, 1)
+    _jr = de.JOBS["zt"]
+    check(_jr.get("status") == "done", f"구역만 요청한 작업이 끝나지 않음 {_jr.get('status')} {_jr.get('error')}")
+    if _jr.get("status") == "done":
+        _rs = _jr["result"]
+        check(_rs["finish"] == "overlay" and _rs["legend_verified"] is True and [l["label"] for l in _rs["legend"] if l["kind"] == "zone"] == ["가공", "연구"], f"결과 범례 {_rs['legend']}")
+        check(_rs["layers"] is not None and len(_rs["layers"]["zones"]) == 2 and not _rs["layers"]["arrows"], f"구역 층 2개·화살표 없음이어야 함 {None if _rs['layers'] is None else (len(_rs['layers']['zones']), len(_rs['layers']['arrows']))}")
+        _out = _np.asarray(Image.open(__import__("os").path.join(_tmp, "diagram_edit_zt.png")).convert("RGB"))
+        check(tuple(_out[130, 150]) == dz.ZONE_FILL_RGB["red"] and int(_np.abs(_np.asarray(_zi).astype(int) - _out.astype(int))[_pl.min(axis=2) >= 0.999].max()) == 0, "결과 그림이 칠한 방 밖에서 원본과 다름")
+finally:
+    _G.gemini_chat_completion = _g_saved
+    de.run_qwen, de.verify_zone_legend, de._out_dir = _saved
+
+# 옅은 회색 벽선: 가까운 옅은 선이 멀리 있는 뚜렷한 선보다 우선하고, 회색 벽도 칠이 넘치는 것을 막는다(사내 평면도의 이중 벽선은 회색)
+_fi = Image.new("RGB", (600, 400), "white")
+_fd = ImageDraw.Draw(_fi)
+_fd.rectangle([40, 100, 240, 260], outline=(185, 185, 185), width=2)       # 방: 옅은 회색 벽(185)
+_fd.line([40, 285, 240, 285], fill="black", width=3)                        # 25px 아래의 뚜렷한 벽(이웃 방의 윗벽)
+_fl = _np.asarray(_fi.convert("L"), _np.float32)
+_fk = dz.snap_box(_fl < dz.DARK_THR, (40, 100, 240, 263), tol=30, faint=_fl < dz.FAINT_THR)
+check(all(abs(a - b) <= 2 for a, b in zip(_fk, (40, 100, 240, 260))), f"가까운 옅은 벽선(아래변)이 멀리 있는 뚜렷한 선보다 우선해야 함 {_fk}")
+check(abs(dz.snap_box(_fl < dz.DARK_THR, (40, 100, 240, 263), tol=30)[3] - 285) <= 2, "옅은 선 단계가 없으면(faint 없음) 넓은 단계의 뚜렷한 선을 고름")
+_gi = Image.new("RGB", (600, 400), "white")
+ImageDraw.Draw(_gi).rectangle([40, 100, 240, 260], outline=(160, 160, 160), width=2)    # 회색(160) 벽
+ImageDraw.Draw(_gi).text((100, 150), "R", fill="black")
+_gz = dz.parse_zone_plan({"zones": [{"color": "green", "label": "G", "rooms": [{"name": "R", "label_box_2d": [360, 160, 380, 185], "room_box_2d": [200, 40, 650, 410]}]}]}, _gi.size)
+_gp, _gl, _gs = dz.build_plate(_gi, _gz)
+check(tuple(int(round(v * 255)) for v in _gp[200, 100]) == dz.ZONE_FILL_RGB["green"] and tuple(int(round(v * 255)) for v in _gp[88, 100]) == (255, 255, 255) and _gs["rect_fallback"] == 0, f"회색 벽 밖(넘친 곳)은 칠하면 안 됨 {_gs}")
+
+# 구역을 요청하지 않은 동선 표시: Qwen 의 채움(곱하기 판)을 쓰지 않아 원본 색이 변하지 않고, 범례에는 동선만 있다
+_saved2 = (de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server)
+_tmp2 = __import__("tempfile").mkdtemp()
+_fb = __import__("io").BytesIO()
+_g2 = Image.new("RGB", (400, 260), "white")                                # 흰 종이 도면 + 왼쪽에 회색 도로 띠(Qwen 이 어둡게 다시 그리던 곳)
+_g2d = ImageDraw.Draw(_g2)
+_g2d.rectangle([0, 0, 90, 260], fill=(190, 190, 190))
+_g2d.rectangle([120, 60, 340, 200], outline="black", width=3)
+_g2.save(_fb, "PNG")
+_qwen_out = _g2.point(lambda v: int(v * 0.8))                              # Qwen 이 전체를 어둡게 다시 그림
+ImageDraw.Draw(_qwen_out).line([80, 130, 320, 130], fill=(240, 20, 20), width=9)
+ImageDraw.Draw(_qwen_out).rectangle([20, 20, 50, 50], fill=(200, 225, 250))   # 엉뚱하게 칠한 연한 파랑
+
+
+def _flows_plan(png, ask, allow_zones=False, source="gemini"):
+    return {"instruction": "x" * 80, "title": "동선도", "legend": [{"color": "red", "kind": "flow", "label": "차량 동선"}], "source": source, "zones": [], "arrows": True, "zones_asked": False}
+
+
+def _fake_qwen(*a, **k):
+    return _qwen_out
+
+
+try:
+    de.build_plan = _flows_plan
+    de.run_qwen, de._out_dir, de._up, de._free, de.ensure_server = _fake_qwen, (lambda: _tmp2), (lambda *a, **k: True), (lambda *a, **k: None), (lambda *a, **k: None)
+    de.verify_zone_legend = lambda *a, **k: (_ for _ in ()).throw(AssertionError("구역이 없는 동선 요청인데 범례 확인(Gemini)을 불렀음"))
+    de.JOBS["ft"] = {"status": "queued", "created": 0}
+    de._run("ft", _fb.getvalue(), "차량 동선", 25, 1)
+    _fr = de.JOBS["ft"]
+    check(_fr.get("status") == "done", f"구역 없는 동선 작업이 끝나지 않음 {_fr.get('status')} {_fr.get('error')}")
+    if _fr.get("status") == "done":
+        _rr = _fr["result"]
+        check(_rr["zone_fill"] == "none" and all(l["kind"] == "flow" for l in _rr["legend"]) and [l["label"] for l in _rr["legend"]] == ["차량 동선"], f"동선만 요청하면 범례에는 동선만 있어야 함 {_rr['legend']}")
+        _fo = _np.asarray(Image.open(__import__("os").path.join(_tmp2, "diagram_edit_ft.png")).convert("RGB")).astype(int)
+        _go = _np.asarray(_g2).astype(int)
+        _far2 = ~__import__("scipy.ndimage", fromlist=["x"]).binary_dilation(_np.abs(_fo - _go).sum(axis=2) > 60, iterations=12)
+        check(int(_np.abs(_fo[20:50, 20:50] - _go[20:50, 20:50]).max()) == 0 and int(_np.abs(_fo[225:255, 5:60] - _go[225:255, 5:60]).max()) == 0, "Qwen 이 칠한 연한 파랑이나 어두워진 회색이 결과에 남음(원본 훼손)")
+        check(_fo[130, 200][0] > 200 and _fo[130, 200][1] < 90, f"동선 화살표(빨강)는 얹혀야 함 {_fo[130, 200]}")
+    # Gemini 가 안 돼 일반 지시문(fallback)으로 갈 때는 예전처럼 Qwen 채움을 쓴다
+    de.build_plan = lambda png, ask, allow_zones=False: _flows_plan(png, ask, allow_zones, source="fallback")
+    de.verify_zone_legend = lambda final, legend: (legend, True)
+    de.JOBS["fb"] = {"status": "queued", "created": 0}
+    de._run("fb", _fb.getvalue(), "구역과 동선", 25, 1)
+    _fbr = de.JOBS["fb"]
+    check(_fbr.get("status") == "done" and _fbr["result"]["zone_fill"] == "model", f"fallback 지시문이면 예전 방식(zone_fill=model) {_fbr.get('status')} {_fbr.get('result', {}).get('zone_fill')}")
+finally:
+    de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server = _saved2
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

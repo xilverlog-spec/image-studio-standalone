@@ -24,6 +24,7 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 import comfyui_client
+from services import diagram_zone as dz
 
 QWEN_URL = os.getenv("QWEN_COMFY_URL", "http://127.0.0.1:8189").rstrip("/")
 QWEN_DIR = os.getenv("QWEN_COMFY_DIR", r"C:\ComfyUI_v041")                 # 0.37 이상으로 올린 ComfyUI(코드·파이썬)
@@ -118,11 +119,25 @@ def fallback_instruction(ask):
 _COLOR_NAMES = ("red", "orange", "yellow", "green", "blue", "purple")
 
 
-def _instruct_prompt(ask):
-    return f"""You write instructions for an image-editing model (it receives the attached image and your instruction, and repaints the image).
+_ZONE_RULES = """
+- "zones": include this ONLY when the attached image is a floor plan with room names printed in it AND the request is about zoning / functional areas / departments / coloring rooms; otherwise return an empty list [].
+  Give 3-5 zones, each {"color": "red|orange|yellow|green|blue|purple", "label": "<short Korean zone name, max 14 characters>", "rooms": [{"name": "<printed room name, copied exactly>", "label_box_2d": [ymin, xmin, ymax, xmax], "room_box_2d": [ymin, xmin, ymax, xmax]}]}.
+  label_box_2d is the bounding box of the printed name text; room_box_2d is the bounding box of the whole room floor area, drawn along the room's enclosing wall lines (for an L-shaped room give the box of the whole L). All values are integers 0-1000 relative to the image height (y) and width (x).
+  List every room whose name is printed (not corridors, open halls without walls, dimension text or notes), each room once, grouped by what the rooms have in common. Use a zone color name only once, and not a color you also use for a flow arrow.
+  A separate program paints these fills exactly inside the rooms. So when "zones" is not empty, your "instruction" must NOT ask the editing model to color or fill any room or area (ignore the pastel-fill parts of rules 2 and 4) and must not mention zone colors; it describes only the arrows (flows) the request asks for, and "legend" lists only those flow arrows.
+- "arrows": true if the request needs flow arrows (circulation, movement, access, routes), false if it only asks for zoning / coloring areas. When "zones" is not empty and "arrows" is false, "instruction" may be an empty string.
+"""
+
+
+_SCHEMA_LEGEND = '"legend": [{"color": "red|orange|yellow|green|blue|purple", "kind": "zone|flow", "label": "..."}]'
+
+
+def _instruct_prompt(ask, allow_zones=False):
+    schema = '{"instruction": "...", "title": "...", ' + _SCHEMA_LEGEND + (', "zones": [...], "arrows": true' if allow_zones else '') + '}'
+    body = f"""You write instructions for an image-editing model (it receives the attached image and your instruction, and repaints the image).
 The user's request (Korean): "{ask}"
 The attached image can be any architectural image: a floor plan, a site/aerial view, a 3D (SketchUp) view, a render or photo, a section/elevation, or a sketch. Look at it and answer with JSON only (no code fence):
-{{"instruction": "...", "title": "...", "legend": [{{"color": "red|orange|yellow|green|blue|purple", "kind": "zone|flow", "label": "..."}}]}}
+{schema}
 - "instruction": ONE English instruction (max 260 words) that makes the editing model overlay the diagram the user asked for ON TOP OF the existing image. It must:
   1. start by saying: keep the image exactly as it is (every line, shape, object, existing text, label and number unchanged and legible) and do NOT add any new text, title or legend;
   2. decide what kind of diagram the request means (e.g. circulation/movement, zoning or functional areas, access, sun/daylight/wind, massing) and describe precisely what to overlay: soft translucent pastel color fills for the zones or objects involved (name them using text visible in the image, or by position/appearance if there is no text), and bold continuous dashed arrows with clear arrowheads for flows, each flow type in a different color;
@@ -131,6 +146,7 @@ The attached image can be any architectural image: a floor plan, a site/aerial v
   5. when there are flows of different kinds, use this color convention: vehicle or entry flow = red, pedestrian flow = blue, green or promenade flow = green, the main or emphasized flow = orange (use only the kinds the request mentions; with a single kind, use one color; keep every color name used in the legend).
 - "title": a short Korean diagram title (max 20 characters) that fits the request.
 - "legend": one entry per color you used, with the same color name, "kind" = "zone" for a color fill or "flow" for an arrow, and a short Korean label (max 16 characters, e.g. "가공 구역" or "주 동선: 출입구→중앙홀"). Use each color name only once across the whole legend (at most 6 entries); if you need more zones, merge related ones."""
+    return body + (_ZONE_RULES if allow_zones else "")
 
 
 def _parse_json(txt):
@@ -145,12 +161,14 @@ def _parse_json(txt):
         raise
 
 
-def build_instruction(png_bytes, ask):
-    """(지시문, 제목, 범례 초안, 출처). Gemini 가 안 되면(한도·혼잡) 사용자 요청을 담은 일반 지시문으로 대체하고 출처를 'fallback' 으로 표시한다."""
+def build_plan(png_bytes, ask, allow_zones=False):
+    """Gemini 가 도면과 요청을 읽고 쓴 계획: {instruction, title, legend(동선만), source('gemini'|'fallback'), zones(화소 상자로 바꾼 구역 계획), arrows(동선 화살표가 필요한가), zones_asked(Gemini 가 구역을 내놓았는가)}.
+    allow_zones(선 도면일 때만 참)면 평면도의 방 이름·방 범위·구역 묶음도 받는다 — 그 색칠은 코드가 한다(diagram_zone). Gemini 가 안 되면(한도·혼잡) 사용자 요청을 담은 일반 지시문으로 대체하고 출처를 'fallback' 으로 표시한다."""
     import base64
     from services import gemini_chat as G
     ask = (ask or "").strip() or "동선을 표시한 다이어그램"
     img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    orig_size = img.size
     k = 1800 / max(img.size)
     if k < 1:
         img = img.resize((round(img.width * k), round(img.height * k)), Image.LANCZOS)
@@ -160,20 +178,32 @@ def build_instruction(png_bytes, ask):
     last = None
     for attempt in range(2):   # 모든 모델이 한꺼번에 혼잡(503)한 때가 있어, 실패하면 잠시 뒤 한 번 더 해 본다
         try:
-            txt = G.gemini_chat_completion(INSTRUCT_MODEL, [{"role": "user", "content": _instruct_prompt(ask), "images": [b64]}], max_tokens=4000, temperature=0.3)
+            txt = G.gemini_chat_completion(INSTRUCT_MODEL, [{"role": "user", "content": _instruct_prompt(ask, allow_zones), "images": [b64]}], max_tokens=8000 if allow_zones else 4000, temperature=0.3)
             d = _parse_json(txt)
             ins = str(d.get("instruction") or "").strip()
-            if len(ins) < 60:
+            zones = dz.parse_zone_plan(d, orig_size) if allow_zones else []
+            a = d.get("arrows", True)
+            arrows = (a if isinstance(a, bool) else str(a).strip().lower() not in ("false", "0", "no")) if zones else True
+            if len(ins) < 60 and not (zones and not arrows):
                 raise ValueError("지시문이 비어 있음")
             legend = [{"color": str(r.get("color", "")).lower(), "kind": "zone" if str(r.get("kind", "")).lower() == "zone" else "flow", "label": str(r.get("label", ""))[:24]} for r in (d.get("legend") or d.get("routes") or []) if isinstance(r, dict)][:6]
-            return ins, str(d.get("title") or "")[:30], legend, "gemini"
+            if zones:   # 구역 범례는 코드가 만든다
+                legend = [l for l in legend if l["kind"] == "flow"]
+            return {"instruction": ins, "title": str(d.get("title") or "")[:30], "legend": legend, "source": "gemini", "zones": zones, "arrows": arrows,
+                    "zones_asked": bool(allow_zones and isinstance(d.get("zones"), list) and d.get("zones"))}
         except Exception as e:  # noqa: BLE001
             last = e
             if attempt == 0:
                 print(f"[DIAGRAM-EDIT] 지시문 작성 실패, 15초 뒤 한 번 더: {str(e)[:100]}")
                 time.sleep(15)
     print(f"[DIAGRAM-EDIT] 지시문 작성 실패 → 일반 지시문 사용: {str(last)[:120]}")
-    return fallback_instruction(ask), "", [], "fallback"
+    return {"instruction": fallback_instruction(ask), "title": "", "legend": [], "source": "fallback", "zones": [], "arrows": True, "zones_asked": False}
+
+
+def build_instruction(png_bytes, ask):
+    """(지시문, 제목, 범례 초안, 출처) — 구역을 코드가 칠하지 않는 예전 방식(일부 영역 다시 그리기 등)."""
+    p = build_plan(png_bytes, ask)
+    return p["instruction"], p["title"], p["legend"], p["source"]
 
 
 # ── 2) Qwen 편집 ──────────────────────────────────────────────────────────
@@ -245,28 +275,31 @@ def _strong(img, s, v):
     return (hsv[..., 1] > s) & (hsv[..., 2] > v)
 
 
-def tint_parts(original, model_out):
+def tint_parts(original, model_out, plate=None):
     """모델 결과를 원본 크기로 맞추고 둘로 나눈다: ① '연한 채움 색 판' T(곱하기용, 0~1) ② '굵은 화살표' 마스크(core = 부풀리기 전, arrow = 3×3 부풀린 것)."""
     O = original.convert("RGB")
     W, H = O.size
     Qi = model_out.convert("RGB").resize((W, H), Image.LANCZOS)
     Of = np.asarray(O, np.float32) / 255
     Qf = np.asarray(Qi, np.float32) / 255
-    T = ndi.grey_dilation(Qf, size=(13, 13, 1))              # 가는 선·글자를 지우고 주변 채움색만 남긴다
-    T = np.clip(ndi.gaussian_filter(T, sigma=(1.5, 1.5, 0)), 0, 1)
+    if plate is not None and plate.shape[:2] == (H, W):      # 코드가 칠한 판(diagram_zone): Qwen 의 채움 대신 쓴다 → 경계가 또렷하고 칠하지 않은 곳의 원본 색이 변하지 않는다
+        T = plate.astype(np.float32)
+    else:
+        T = ndi.grey_dilation(Qf, size=(13, 13, 1))          # 가는 선·글자를 지우고 주변 채움색만 남긴다
+        T = np.clip(ndi.gaussian_filter(T, sigma=(1.5, 1.5, 0)), 0, 1)
     o_strong = ndi.binary_dilation(_strong(O, 0.45, 0.45), structure=np.ones((9, 9)))   # 원본에 있던 강한 색(범위선·식재)은 원본 것을 쓴다
     core = ndi.binary_opening(_strong(Qi, 0.55, 0.5) & ~o_strong, structure=np.ones((2, 2)))
     arrow = ndi.binary_dilation(core, structure=np.ones((3, 3)))
     return {"O": O, "Qi": Qi, "Of": Of, "Qf": Qf, "T": T, "core": core, "arrow": arrow}
 
 
-def composite(original, model_out):
-    """모델 결과의 '연한 채움 색'(곱하기)과 '굵은 화살표'만 원본 위에 얹는다. 반환: (합성 이미지, 화살표 마스크)."""
-    P = tint_parts(original, model_out)
+def composite(original, model_out, plate=None):
+    """모델 결과의 '연한 채움 색'(곱하기)과 '굵은 화살표'만 원본 위에 얹는다. plate 가 있으면 채움은 그 판(코드가 칠한 구역)을 쓴다. 반환: (합성 이미지, 화살표 마스크)."""
+    P = tint_parts(original, model_out, plate)
     a = ndi.gaussian_filter(P["arrow"].astype(np.float32), 0.8)[..., None]
     R = P["Of"] * P["T"]
     R = R * (1 - a) + P["Qf"] * a
-    return Image.fromarray((np.clip(R, 0, 1) * 255).astype(np.uint8)), P["arrow"]
+    return Image.fromarray(np.rint(np.clip(R, 0, 1) * 255).astype(np.uint8)), P["arrow"]
 
 
 def is_line_drawing(img, white_frac=0.45):
@@ -275,11 +308,13 @@ def is_line_drawing(img, white_frac=0.45):
     return float((a.min(axis=2) > 235).mean()) >= white_frac
 
 
-def finish(original, model_out, force=None):
+def finish(original, model_out, force=None, plate=None):
     """모델 결과 → 최종 이미지. 선 도면이면 원본 위에 색·화살표만 얹고(글자·선 원본 그대로), 사진·3D 뷰면 모델 결과를 원본 크기로 맞춰 쓴다. 반환: (이미지, 화살표 마스크, 방식).
     force: 'overlay'/'model' 로 방식을 정해 준다(그림의 한 조각만 다시 그릴 때는 조각이 아니라 전체 그림이 선 도면인지로 정해야 한다)."""
+    if plate is not None:
+        force = "overlay"   # 칠한 판은 선 도면 합성(곱하기)에서만 맞다
     if force == "overlay" or (force is None and is_line_drawing(original)):
-        comp, arrow = composite(original, model_out)
+        comp, arrow = composite(original, model_out, plate)
         return comp, arrow, "overlay"
     O = original.convert("RGB")
     Qi = model_out.convert("RGB").resize(O.size, Image.LANCZOS)
@@ -404,28 +439,45 @@ def _run(job_id, png_bytes, ask, steps, seed):
     try:
         original = Image.open(io.BytesIO(png_bytes)).convert("RGB")
         _update(job, status="running", stage="1/4 지시문을 쓰는 중(무료 Gemini)", percent=3)
-        instruction, title, routes, source = build_instruction(png_bytes, ask)
+        plan = build_plan(png_bytes, ask, allow_zones=is_line_drawing(original))
+        plate, zone_legend = None, []
+        if plan["zones"]:   # 평면도의 구역은 코드가 칠한다: 방 이름·범위·묶음은 Gemini, 경계는 벽선에 맞춘 단색(diagram_zone)
+            _update(job, stage="1/4 구역을 도면의 벽에 맞춰 칠하는 중", percent=6)
+            plate, zone_legend, zst = dz.build_plate(original, plan["zones"])
+            if not zst["filled"]:
+                plate = None
+        if plate is None and plan["zones_asked"]:   # 구역 계획을 쓸 수 없으면 구역 칠을 Qwen 에게 맡기던 예전 지시문으로
+            plan = build_plan(png_bytes, ask, allow_zones=False)
+        if plate is None and plan["source"] == "gemini" and is_line_drawing(original) and not any(l.get("kind") == "zone" for l in plan["legend"]):
+            plate = np.ones((original.height, original.width, 3), np.float32)   # 구역을 요청하지 않은 동선 표시: Qwen 의 채움 판은 쓰지 않는다 → 회색 도로가 어두워지거나 엉뚱한 색이 번지지 않는다
+        instruction, title, routes, source = plan["instruction"], plan["title"], plan["legend"], plan["source"]
         resolution = pick_resolution(original.size)
-        _update(job, stage="앞선 그림 작업을 기다리는 중", percent=8)
-        from services import line_pipeline   # 같은 GPU 를 쓰는 선 추출 파이프라인과 순서를 맞춘다
-        with line_pipeline._RUN_LOCK, _RUN_LOCK:
-            cold = not _up(QWEN_URL)
-            _update(job, stage="2/4 그림 서버를 준비하는 중" + (" (처음에는 1~2분 더 걸립니다)" if cold else ""), percent=10)
-            _free(comfyui_client.COMFYUI_URL)      # 기존 FLUX 쪽이 잡고 있는 그래픽 메모리를 먼저 비운다
-            ensure_server()
-            expect = estimate_seconds(resolution, steps, cold)
+        if plate is not None and not plan["arrows"]:   # 구역만 요청: 그림 서버(GPU)가 필요 없다
+            out = original
+        else:
+            _update(job, stage="앞선 그림 작업을 기다리는 중", percent=8)
+            from services import line_pipeline   # 같은 GPU 를 쓰는 선 추출 파이프라인과 순서를 맞춘다
+            with line_pipeline._RUN_LOCK, _RUN_LOCK:
+                cold = not _up(QWEN_URL)
+                _update(job, stage="2/4 그림 서버를 준비하는 중" + (" (처음에는 1~2분 더 걸립니다)" if cold else ""), percent=10)
+                _free(comfyui_client.COMFYUI_URL)      # 기존 FLUX 쪽이 잡고 있는 그래픽 메모리를 먼저 비운다
+                ensure_server()
+                expect = estimate_seconds(resolution, steps, cold)
 
-            def on_wait(el):
-                _update(job, stage=f"3/4 AI 가 그리는 중 (예상 {int(expect // 60) + 1}분 안팎)", percent=min(92, 12 + int(80 * el / expect)))
-            try:
-                out = run_qwen(png_bytes, instruction, resolution, steps, seed, on_wait)
-            finally:
-                _free(QWEN_URL)                    # 끝나면(실패해도) Qwen 이 잡은 그래픽 메모리를 돌려준다
+                def on_wait(el):
+                    _update(job, stage=f"3/4 AI 가 그리는 중 (예상 {int(expect // 60) + 1}분 안팎)", percent=min(92, 12 + int(80 * el / expect)))
+                try:
+                    out = run_qwen(png_bytes, instruction, resolution, steps, seed, on_wait)
+                finally:
+                    _free(QWEN_URL)                    # 끝나면(실패해도) Qwen 이 잡은 그래픽 메모리를 돌려준다
         _update(job, stage="4/4 원본 도면 위에 색·화살표를 얹는 중", percent=95)
-        comp, arrow, how = finish(original, out)
+        comp, arrow, how = finish(original, out, plate=plate)
         legend = legend_from_result(comp, original, arrow, routes, photo=(how == "model"))
-        _update(job, stage="4/4 범례를 결과 그림으로 확인하는 중", percent=97)
-        legend, legend_ok = verify_zone_legend(comp, legend)
+        if plate is not None:   # 구역은 코드가 칠했으므로 뜻이 확실하다 → 그림을 다시 보는 범례 확인(Gemini)이 필요 없다
+            legend, legend_ok = zone_legend + [l for l in legend if l.get("kind") == "flow"], True
+        else:
+            _update(job, stage="4/4 범례를 결과 그림으로 확인하는 중", percent=97)
+            legend, legend_ok = verify_zone_legend(comp, legend)
         fid = f"diagram_edit_{job_id}"
         comp.save(os.path.join(_out_dir(), fid + ".png"))
         out.save(os.path.join(_out_dir(), fid + "_raw.png"))
@@ -433,7 +485,7 @@ def _run(job_id, png_bytes, ask, steps, seed):
         try:   # 화살표는 벡터로, 구역 색은 색 바꿀 수 있는 층으로 나눈다(실패해도 합성 그림은 그대로 쓸 수 있다)
             _update(job, stage="4/4 화살표·구역 색을 편집 가능한 층으로 나누는 중", percent=98)
             from services import diagram_vector as DV
-            L = DV.build_layers(tint_parts(original, out), how, legend)
+            L = DV.build_layers(tint_parts(original, out, plate), how, legend)
             if L:
                 L["base"].save(os.path.join(_out_dir(), fid + "_base.png"))
                 zs = []
@@ -445,7 +497,8 @@ def _run(job_id, png_bytes, ask, steps, seed):
         except Exception as e:  # noqa: BLE001
             print(f"[DIAGRAM-EDIT] 층 나누기 실패(합성 그림 그대로 사용): {str(e)[:120]}")
         _update(job, status="done", stage="완료", percent=100, result={"image": f"/generated/{fid}.png", "raw": f"/generated/{fid}_raw.png", "width": comp.width, "height": comp.height, "layers": layers,
-                                                                         "title": title, "legend": legend, "instruction": instruction, "instruction_source": source, "legend_verified": legend_ok, "finish": how, "resolution": resolution, "seconds": int(time.time() - job["created"])})
+                                                                         "title": title, "legend": legend, "instruction": instruction, "instruction_source": source, "legend_verified": legend_ok, "finish": how, "resolution": resolution,
+                                                                         "zone_fill": "code" if zone_legend else ("none" if plate is not None else "model"), "seconds": int(time.time() - job["created"])})
     except Exception as e:  # noqa: BLE001 — 사유를 화면에 그대로 보여 준다
         print(f"[DIAGRAM-EDIT] 실패: {e}")
         _update(job, status="error", stage="실패", error=str(e)[:400])
