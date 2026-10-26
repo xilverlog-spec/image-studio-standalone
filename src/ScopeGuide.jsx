@@ -76,7 +76,7 @@ export default function ScopeGuide({ pickedText, onPick, subjectKind, onPickImag
             </div>
           </div>
         ))}
-        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>이미지를 올리면 AI가 종류를 판단해 위 방식 중 하나로 보냅니다. 원하는 방식이 있으면 카드의 <b>이 방식으로</b>를 눌러 직접 고를 수 있습니다. 이미지를 올린 채 <b>이 종류로</b>를 누르면 배치 개념도는 이미지의 배치를, 매스 과정도는 건물 형태를 읽어 만들고, 개요표·층별 조닝도·프로그램 버블도·카드 보드는 이미지에 보이는 글자·항목을 읽어 채웁니다.</span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.5 }}>이미지를 올리면 AI가 종류를 판단해 위 방식 중 하나로 보냅니다. 원하는 방식이 있으면 카드의 <b>이 방식으로</b>를 눌러 직접 고를 수 있습니다. 이미지를 올린 채 <b>이 종류로</b>를 누르면 배치 개념도는 이미지의 배치를, 매스 과정도는 건물 형태를 읽어 만들고, 개요표·카드 보드는 이미지에 보이는 글자·항목을 읽어 채웁니다.</span>
       </div>
     </details>
   );

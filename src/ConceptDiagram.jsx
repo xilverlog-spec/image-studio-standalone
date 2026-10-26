@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EmptyState } from './Icon';
 import { toIllustratorSvg, externalImageRefs } from './conceptDiagram/svgexport';
-import { DIAGRAM_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
+import { DIAGRAM_TYPES, OFFERED_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
 import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
@@ -442,14 +442,14 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     const src = srcOfCell(); if (!src) { addToast?.('info', '복사할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return false; }
     cellClip.current = src; cellCopyAtRef.current = Date.now(); setClipFilled(true); addToast?.('success', '칸 내용을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"를 누르세요(Ctrl+V 도 됩니다).'); return true;
   };
-  // 테스트: AI 없이 만든 것처럼 페이지 칸 4개에 예시 그림(손스케치·배치 개념도·프로그램 버블도·층별 조닝도)을 채워 페이지 편집 화면을 바로 시험한다(Ctrl+Z 로 되돌림)
+  // 테스트: AI 없이 만든 것처럼 페이지 칸 4개에 예시 그림(손스케치·배치 개념도·매스 과정도·개요표)을 채워 페이지 편집 화면을 바로 시험한다(Ctrl+Z 로 되돌림)
   const loadTestState = () => {
     pushHistory();
     const ids = cellIds('T3', null); const mk = (t) => ({ type: t, spec: JSON.parse(JSON.stringify(EXAMPLE_SPECS[t])), ver: Date.now() });
-    const work = { [ids[0]]: { type: 'sketch', spec: testSketchSpec(), ver: Date.now() }, [ids[1]]: mk('site'), [ids[2]]: mk('program'), [ids[3]]: mk('stack') };
+    const work = { [ids[0]]: { type: 'sketch', spec: testSketchSpec(), ver: Date.now() }, [ids[1]]: mk('site'), [ids[2]]: mk('massing'), [ids[3]]: mk('table') };
     setPageOn(true); setPg((q) => ({ ...q, layoutId: 'T3', custom: null, basePreset: 'T3', cellMeta: {} }));
     setCells(work); setSelCell(ids[0]); setResult(work[ids[0]]); setLeftTab('page'); setGenError(''); setRegionSel(null);
-    addToast?.('info', '테스트 화면을 불러왔습니다', '손스케치·배치 개념도·프로그램 버블도·층별 조닝도 예시가 페이지 칸 4개에 들어갔습니다. 이전 상태는 Ctrl+Z 로 되돌릴 수 있습니다.');
+    addToast?.('info', '테스트 화면을 불러왔습니다', '손스케치·배치 개념도·매스 과정도·개요표 예시가 페이지 칸 4개에 들어갔습니다. 이전 상태는 Ctrl+Z 로 되돌릴 수 있습니다.');
   };
   // 영역 복사: 편집 화면 위에서 복사할 영역을 끌어 고르면, 그 영역만 보이는 그림이 복사된다(붙여넣은 칸에는 그 영역만 보임, 편집 내용은 그대로)
   const [regionCopy, setRegionCopy] = useState(false); const [rcBand, setRcBand] = useState(null); const edWrapRef = useRef(null);
@@ -742,7 +742,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   useEffect(() => { if (result && (result.type === 'cards' || result.type === 'table')) setLeftTab((t) => (t === 'make' ? 'edit' : t)); }, [result?.ver]); // eslint-disable-line react-hooks/exhaustive-deps — 카드 보드·개요표는 만든 다음이 폼 수정이다(① 에서 만들었을 때만 자동으로 넘어간다)
   // 요청 반영 점검: 요청에서 뽑은 핵심 항목이 결과의 글(제목·칩·주석)에 들어 있는지(글자 수정도 바로 반영)
   const coverage = useMemo(() => (result && !result.isReadPreview && userText.trim() ? checkCoverage(userText, fields.map((f) => f.value)) : []), [result, fields, userText]);
-  const refMode = !!subjectImage && subjectUse === 'ref' && REF_TYPES.includes(forcedType); // 이미지에 보이는 글자·항목을 읽어 개요표·층별 조닝도·프로그램 버블도·카드 보드를 채운다
+  const refMode = !!subjectImage && subjectUse === 'ref' && REF_TYPES.includes(forcedType); // 이미지에 보이는 글자·항목을 읽어 개요표·카드 보드를 채운다
   const useEff = refMode ? 'ref' : subjectUse === 'ref' ? 'read' : subjectUse; // 고른 종류가 내용 읽기를 못 하는 것이면 형태 읽기로 본다
   const readMode = !!subjectImage && useEff === 'read';
   const asisMode = !!subjectImage && useEff === 'asis';
@@ -1295,7 +1295,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
               <img src={subjectImage} alt="소재 이미지" style={thumb} />
               <button style={btn(false, busy || reading)} disabled={busy || reading} onClick={() => { setSubjectImage(null); setRead(null); dropOldResult(); }}>소재 이미지 제거</button>
               <div style={{ display: 'flex', gap: 6 }}>
-                {[['read', '형태를 읽어서', '건물·평면·배치의 형태를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다'], ['asis', '그대로 바탕', '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다'], ['ref', '내용 읽기', '이미지에 보이는 글자·항목을 읽어 개요표·층별 조닝도·프로그램 버블도·카드 보드를 채웁니다']].map(([id, label, tip]) => (
+                {[['read', '형태를 읽어서', '건물·평면·배치의 형태를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다'], ['asis', '그대로 바탕', '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다'], ['ref', '내용 읽기', '이미지에 보이는 글자·항목을 읽어 개요표·카드 보드를 채웁니다']].map(([id, label, tip]) => (
                   <button key={id} style={{ ...btn(useEff === id, busy || reading), flex: 1, padding: '7px 4px', fontSize: 12 }} disabled={busy || reading} title={tip} data-testid={`subject-use-${id}`} onClick={() => { setSubjectUse(id); if (id === 'ref' && !REF_TYPES.includes(forcedType)) setForcedType('table'); }}>{label}</button>
                 ))}
               </div>
@@ -1376,7 +1376,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
                 </div>
               )}
               <p style={slotNote}>
-                {readMode ? '형태(건물·평면·배치)를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다.' : refMode ? '이미지에 보이는 글자·항목을 읽어 아래에서 고른 종류(개요표·층별 조닝도·프로그램 버블도·카드 보드)로 채웁니다. 보이지 않는 값은 지어내지 않으며, 설명(1번)에 강조하거나 뺄 것을 적을 수 있습니다. 결과는 클릭해서 고칩니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다. 이미지는 바뀌지 않습니다.'}
+                {readMode ? '형태(건물·평면·배치)를 읽고 다시 그려서 그 위에 다이어그램을 만듭니다.' : refMode ? '이미지에 보이는 글자·항목을 읽어 아래에서 고른 종류(개요표·카드 보드)로 채웁니다. 보이지 않는 값은 지어내지 않으며, 설명(1번)에 강조하거나 뺄 것을 적을 수 있습니다. 결과는 클릭해서 고칩니다.' : '올린 이미지를 바탕에 그대로 깔고 그 위에 흐름선·구역·아이콘을 얹습니다. 이미지는 바뀌지 않습니다.'}
               </p>
             </div>
           ) : (
@@ -1410,7 +1410,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           <span style={{ ...slotTitle, whiteSpace: 'nowrap' }}>종류</span>
           <select value={forcedType} onChange={(e) => setForcedType(e.target.value)} style={inputBase} data-testid="forced-type">
             {!refMode && <option value="auto">자동 (내용 보고 AI가 선택)</option>}
-            {Object.entries(DIAGRAM_TYPES).filter(([id]) => !refMode || REF_TYPES.includes(id)).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+            {Object.entries(DIAGRAM_TYPES).filter(([id]) => OFFERED_TYPES.includes(id) && (!refMode || REF_TYPES.includes(id))).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
         </div>}
         {textUI && forcedType !== 'auto' && <TypeNote id={forcedType} />}
@@ -1470,7 +1470,6 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
               </>)}
             </div>
           )}
-          <p style={{ fontSize: 11, color: 'var(--warn)', margin: 0, lineHeight: 1.5 }}>설명과 이미지가 외부(Google Gemini)로 전송됩니다. 대외비 자료는 올리지 마세요.</p>
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '다이어그램 만들기'}
           </button>

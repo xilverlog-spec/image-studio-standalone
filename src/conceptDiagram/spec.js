@@ -1,7 +1,7 @@
 import { ANCHORS, SITE_SHAPES, renderSiteConcept } from './siteConcept';
 import { renderMassing } from './massing';
 import { renderLayout2d, normalizeLayoutPanels } from './layout2d';
-import { ICON_LABEL, ICON_GROUPS, resolveIcon } from './icons';
+import { ICON_LABEL, ICON_GROUPS, ICON_NAMES, resolveIcon } from './icons';
 import { renderProgram, normalizeProgram } from './program';
 import { renderStack, normalizeStack } from './stack';
 import { renderSketch, normalizeSketch, getSketchTextFields } from './sketch';
@@ -17,6 +17,11 @@ export const DIAGRAM_TYPES = {
   cards: { label: '카드 보드 (기술·상품 계획 요약)', hint: '핵심 가치 띠 + 큰 그림 자리(좌우 설명·표·아이콘 목록) + 카드 격자(최대 12개)로 된 사내 도집 형식의 계획 요약 보드. 그림은 내 이미지를 넣는다' },
   stack: { label: '층별 조닝도 (단면 스택)', hint: '건물을 단면처럼 층 띠로 쌓고 층마다 프로그램 칸, 보이드·코어·채광/바람/조망, 공공성 변화 화살표를 얹는 도식' },
 };
+
+// 참고삽도 137쪽 분류(docs 6부)에서 버블도는 0쪽, 평면 띠형 조닝도는 1~2쪽뿐이라 2026-10-26 에 '만들 수 있는 종류'에서 뺐다.
+// 그리는 코드(program.js·stack.js)와 정규화는 그대로라 예전에 만든 결과·저장한 스펙은 계속 열리고 고쳐진다. 되살리려면 이 목록에서 지우면 된다.
+export const HIDDEN_TYPES = ['program', 'stack'];
+export const OFFERED_TYPES = Object.keys(DIAGRAM_TYPES).filter((t) => !HIDDEN_TYPES.includes(t));
 
 export const EXAMPLE_SPECS = {
   cards: CARD_PRESETS.plan.spec,
@@ -56,20 +61,26 @@ export const EXAMPLE_SPECS = {
   },
   massing: {
     title: '',
-    accent: '#C97B5A',
+    accent: '#F28C28',
+    context: [{ x: -3.4, y: -2.2, w: 1.8, d: 2, h: 1.4 }, { x: 6.4, y: 0.4, w: 1.8, d: 2.6, h: 2.6 }, { x: -2.8, y: 4.8, w: 2.4, d: 1.4, h: 1 }],
     steps: [
-      { label: 'EXTRUSION', ground: { x: 0, y: 0, w: 5, d: 4 }, boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 4, h: 2 }] },
+      { label: '직육면체로 대지를 채운다', ground: { x: 0, y: 0, w: 5, d: 4 }, boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 4, h: 2 }] },
       {
-        label: 'SUBTRACTION', ground: { x: 0, y: 0, w: 5, d: 4 },
+        label: '중앙을 덜어 열린 마당을 만든다', ground: { x: 0, y: 0, w: 5, d: 4 },
         boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 1.7, h: 2 }, { x: 0, y: 2.3, z: 0, w: 5, d: 1.7, h: 2 }, { x: 0, y: 1.7, z: 2.4, w: 5, d: 0.6, h: 1.6, mode: 'subtract', move: 'up', len: 1.4 }],
+        arrows: [{ from: [-1.6, 2, 0.5], to: [1.4, 2, 0.5], color: '#2F7FBF' }],
+        leaders: [{ box: 0, label: '북측 동', side: 'left' }, { box: 1, label: '남측 동', side: 'right' }],
       },
       {
-        label: 'ADDITION', ground: { x: 0, y: 0, w: 5, d: 4 },
+        label: '위에 라운지를 얹는다', ground: { x: 0, y: 0, w: 5, d: 4 },
         boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 1.7, h: 2 }, { x: 0, y: 2.3, z: 0, w: 5, d: 1.7, h: 2 }, { x: 1.8, y: 1.55, z: 3.2, w: 1.4, d: 0.9, h: 1.8, mode: 'add', move: 'down', len: 1.2 }],
+        leaders: [{ box: 2, label: '라운지', icon: 'sofa' }, { box: 0, label: '전시', icon: 'landmark', side: 'left' }, { box: 1, label: '교육', icon: 'graduation-cap', side: 'right' }],
       },
       {
-        label: 'FINAL FORM', ground: { x: 0, y: 0, w: 5, d: 4 },
-        boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 1.7, h: 2 }, { x: 0, y: 2.3, z: 0, w: 5, d: 1.7, h: 2 }, { x: 1.8, y: 1.55, z: 2, w: 1.4, d: 0.9, h: 1.8 }],
+        label: '최종 형태: 기능별로 색을 나눈다', ground: { x: 0, y: 0, w: 5, d: 4 },
+        boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 1.7, h: 2, color: '#F6C58E' }, { x: 0, y: 2.3, z: 0, w: 5, d: 1.7, h: 2, color: '#A9CBEA' }, { x: 1.8, y: 1.55, z: 2, w: 1.4, d: 0.9, h: 1.8, color: '#F28C28' }],
+        arrows: [{ from: [-1.6, 2, 0.5], to: [1.4, 2, 0.5], color: '#2F7FBF' }, { from: [2.5, 2, 4.8], to: [2.5, 2, 3.9], color: '#3E8E41' }],
+        leaders: [{ box: 0, label: '공공·전시', icon: 'landmark', side: 'left', color: '#C2410C' }, { box: 1, label: '교육·커뮤니티', icon: 'users', side: 'right', color: '#1E5FA8' }, { box: 2, label: '라운지', icon: 'sofa', side: 'right', color: '#B45309' }],
       },
     ],
   },
@@ -77,8 +88,8 @@ export const EXAMPLE_SPECS = {
     title: '복합문화시설 프로그램 구성',
     groups: [{ id: 'pub', name: '공공·전시', color: '#F28C28' }, { id: 'edu', name: '교육·커뮤니티', color: '#1E90C8' }, { id: 'sup', name: '지원', color: '#4B5563' }],
     nodes: [
-      { id: 'lobby', label: '로비', group: 'pub', size: 4 }, { id: 'exhib', label: '전시실', group: 'pub', size: 5 }, { id: 'cafe', label: '카페', group: 'pub', size: 3 },
-      { id: 'class', label: '교육실', group: 'edu', size: 3 }, { id: 'lib', label: '자료실', group: 'edu', size: 3 }, { id: 'comm', label: '커뮤니티홀', group: 'edu', size: 4 },
+      { id: 'lobby', label: '로비', group: 'pub', size: 4, area: '600㎡' }, { id: 'exhib', label: '전시실', group: 'pub', size: 5, area: '1,200㎡' }, { id: 'cafe', label: '카페', group: 'pub', size: 3, area: '240㎡' },
+      { id: 'class', label: '교육실', group: 'edu', size: 3, area: '300㎡' }, { id: 'lib', label: '자료실', group: 'edu', size: 3, area: '320㎡' }, { id: 'comm', label: '커뮤니티홀', group: 'edu', size: 4, area: '800㎡' },
       { id: 'office', label: '사무실', group: 'sup', size: 2 }, { id: 'store', label: '수장고', group: 'sup', size: 2 },
     ],
     links: [
@@ -89,10 +100,10 @@ export const EXAMPLE_SPECS = {
   stack: {
     title: '층별 조닝',
     floors: [
-      { name: '1F', programs: [{ name: '로비·카페', tone: 'public', width: 0.6 }, { name: '전시', tone: 'public', width: 0.4 }] },
-      { name: '2F', programs: [{ name: '커뮤니티', tone: 'semi', width: 0.5 }, { name: '교육실', tone: 'quiet', width: 0.5 }] },
-      { name: '3F', programs: [{ name: '자료실', tone: 'quiet', width: 0.6 }, { name: '사무', tone: 'service', width: 0.4 }] },
-      { name: '4F', programs: [{ name: '옥상정원·라운지', tone: 'private', width: 1 }] },
+      { name: '1F', h: 5.0, programs: [{ name: '로비·카페', tone: 'public', width: 0.6, area: '620㎡', no: '1' }, { name: '전시', tone: 'public', width: 0.4, area: '480㎡' }] },
+      { name: '2F', h: 4.2, programs: [{ name: '커뮤니티', tone: 'semi', width: 0.5, area: '540㎡', no: '2' }, { name: '교육실', tone: 'quiet', width: 0.5, area: '520㎡' }] },
+      { name: '3F', h: 4.2, programs: [{ name: '자료실', tone: 'quiet', width: 0.6, area: '610㎡' }, { name: '사무', tone: 'service', width: 0.4, area: '410㎡' }] },
+      { name: '4F', h: 4.2, programs: [{ name: '옥상정원·라운지', tone: 'private', width: 1, area: '980㎡', no: '3' }] },
     ],
     voids: [{ from: 0, to: 3, x: 0.42, w: 0.16, label: '중앙 보이드' }],
     cores: [{ x: 0.92, label: '코어' }],
@@ -123,32 +134,35 @@ export const SITE_SCHEMA = `{
 
 const MASSING_SCHEMA = `{
   "title": "전체 제목(없으면 빈 문자열)",
-  "accent": "#C97B5A",
+  "accent": "#F28C28",
   "steps": [   // 3~6단계. 단계 하나 = 도식 한 칸
     {
-      "label": "EXTRUSION",   // 단계 이름(영문 대문자 또는 한글)
+      "label": "중앙을 덜어 열린 마당을 만든다",   // 이 단계가 하는 일을 한 줄로(칸 위 제목 띠에 'STEP n'과 함께 나온다)
       "ground": {"x":0,"y":0,"w":5,"d":4},   // 대지 바닥 판(모듈 단위)
       "boxes": [
         // x,y = 바닥 위치, z = 바닥에서 띄운 높이, w = x방향 길이, d = y방향 길이, h = 높이 (모두 모듈 단위, 0~10 정도)
-        {"x":0,"y":0,"z":0,"w":5,"d":4,"h":2},                                          // 일반 매스
+        {"x":0,"y":0,"z":0,"w":5,"d":4,"h":2},                                          // 일반 매스(color 를 쓰면 그 색으로 입체 표현)
         {"x":0,"y":1.7,"z":2.4,"w":5,"d":0.6,"h":1.6,"mode":"subtract","move":"up","len":1.4}, // 덜어내는 부분(강조색 + 위로 뜨는 화살표)
         {"x":1.8,"y":1.5,"z":3.2,"w":1.4,"d":0.9,"h":1.8,"mode":"add","move":"down","len":1.2}  // 더하는 부분(강조색 + 아래로 내리는 화살표)
-      ]
+      ],
+      "leaders": [ {"box":2,"label":"라운지","icon":"(선택)아이콘 이름","side":"left|right(선택)","color":"(선택)#RRGGBB"} ],   // (선택) 프로그램 이름을 매스에 점선으로 잇는다. box = 이 단계 boxes 의 0부터 번호
+      "arrows": [ {"from":[-1.6,2,0.5],"to":[1.4,2,0.5],"color":"(선택)#RRGGBB"} ]                                    // (선택) 진입·동선·바람 화살표(모듈 좌표 [x,y,z])
     }
-  ]
+  ],
+  "context": [ {"x":-3,"y":-2,"w":1.8,"d":2,"h":1.4} ]   // (선택) 흐린 주변 매스. 요청에 주변 이야기가 있을 때만
 }`;
 
 const PROGRAM_SCHEMA = `{
   "title": "전체 제목(없으면 빈 문자열)",
   "groups": [ {"id":"pub","name":"묶음 이름(성격이 같은 공간들)","color":"#RRGGBB"} ],   // 2~5개 권장
-  "nodes": [ {"id":"lobby","label":"공간 이름","group":"pub","size":1~5} ],               // size = 면적/중요도(5가 가장 큼), 8~25개
+  "nodes": [ {"id":"lobby","label":"공간 이름","group":"pub","size":1~5,"icon":"(선택)아이콘 이름","area":"(선택)면적 글자 예 600㎡"} ],   // size = 면적/중요도(5가 가장 큼), 8~25개
   "links": [ {"from":"lobby","to":"exhib","kind":"direct|weak","label":"짧은 설명(없으면 빈 문자열)"} ]   // direct = 직접 연결, weak = 약한 관련
 }`;
 
 const STACK_SCHEMA = `{
   "title": "전체 제목(없으면 빈 문자열)",
   "floors": [   // 아래층부터 순서대로 3~8개
-    {"name":"1F", "programs":[ {"name":"로비·카페", "tone":"public|semi|quiet|private|service", "width":0.05~1} ]}   // width = 그 층에서 차지하는 폭 비율(합이 1 근처), 한 층에 최대 6칸
+    {"name":"1F", "h":4.2, "programs":[ {"name":"로비·카페", "tone":"public|semi|quiet|private|service", "width":0.05~1, "area":"(선택)620㎡", "no":"(선택)1"} ]}   // width = 그 층에서 차지하는 폭 비율(합이 1 근처), 한 층에 최대 6칸. h = 층고(m, 선택)
   ],
   "voids":  [ {"from":0, "to":3, "x":0.42, "w":0.16, "label":"중앙 보이드"} ],   // from/to = 층 인덱스(0부터), x/w = 건물 폭 대비 비율. 없으면 빈 배열
   "cores":  [ {"x":0.92, "label":"코어"} ],
@@ -165,20 +179,25 @@ icon은 반드시 아래 목록의 이름(왼쪽 영문) 중 하나로만 쓴다
 const MASSING_RULES = `- 이전 단계의 매스를 유지하면서 한 단계씩 변화시킨다(덜어내기는 mode:"subtract", 더하기는 mode:"add"). 마지막 단계는 변화 표시 없이 최종 형태만 둔다.
 - 덜어내기 단계에서는 원래 매스(솔리드 박스)는 그대로 두고, 덜어낼 부분을 mode:"subtract" 박스로 매스 안쪽의 그 위치에 적는다. 프로그램이 매스에서 그만큼 도려내고 그 박스를 위로 빼서 보여 준다(그래서 단계마다 눈에 띄는 변화가 있어야 한다: 덜어낸 부분은 매스 부피의 10~40%).
 - 솔리드 박스끼리는 겹치게 배치하지 않는다. 모든 단계의 ground 크기는 동일하게 유지한다.
-- 숫자는 모듈 단위(보통 0~6)로 작게 쓴다. label은 영문 대문자(예: EXTRUSION, SUBTRACTION, ADDITION, FINAL FORM)를 권장한다.`;
+- 숫자는 모듈 단위(보통 0~6)로 작게 쓴다. label 은 그 단계가 하는 일을 한 줄(20자 안팎)로 쓴다(예: 중앙을 덜어 열린 마당을 만든다). 영문 대문자 이름(EXTRUSION 등)도 된다.
+- leaders(지시선)는 요청·자료에 프로그램·공간 이름이 있을 때만 쓴다(없는 이름을 지어내지 않는다). 한 단계에 4개까지, 이름은 14자 이내. icon 은 뜻이 분명할 때만(모르면 생략): ${ICON_NAMES.join(', ')}.
+- arrows 는 진입·동선·바람 같은 흐름이 요청에 있을 때만 쓴다. 색: 주황(#F28C28)=주요 흐름, 파랑(#2F7FBF)=사람·접근, 초록(#3E8E41)=자연·환경. 색이 필요 없으면 생략한다.
+- 기능·영역별로 매스를 구분하려면 일반 매스에 color(옅은 색)를 준다. 구분이 필요 없으면 생략한다(흰색).`;
 
 const PROGRAM_RULES = `- 좌표를 정하지 않는다. 묶음(groups)은 성격이 같은 공간끼리 2~5개로 나누고 모든 노드가 반드시 하나의 묶음에 속하게 한다.
 - 노드 label 은 12자 이내의 공간 이름. 실제 면적이 주어지면 면적에 비례해 size 를 정하고, 없으면 중요도로 정한다.
-- links 는 실제로 이어져야 하는 관계만 쓰고 모든 노드가 최소 하나의 연결을 갖게 한다. 직접 접하는 관계는 direct, 느슨한 관련은 weak.`;
+- links 는 실제로 이어져야 하는 관계만 쓰고 모든 노드가 최소 하나의 연결을 갖게 한다. 직접 접하는 관계는 direct, 느슨한 관련은 weak.
+- area 는 자료에 면적이 실제로 적혀 있을 때만 그대로 옮긴다(없으면 생략, 지어내지 않는다). icon 은 뜻이 분명할 때만 쓰고 모르면 생략한다(생략하면 이름으로 짐작해 붙인다). 쓸 수 있는 icon: ${ICON_NAMES.join(', ')}.`;
 
 const STACK_RULES = `- floors 는 아래층부터 순서대로 적는다(지하층이 있으면 B1 을 맨 앞). 한 층의 programs 는 폭(width)의 합이 1 근처가 되게 한다.
 - tone 은 공공성에 따라 고른다: public(누구나 쓰는 공공), semi(준공공), quiet(조용한 학습·업무), private(사적), service(지원·설비).
-- 보이드·코어·환경 요소는 요청에 있을 때만 넣고, 없으면 빈 배열로 둔다. 프로그램 이름은 12자 이내 한국어.`;
+- 보이드·코어·환경 요소는 요청에 있을 때만 넣고, 없으면 빈 배열로 둔다. 프로그램 이름은 12자 이내 한국어.
+- h(층고)·area(면적)는 자료에 숫자가 적혀 있을 때만 그대로 옮긴다(없으면 생략). no 는 설명에서 번호로 강조·구분하는 칸(예: 보안 등급)에만 1~9 숫자로 붙인다.`;
 
 const IMAGE_RULE = `참고 이미지가 첨부되어 있다. 이미지를 먼저 분석해서 칸(패널/단계) 수, 각 칸이 보여주는 개념, 사용된 요소(흐름선·구역·아이콘 칩·매스 변화)와 전체 구성을 파악하고, 같은 구성과 흐름으로 만들되 내용은 아래 요청 문장을 우선 반영한다. 이미지 안의 글자는 그대로 베끼지 말고 요청에 맞게 새로 쓴다.`;
 
 // 소재 이미지를 '바탕'이 아니라 '내용을 읽어 올 자료'로 쓰는 종류(imgs.ref): 이미지에 보이는 글자·항목만 옮기고 지어내지 않는다
-export const REF_TYPES = ['table', 'stack', 'program', 'cards'];
+export const REF_TYPES = ['table', 'cards']; // 내용 읽기가 되는 종류(버블도·조닝도는 제공 목록에서 뺐다)
 const REF_RULES = {
   table: '이미지는 표(건축개요·면적표·일람표 등)를 찍거나 캡처한 것이다. 보이는 라벨–값을 위에서 아래 순서대로 rows 에 옮긴다. cols 는 보이는 열 수에 맞추되 최대 4(열이 더 많으면 핵심 4열만), 숫자 열이 많은 표(면적표 등)는 style 을 "stripe" 로 한다. 표 제목이 보이면 table.title 에 쓰고, 글자가 흐려 읽지 못한 칸은 비워 둔다.',
   stack: '이미지는 단면도·입면도·층별 면적표·층 구성표 중 하나다. 층 수와 층별 용도(프로그램)를 읽어 floors 를 아래층부터 채운다(지하층은 B1 처럼 쓰고, 8층을 넘으면 비슷한 층을 묶는다). 층 안의 구획이 보이면 programs 로, 비어 있는 높은 공간(보이드)과 코어가 보이면 voids·cores 로 넣는다. 글자로 적힌 용도만 쓰고 적히지 않은 프로그램을 지어내지 않는다.',
@@ -227,7 +246,7 @@ const cardsRules = (preset) => `${CARDS_RULES_BASE}
 const SCHEMAS = { site: SITE_SCHEMA, massing: MASSING_SCHEMA, program: PROGRAM_SCHEMA, stack: STACK_SCHEMA, cards: CARDS_SCHEMA, table: TABLE_DOC_SCHEMA };
 const RULES = { site: SITE_RULES, massing: MASSING_RULES, program: PROGRAM_RULES, stack: STACK_RULES, cards: cardsRules('plan'), table: TABLE_DOC_RULES };
 
-// type: 'auto' | 'site' | 'massing' | 'program' | 'stack'. auto 면 AI가 내용을 보고 종류까지 고르고, 응답 최상위에 "type" 을 넣게 한다.
+// type: 'auto' | 'site' | 'massing' | 'cards' | 'table' (program·stack 은 제공하지 않지만 직접 지정하면 예전처럼 동작). auto 면 AI가 내용을 보고 종류까지 고르고, 응답 최상위에 "type" 을 넣게 한다.
 export function buildConceptPrompt(type, userText, imgs = {}, extra = {}) {
   const head = `당신은 건축 설계사무소의 개념 다이어그램 설계자다. 아래 요청을 보고 다이어그램의 구조를 JSON으로만 출력한다(설명/마크다운/코드펜스 금지).
 좌표를 픽셀로 계산하지 말고 아래 스키마의 값만 채운다. 실제 그리기는 프로그램이 한다.`;
@@ -245,11 +264,9 @@ export function buildConceptPrompt(type, userText, imgs = {}, extra = {}) {
 먼저 요청의 성격에 맞는 종류를 고른다.
 - "site": 대지/배치도 위에 동선·구역·테마·순환 같은 개념을 표시하는 배치 개념도
 - "massing": 건물 매스를 단계별로 더하고 덜어내며 형태가 만들어지는 과정을 보여주는 아이소메트릭 매스 과정도
-- "program": 공간(프로그램)의 구성과 서로의 관계를 원(크기=면적/중요도)과 연결선으로 보여주는 프로그램 버블도
-- "stack": 건물을 단면처럼 층별로 쌓아 층마다 어떤 프로그램이 들어가는지, 보이드·코어·채광 등을 보여주는 층별 조닝도
 - "cards": 한 분야(구조·설비·에너지 등)의 계획을 핵심 가치 띠 + 큰 그림 자리 + 카드 격자로 요약하는 계획 요약 보드(카드 보드)
 - "table": 건축개요·면적표처럼 라벨–값으로 된 2~4열 표 하나(개요표)
-선택한 종류의 스키마 값을 채우고, JSON 최상위에 "type":"site", "massing", "program", "stack", "cards", "table" 중 하나를 반드시 포함한다.
+선택한 종류의 스키마 값을 채우고, JSON 최상위에 "type":"site", "massing", "cards", "table" 중 하나를 반드시 포함한다.
 
 [site 스키마]
 ${SITE_SCHEMA}
@@ -262,18 +279,6 @@ ${MASSING_SCHEMA}
 
 [massing 규칙]
 ${MASSING_RULES}
-
-[program 스키마]
-${PROGRAM_SCHEMA}
-
-[program 규칙]
-${PROGRAM_RULES}
-
-[stack 스키마]
-${STACK_SCHEMA}
-
-[stack 규칙]
-${STACK_RULES}
 
 [cards 스키마]
 ${CARDS_SCHEMA}
@@ -361,14 +366,14 @@ export function getTextFields(type, spec) {
   if (type === 'table') return getTableDocFields(spec);
   if (spec.title !== undefined) out.push({ path: ['title'], label: '전체 제목', value: spec.title || '' });
   if (type === 'massing') {
-    (spec.steps || []).forEach((s, i) => out.push({ path: ['steps', i, 'label'], label: `단계 ${i + 1} 이름`, value: s.label || '' }));
+    (spec.steps || []).forEach((s, i) => { out.push({ path: ['steps', i, 'label'], label: `단계 ${i + 1} 이름`, value: s.label || '' }); (s.leaders || []).forEach((l, j) => { if (l && l.label) out.push({ path: ['steps', i, 'leaders', j, 'label'], label: `단계 ${i + 1} 지시선 ${j + 1}`, value: String(l.label) }); }); });
   } else if (type === 'program') {
     (spec.groups || []).forEach((g, i) => { if (g.name !== undefined) out.push({ path: ['groups', i, 'name'], label: `묶음 ${i + 1} 이름`, value: g.name || '' }); });
-    (spec.nodes || []).forEach((n, i) => out.push({ path: ['nodes', i, 'label'], label: `공간 ${i + 1}`, value: n.label || '' }));
+    (spec.nodes || []).forEach((n, i) => { out.push({ path: ['nodes', i, 'label'], label: `공간 ${i + 1}`, value: n.label || '' }); if (n.area) out.push({ path: ['nodes', i, 'area'], label: `공간 ${i + 1} 면적`, value: String(n.area) }); });
   } else if (type === 'stack') {
     (spec.floors || []).forEach((f, i) => {
       out.push({ path: ['floors', i, 'name'], label: `층 ${i + 1} 이름`, value: f.name || '' });
-      (f.programs || []).forEach((p, j) => out.push({ path: ['floors', i, 'programs', j, 'name'], label: `${f.name || i + 1} 칸 ${j + 1}`, value: p.name || '' }));
+      (f.programs || []).forEach((p, j) => { out.push({ path: ['floors', i, 'programs', j, 'name'], label: `${f.name || i + 1} 칸 ${j + 1}`, value: p.name || '' }); if (p.area) out.push({ path: ['floors', i, 'programs', j, 'area'], label: `${f.name || i + 1} 칸 ${j + 1} 면적`, value: String(p.area) }); });
     });
     (spec.voids || []).forEach((v, i) => out.push({ path: ['voids', i, 'label'], label: `보이드 ${i + 1}`, value: v.label || '' }));
     (spec.cores || []).forEach((c, i) => out.push({ path: ['cores', i, 'label'], label: `코어 ${i + 1}`, value: c.label || '' }));

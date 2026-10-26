@@ -30,7 +30,7 @@ const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
-fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
+fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, OFFERED_TYPES, HIDDEN_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, isPlainMemo, sketchBoxFor, sketchUnionBox, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
 export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
@@ -97,7 +97,8 @@ for (const t of Object.keys(m.DIAGRAM_TYPES)) {
   if (!m.buildConceptPrompt(t, '시험', {}).includes('스키마')) fails.push(`프롬프트 ${t}: 스키마 안내 없음`);
 }
 const auto = m.buildConceptPrompt('auto', '시험', {});
-for (const t of Object.keys(m.DIAGRAM_TYPES)) if (!auto.includes(`"${t}"`)) fails.push(`자동 프롬프트에 종류 ${t} 가 없음`);
+for (const t of m.OFFERED_TYPES) if (!auto.includes(`"${t}"`)) fails.push(`자동 프롬프트에 종류 ${t} 가 없음`);
+for (const t of m.HIDDEN_TYPES) if (auto.includes(`"${t}"`) || auto.includes(`[${t} 스키마]`)) fails.push(`자동 프롬프트에 제공하지 않는 종류 ${t} 가 남아 있음`);
 
 // 2) 망가진 입력: AI 가 틀린 값을 줘도 렌더가 깨지지 않아야 한다(의도된 오류 메시지는 허용)
 const intended = /비어 있습니다|읽어 낸 도형이 없습니다/;
@@ -1034,7 +1035,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const expect = (cond, label) => { if (cond) ok++; else fails.push(`종류 범위: ${label}`); };
   const ids = m.CATALOG.map((c) => c.id);
   expect(new Set(ids).size === ids.length, '카탈로그 id 가 겹치지 않음');
-  expect(Object.keys(m.DIAGRAM_TYPES).every((t) => m.CATALOG.some((c) => c.group === 'text' && c.id === t && c.thumb?.type === t)), '설명만으로 만드는 모든 종류(배치·매스·버블·층별)가 카탈로그에 있음');
+  expect(m.OFFERED_TYPES.every((t) => m.CATALOG.some((c) => c.group === 'text' && c.id === t && c.thumb?.type === t)) && m.CATALOG.filter((c) => c.group === 'text').length === m.OFFERED_TYPES.length, '제공하는 모든 종류(배치·매스·개요표·카드 보드)가 카탈로그에 있고, 뺀 종류(버블도·층별 조닝도)는 없음');
   expect(Object.keys(m.SUBJECT_KINDS).filter((k) => !['other', 'site'].includes(k)).every((k) => m.CATALOG.some((c) => c.group === 'image' && c.id === k)), '이미지로 만드는 모든 방식(도면 위 표시·평면·형태·손스케치·자유 해석·축측도)이 카탈로그에 있음(배치도 읽기는 배치 개념도 카드가 안내)');
   expect(m.CATALOG.filter((c) => c.group !== 'out').every((c) => c.can.length && c.cannot.length && c.needs && c.summary && c.label), '지원 종류마다 가능·불가·입력 안내가 있음');
   expect(m.CATALOG.filter((c) => c.group === 'out').every((c) => c.alt && (c.status === 'no' || c.status === 'plan') && Array.isArray(c.nearest)), '지원 안 함 종류마다 대안 안내가 있음');
@@ -1049,8 +1050,8 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(sc('1층 평면도를 그려줘').category?.id === 'drawing' && sc('단면도를 작성해 주세요').category?.id === 'drawing', '평면도·단면도 작성 → 도면');
   expect(sc('회사 로고 만들어줘').category?.id === 'illust', '로고 → 일러스트');
   expect(sc('구조계획 카드 보드로 정리해줘').inScope && sc('친환경 계획을 한 장으로 정리').inScope && m.looksLikeCards('구조계획 카드 보드로 정리해줘') && m.looksLikeCards('설비 계획을 한 장으로 정리') && !m.looksLikeCards('매스 과정도 만들어줘') && !m.looksLikeCards(''), '카드 보드는 이제 범위 안(종류가 자동이면 카드 보드로 보냄)');
-  expect(sc('조직도를 그려줘').nearest[0]?.type === 'program' && sc('평면도를 그려줘').nearest[0]?.type === 'stack', '가까운 종류 제안(조직도→버블도, 도면→층별 조닝도)');
-  expect(sc('조직도를 그려줘').nearest[0]?.label.includes('버블도'), '제안에 종류 이름이 붙음');
+  expect(sc('조직도를 그려줘').nearest[0]?.type === 'table' && sc('평면도를 그려줘').nearest[0]?.type === 'edit', '가까운 종류 제안(조직도→개요표, 도면→도면 위 표시)');
+  expect(sc('조직도를 그려줘').nearest[0]?.label.includes('개요표'), '제안에 종류 이름이 붙음');
   for (const t of ['중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조', '이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계', '1층 로비·카페, 2~3층 연구실, 중앙 보이드와 채광', '배치도 위에 보행 동선과 차량 동선을 표시', '조감도 위에 보행 흐름을 얹어줘', '대표 공간과 표지 디자인', '']) expect(sc(t).inScope === true, `범위 안 설명은 그대로 통과: ${t.slice(0, 20)}`);
   expect(m.IMAGE_OTHER_NEAREST.every((n) => m.SUBJECT_KINDS[n.kind]) && m.IMAGE_OTHER_NEAREST[0].kind === 'freeform', '이미지 그 외 안내의 방식이 실제 읽기 방식이고 자유 해석이 맨 앞');
 }
@@ -1379,7 +1380,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
 // 이미지 내용 읽기(개요표·층별 조닝도·프로그램 버블도·카드 보드)
 {
   const expect = (cond, label) => { if (cond) ok++; else fails.push(`이미지 내용 읽기: ${label}`); };
-  expect(JSON.stringify(m.REF_TYPES) === JSON.stringify(['table', 'stack', 'program', 'cards']), 'REF_TYPES 는 네 종류');
+  expect(JSON.stringify(m.REF_TYPES) === JSON.stringify(['table', 'cards']), 'REF_TYPES 는 개요표·카드 보드');
   const key = { table: '라벨–값을', stack: '층 수와 층별 용도', program: '공간(방·실)의 이름', cards: '이미지에 적힌 항목과 수치' };
   for (const t of m.REF_TYPES) {
     const pr = m.buildConceptPrompt(t, '', { ref: true });
@@ -1996,6 +1997,62 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     const t4 = m.tableSetCols(t, 4, true); expect(t4.cols === 4 && t4.rows.every((r) => r.length === 4 && r[2] === '내용' && r[3] === '내용' && r[0].length > 0 && r[1].length > 0), '열 늘리기: fill 이면 새 칸에 기본 글자(기존 칸은 그대로)');
     expect(m.tableSetCols(t, 4).rows.every((r) => r[2] === ''), '열 늘리기: 기본은 빈 칸(예전과 같음)');
     expect(m.tableHasEmpty(m.tableAddRow(t)) && !m.tableHasEmpty(t) && !m.tableHasEmpty(m.tableFillEmpty(m.tableAddRow(t))) && m.tableFillEmpty(m.tableAddRow(t)).rows.at(-1).join() === '–,–', '빈 칸 찾기·채우기'); }
+}
+// 프로그램 버블도·층별 조닝도 개선(2026-10-26): 아이콘·면적·범례 / 층고 치수선·번호 배지·인물·가로 라벨
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`버블도·조닝도 개선: ${label}`); };
+  const clone = (o) => JSON.parse(JSON.stringify(o)); const P0 = m.EXAMPLE_SPECS.program; const S0 = m.EXAMPLE_SPECS.stack;
+  const ICON_G = /<g transform="translate\(-?\d+\.\d -?\d+\.\d\) scale\(/g; const hasIcon = (svg) => /<g transform="translate\(-?\d+\.\d -?\d+\.\d\) scale\(/.test(svg); // test 는 g 플래그의 위치 상태를 타서 따로 둔다
+  const rp = m.renderSpec('program', P0).svg;
+  expect(!/NaN|undefined/.test(rp), '버블도: NaN·undefined 없음');
+  expect(rp.includes('1,200㎡') && rp.includes('크기 = 면적·중요도') && rp.includes('직접 연결') && rp.includes('약한 관련'), '버블도: 면적 줄과 범례(크기·직접·약한)가 그려짐');
+  expect((rp.match(ICON_G) || []).length >= 6, '버블도: 공간 이름으로 짐작한 아이콘이 여러 개 붙음');
+  expect(!hasIcon(m.renderSpec('program', { ...clone(P0), autoIcon: false }).svg), '버블도: autoIcon:false 면 아이콘을 짐작해 붙이지 않음');
+  { const sp = clone(P0); sp.nodes[0].icon = 'zap'; sp.nodes[1].icon = '없는-아이콘'; const n = m.normalizeSpec('program', sp);
+    expect(n.nodes[0].icon === 'zap' && n.nodes[1].icon === '', '버블도: 목록에 있는 icon 만 받고 모르는 이름은 버림');
+    sp.nodes[2].area = '1234567890123456'; expect(m.normalizeSpec('program', sp).nodes[2].area.length === 12, '버블도: 면적 글자는 12자까지'); }
+  { const sp = { groups: [{ id: 'a', name: '가', color: '#F9D2A0' }], nodes: [{ id: 'x', label: '로비', group: 'a', size: 3, area: '10㎡' }], links: [] };
+    expect(m.renderSpec('program', sp).svg.includes('fill="#222222"'), '버블도: 밝은 색 바탕에는 어두운 글자색'); }
+  { const sp = { groups: [{ id: 'a', name: '가', color: '#F28C28' }], nodes: Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, label: '로비', group: 'a', size: 1, icon: 'zap', area: '10㎡' })), links: [] }; const r = m.renderSpec('program', sp).svg;
+    expect(!/NaN|undefined/.test(r), '버블도: 작은 원 40개에 icon·면적을 줘도 깨지지 않음'); }
+  expect(m.getTextFields('program', P0).some((f) => f.label.includes('면적') && f.value === '1,200㎡'), '버블도: 글자 수정 목록에 면적이 있음');
+  const rs = m.renderSpec('stack', S0).svg;
+  expect(!/NaN|undefined/.test(rs), '조닝도: NaN·undefined 없음');
+  expect(rs.includes('5.0m') && rs.includes('4.2m') && rs.includes('#1E5FA8'), '조닝도: 층고(h)가 있으면 오른쪽에 치수선과 m 글자');
+  expect(!rs.includes('rotate(-90') , '조닝도: 뭉개지던 세로 글자(rotate -90)를 쓰지 않음');
+  expect((rs.match(/fill="#1f242b"/g) || []).length >= 3 && rs.includes('>1<') && rs.includes('>3<'), '조닝도: no 가 있는 칸에 검은 번호 배지');
+  expect(rs.includes('620㎡') && rs.includes('#C3C9D1'), '조닝도: 면적 줄과 수목 실루엣');
+  expect(!m.renderSpec('stack', { ...clone(S0), entourage: false }).svg.includes('#C3C9D1'), '조닝도: entourage:false 면 인물·수목이 없음');
+  { const sp = clone(S0); sp.floors.forEach((f) => { delete f.h; }); expect(!m.renderSpec('stack', sp).svg.includes('#1E5FA8'), '조닝도: h 가 없으면 치수선 없음(예전 모양)'); }
+  { const sp = clone(S0); sp.floors[0].h = 'abc'; sp.floors[1].h = 100; sp.floors[2].programs[0].no = '1234'; const n = m.normalizeSpec('stack', sp);
+    expect(n.floors[0].h === 0 && n.floors[1].h === 30 && n.floors[2].programs[0].no.length === 2, '조닝도: h 는 숫자(1.5~30)만, 번호는 2자까지'); }
+  expect(m.getTextFields('stack', S0).some((f) => f.label.includes('면적') && f.value === '620㎡'), '조닝도: 글자 수정 목록에 면적이 있음');
+  { const many = { floors: Array.from({ length: 12 }, (_, i) => ({ name: `${i + 1}F`, h: 4, programs: [{ name: '아주아주긴이름의프로그램', tone: 'public', width: 0.2, area: '999㎡', no: '9' }, { name: '칸', tone: 'quiet', width: 0.8 }] })), voids: [{ from: 0, to: 11, x: 0.3, w: 0.3, label: '보이드' }], cores: [{ x: 0.9, label: '코어' }], forces: [{ kind: 'light', label: '채광' }, { kind: 'wind', label: '바람' }, { kind: 'view', label: '조망' }, { kind: 'noise', label: '소음' }], gradient: { label: '공공성', from: '높음', to: '낮음' } };
+    const r = m.renderSpec('stack', many); expect(!/NaN|undefined/.test(r.svg) && r.height > 1000, '조닝도: 12층 + 모든 요소를 켜도 깨지지 않음'); }
+}
+// 매스 과정도 개선(2026-10-26): STEP 라벨 띠 · 프로그램 점선 지시선(아이콘 칩) · 색 입체 · 테마 화살표 · 주변 매스
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`매스 과정도 개선: ${label}`); };
+  const clone = (o) => JSON.parse(JSON.stringify(o)); const M0 = m.EXAMPLE_SPECS.massing;
+  const r0 = m.renderSpec('massing', M0).svg;
+  expect(!/NaN|undefined/.test(r0), 'NaN·undefined 없음(주변 매스 포함)');
+  expect((r0.match(/>STEP \d</g) || []).length === 4 && r0.includes('중앙을 덜어 열린 마당을 만든다'), '단계마다 STEP 번호 박스 + 한 줄 제목 띠');
+  expect(r0.includes('>라운지<') && r0.includes('>전시<') && r0.includes('stroke-dasharray="2 3"'), '프로그램 이름 지시선(점선)');
+  expect((r0.match(/<g transform="translate\(-?\d+\.\d -?\d+\.\d\) scale\(0\.8\)">/g) || []).length >= 4, '지시선 라벨에 아이콘 칩');
+  expect(r0.includes('marker-end="url(#ma1_0)"') && r0.includes('#2F7FBF'), '진입 화살표(파랑)가 그려짐');
+  expect(r0.includes('clip-path="url(#mclip0)"'), '주변 매스가 칸 밖으로 번져도 칸 안에서 잘림');
+  expect(!m.renderSpec('massing', { ...clone(M0), numbering: false }).svg.includes('>STEP 1<'), 'numbering:false 면 STEP 박스 없음(제목 띠는 유지)');
+  { const old = { title: '', accent: '#C97B5A', steps: [{ label: 'EXTRUSION', ground: { x: 0, y: 0, w: 5, d: 4 }, boxes: [{ x: 0, y: 0, z: 0, w: 5, d: 4, h: 2 }, { x: 0, y: 1.7, z: 2.4, w: 5, d: 0.6, h: 1.6, mode: 'subtract', move: 'up' }] }] };
+    const r = m.renderSpec('massing', old).svg; expect(!/NaN|undefined/.test(r) && r.includes('>STEP 1<') && r.includes('EXTRUSION'), '예전 스펙(새 항목 없음)도 그대로 그려지고 제목 띠가 붙음'); }
+  { const sp = clone(M0); sp.steps[2].leaders = [{ box: 99, label: '없는 박스' }, { box: 0, label: '' }, { box: 0, label: '아주아주아주아주긴이름의프로그램입니다', icon: '없는-아이콘' }, { at: [1, 1, 1], label: '좌표 지시선' }, ...Array.from({ length: 9 }, (_, i) => ({ box: 1, label: `P${i}` }))];
+    const r = m.renderSpec('massing', sp).svg; expect(!/NaN|undefined/.test(r) && !r.includes('없는 박스') && r.includes('좌표 지시선') && r.includes('아주아주아주아주긴이름'.slice(0, 5)) && !r.includes('긴이름의프로그램입니다'), '지시선: 없는 박스·빈 라벨은 버리고, 긴 이름은 14자까지, 좌표 지시선 가능');
+    expect((r.match(/stroke-dasharray="2 3"/g) || []).length <= 6 + 2, '한 단계 지시선은 6개까지'); }
+  { const sp = clone(M0); sp.steps[1].arrows = [{ from: [0, 0, 0] }, { from: 'x', to: [1, 1, 1] }, { from: [1, 1, 1], to: [3, 3, 1], color: 'red' }]; const r = m.renderSpec('massing', sp).svg;
+    expect(!/NaN|undefined/.test(r) && (r.match(/marker-end="url\(#ma1_/g) || []).length === 1, '화살표: from/to 가 모자란 것은 버림, 색이 이상하면 강조색');
+    sp.steps.forEach((st) => { st.leaders = []; st.arrows = []; }); delete sp.context; expect(!/NaN|undefined/.test(m.renderSpec('massing', sp).svg), '지시선·화살표·주변 매스가 모두 없어도 깨지지 않음'); }
+  { const sp = clone(M0); sp.steps[3].boxes[0].color = '#2B6CB0'; const r = m.renderSpec('massing', sp).svg; expect(r.includes('#2B6CB0') && r.includes('#2B6CB0'.toLowerCase()) === false || r.includes('#2B6CB0'), '색 입체: 지정한 색이 오른쪽 면에 쓰임'); }
+  expect(m.getTextFields('massing', M0).some((f) => f.label.includes('지시선') && f.value === '라운지'), '글자 수정 목록에 지시선 이름이 있음');
+  { const sp = clone(M0); sp.cols = 1; const r = m.renderSpec('massing', sp); expect(!/NaN|undefined/.test(r.svg) && r.height >= 4 * 360, '1열(세로로 쌓기)에서도 깨지지 않음'); }
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');
