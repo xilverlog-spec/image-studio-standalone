@@ -205,7 +205,9 @@ export function makeFreeformSpec(read, style = 'concept') {
     return { ...base, dash: 'solid', width: 3.4, color: FF_COLORS.motion, form: 'line', shape: 'straight' };
   });
   const norm = (s) => String(s).replace(/[\s!！.]/g, '').toLowerCase();
-  const memos = read.texts.filter((t) => norm(t.text) !== norm(read.title)).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 22, color: '#2B2523' }));
+  // 요소 이름(판 안에 자동으로 그려짐)과 같은 글자가 그 판 안(또는 바로 곁)에 또 읽혔으면 한 번 더 찍지 않는다 — 평면에 방 이름이 적혀 있으면 이름이 두 겹으로 겹쳐 보였다
+  const dupOfName = (t) => blocks.some((b) => b.name && norm(b.name) === norm(t.text) && t.pos[0] >= b.rect[0] - 4 && t.pos[0] <= b.rect[2] + 4 && t.pos[1] >= b.rect[1] - 4 && t.pos[1] <= b.rect[3] + 4);
+  const memos = read.texts.filter((t) => norm(t.text) !== norm(read.title) && !dupOfName(t)).map((t, i) => ({ id: `m${i + 1}`, x: t.pos[0], y: t.pos[1], text: t.text, size: 22, color: '#2B2523' }));
   const all = [...blocks.flatMap((b) => [[b.rect[0], b.rect[1]], [b.rect[2], b.rect[3]]]), ...winds.flatMap((w) => w.pts), ...memos.map((m) => [m.x, m.y])];
   const [x0, y0, x1, y1] = bbox(all); const padX = (x1 - x0) * 0.05; const padY = (y1 - y0) * 0.05;
   return { title: read.title, subtitle: read.subtitle, style, frame: [x0 - padX, y0 - padY, x1 + padX, y1 + padY], blocks, lines: [], winds, memos, legend: { wind: '움직임', core: '코어(계단·승강기)', opening: '개구부(창)' }, notes: [] };

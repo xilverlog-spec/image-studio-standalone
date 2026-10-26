@@ -275,6 +275,11 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   if (sp2.blocks.filter((b) => b.fill === '#F2C94C').length !== 2 || sp2.blocks[0].fill !== '#D9D5CE') throw new Error('고정은 회색·가변은 노랑이어야 함');
   const w = sp2.winds[0]; if (w.shape !== 'arc' || w.dash !== 'dashed' || !(Math.abs(w.amp) >= 0.15)) throw new Error('회전은 점선 호여야 함');
   if (sp2.memos.length !== 1 || sp2.memos[0].text !== '7/15/15 S. Holl') throw new Error('제목과 같은 글자 메모는 빼야 함');
+  { // 방 이름이 요소 이름과 글자로 또 읽히면(평면에 이름이 적힌 경우) 한 번만 보여야 한다. 다른 곳의 같은 글자·다른 글자는 남긴다
+    const dup = m.makeFreeformSpec(m.normalizeFreeformRead({ ...ffRaw, texts: [{ text: '중앙벽', point: [450, 500] }, { text: '좌측판 ', point: [380, 210] }, { text: '중앙벽', point: [980, 50] }, { text: '메모', point: [450, 520] }] }, null));
+    const left = dup.memos.map((x) => x.text).sort().join('|');
+    if (left !== '메모|중앙벽') throw new Error(`이름과 겹치는 글자만 빠져야 함: ${left}`);
+  }
   const many = m.makeFreeformSpec(m.normalizeFreeformRead({ ...ffRaw, motions: [1, 2, 3].map(() => ({ type: 'rotate', from: [250, 300], to: [500, 300], label: '회전' })).concat([{ type: 'slide', from: [100, 100], to: [100, 300], label: '이동' }]) }, null));
   if (many.winds.slice(0, 3).some((w) => w.outLabel) || many.winds[3].outLabel !== '이동') throw new Error('3번 이상 반복되는 라벨은 빼고 한 번뿐인 라벨은 남겨야 함');
   const thin = sp2.blocks[2].rect; if (thin[2] - thin[0] < 1.5) throw new Error('얇은 요소는 최소 두께로 키워야 함');
