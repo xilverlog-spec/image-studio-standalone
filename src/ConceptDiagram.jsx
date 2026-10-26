@@ -11,6 +11,8 @@ import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagr
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
 import PageBox from './PageBox';
 import ScopeGuide, { TypeNote } from './ScopeGuide';
+import { applyTheme, themeById, THEMES } from './conceptDiagram/theme';
+import ThemeCompare from './ThemeCompare';
 import { checkScope, catalogById, IMAGE_OTHER_NEAREST, looksLikeCards, looksLikeTable } from './conceptDiagram/scope';
 import TableEditor from './TableEditor';
 import { normalizeTableDoc } from './conceptDiagram/tabledoc';
@@ -201,6 +203,8 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
 }
 
 // 설명·참고 이미지가 바뀌면 다시 정할 수 있는 자동 판단 결과(손스케치는 읽기가 비싸고 이 경로로 바뀌지 않으므로 제외)
+// 그린 직후 안(스타일)을 입힌다: renderSpec → applyTheme → (손으로 고친 내용) applyEdits 순서를 지킨다. 안이 current·없음이면 renderSpec 결과 그대로
+const renderThemed = (type, spec, opts, themeId) => { const r = renderSpec(type, spec, opts); return themeId && themeId !== 'current' ? { ...r, svg: applyTheme(r.svg, themeId) } : r; };
 const AUTO_REROUTE = ['edit', 'form', 'site'];
 
 export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
@@ -295,9 +299,10 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const [leftTab, setLeftTab] = useState('make'); // 왼쪽 패널 단계 탭. 다이어그램 탭에 들어올 때(처음 열 때·새로고침·다른 탭에서 돌아올 때)마다 ① 만들기로 시작한다
   useEffect(() => { if (active) setLeftTab('make'); }, [active]);
   useEffect(() => { try { localStorage.setItem('cd_wide', wide ? '1' : '0'); } catch { /* 저장 없이 진행 */ } }, [wide]);
+  const [themeOpen, setThemeOpen] = useState(false); // 스타일 안 비교 창
   const [pgEdit, setPgEdit] = useState(null); // 페이지 미리보기 위에서 바로 고치는 중인 글자 { kind: 'title'|'subtitle'|'cap', id, el, value }
   const [pg, setPg] = useState(() => {
-    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', corner: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {} };
+    const d = { preset: 'a3l', w: 420, h: 297, medium: 'print', font: 'pretendard', sizes: { title: null, sub: null, label: null, small: null }, fill: true, dpi: 300, title: '', subtitle: '', layoutId: '1x1', gap: 6, custom: null, basePreset: '1x1', marginMode: 'auto', margin: { t: '', b: '', l: '', r: '' }, marginLink: true, frame: false, frameW: 0.5, frameInset: '', frameColor: '#222222', kicker: '', corner: '', project: '', pageNo: '', accent: '#F28C28', labelPrefix: '', cellMeta: {}, theme: 'current' };
     try { return { ...d, ...(JSON.parse(localStorage.getItem('cd_page_v1') || 'null')?.pg || {}), title: '', subtitle: '', kicker: '', corner: '', pageNo: '', cellMeta: {} }; } catch { return d; } // 구분 라벨·쪽번호·칸 설명은 제목처럼 기억하지 않는다(프로젝트명·라벨 접두어·강조색은 기억)
   });
   const [cells, setCells] = useState({});     // 칸 번호 → 그 칸의 결과 { type, spec, ... }
@@ -317,11 +322,11 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const rendered = useMemo(() => {
     if (!result) return null;
     try {
-      const r = renderSpec(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined);
+      const r = renderThemed(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined, pg.theme); // 안(스타일)은 그린 직후에 입힌다 — 손으로 고친 내용(edits)은 그 위에 덮인다
       if (result.type !== 'sketch' && hasEdits(result.edits)) return { ...r, svg: applyEdits(r.svg, result.edits).svg, baseSvg: r.svg, error: null }; // 구조형 결과: 도형을 손으로 고친 내용(색·위치·곡선·선 종류)
       return { ...r, error: null };
     } catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
-  }, [result]);
+  }, [result, pg.theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 출력 크기·칸 나누기: 칸마다 다른 렌더러 결과를 정해진 페이지 안에 맞춰 넣는다 ──
   // 고른 칸의 결과(result)가 바뀌면 그 칸에 저장한다. 칸을 바꾸면 그 칸의 결과를 불러온다.
@@ -520,9 +525,11 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     addToast?.('success', '선택한 영역을 복사했습니다', '붙여넣을 칸을 클릭하고 Ctrl+V 를 누르세요. 그 칸에는 이 영역만 보입니다.');
   };
   const copyRegionRef = useRef(null); copyRegionRef.current = copyRegionNow;
+  const themeOpenRef = useRef(false); themeOpenRef.current = themeOpen; // 스타일 안 비교 창이 열려 있으면 뒤 화면의 단축키(방향키·Delete·Esc)가 움직이지 않게
   useEffect(() => { // 창 전체 단축키(편집기보다 먼저 받는다): 영역이 잡혀 있으면 Ctrl+C = 영역 복사, Esc = 해제(끌던 중이면 취소)
     const h = (e) => {
       if (rootRef.current && rootRef.current.getClientRects().length === 0) return;
+      if (themeOpenRef.current) return;
       const tag = e.target?.tagName || ''; if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable) return;
       const k = (e.key || '').toLowerCase();
       if (e.key === 'Escape' && dragCancelRef.current && dragCancelRef.current.isRegionSel) { e.preventDefault(); e.stopImmediatePropagation(); dragCancelRef.current(); return; }
@@ -579,14 +586,15 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   useEffect(() => { const ids = cellIds(pg.layoutId, pg.custom); if (pageOn && !ids.includes(selCell)) { setSelCell(ids[0]); setResult(cells[ids[0]] || null); } }, [pg.layoutId, pg.custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const [live, setLive] = useState(null); // 끄는 중인 칸 배치 { cells, label, id }
   const [liveZoom, setLiveZoom] = useState(null); // 끄는 중인 칸 안의 그림 크기·위치 { id, k, zx, zy }
-  const composeAll = (layoutId, custom, wantOut, zoomOv) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치)
+  const composeAll = (layoutId, custom, wantOut, zoomOv, themeOv) => { // 페이지 한 장을 조립한다(layoutId·custom 은 끄는 중에는 끄는 중인 칸 배치, themeOv 는 비교 창이 다른 안으로 미리 그릴 때)
     if (!pageOn) return null;
     try {
+      const tid = themeOv ?? pg.theme; const th = themeById(tid);
       const page = { w: Number(pg.w) || 0, h: Number(pg.h) || 0, medium: pg.medium };
       const sizes = Object.fromEntries(Object.entries(pg.sizes).map(([k, v]) => [k, Number(v) > 0 ? Number(v) : null]));
       const ids = cellIds(layoutId, custom);
       const first = ids.map((id) => cells[id]).find(Boolean);
-      const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: pg.font, sizes, fit: pg.fit || 'both', layoutId, custom, gap: Number(pg.gap) || 0, measure: domMeasure,
+      const base = { title: pg.title || (ids.length === 1 ? (first?.spec?.title || '') : ''), subtitle: pg.subtitle || (ids.length === 1 ? (first?.spec?.subtitle || '') : ''), fontId: th.fontId || pg.font, inkColor: th.ink || undefined, titleK: th.titleK, sizes, fit: pg.fit || 'both', layoutId, custom, gap: Number(pg.gap) || 0, measure: domMeasure,
         margin: pg.marginMode === 'custom' ? pg.margin : null, kicker: pg.kicker, corner: pg.corner, project: pg.project, pageNo: pg.pageNo, accent: pg.accent, labelPrefix: pg.labelPrefix, cellMeta: zoomOv ? { ...(pg.cellMeta || {}), [zoomOv.id]: { ...((pg.cellMeta || {})[zoomOv.id] || {}), zoom: zoomOv.k, zx: zoomOv.zx, zy: zoomOv.zy } } : pg.cellMeta, headAlign: pg.headAlign || 'left', headLs: Number(pg.headLs) || 0, frame: pg.frame ? { w: (Number(pg.frameW) || 0.5) * PT_MM, inset: pg.frameInset === '' ? undefined : Number(pg.frameInset), color: pg.frameColor } : null };
       const geo = composePage(page, [], base); // 칸 크기(mm)만 먼저 구한다
       const items = ids.map((id, i) => {
@@ -597,7 +605,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
         if (edited) { /* 그대로 */ } else if (r.type === 'layout') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, LAYOUT_PANEL_W, LAYOUT_PANEL_H, 3);
         else if (r.type === 'site') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, SITE_PANEL_W, SITE_PANEL_H, 3);
         else if (r.type === 'massing') spec.cols = bestCols(Math.max(1, (spec.steps || []).length), aspect, MASSING_PANEL_W, MASSING_PANEL_H, 3);
-        const eng = renderSpec(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined);
+        const eng = renderThemed(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined, tid);
         return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0, crop: Array.isArray(r.crop) ? r.crop : null };
       });
       const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
@@ -609,6 +617,16 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const livePage = useMemo(() => ((live || liveZoom) && pageOn ? (live ? composeAll('custom', live.cells, false) : composeAll(pg.layoutId, pg.custom, false, liveZoom)) : null), [live, liveZoom, pageOn, pg, cells, selCell]); // eslint-disable-line react-hooks/exhaustive-deps — 칸 가장자리를 끄는 동안의 미리보기(저장용은 놓을 때 한 번만 다시 만든다)
   const livePageSrc = useMemo(() => (livePage?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(livePage.preview.svg)}` : ''), [livePage]);
   const pageSrc0 = useMemo(() => (pageModel?.preview ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pageModel.preview.svg)}` : ''), [pageModel]);
+  // 스타일 안 비교 창의 썸네일: 지금 그림을 안마다 입혀 본 모습(AI·재그리기 없음). 창이 열려 있을 때만 만든다
+  const thumbFor = (id) => {
+    try {
+      if (pageOn) { const o = composeAll(pg.layoutId, pg.custom, true, null, id)?.out; return o ? { svg: o.svg, w: o.width, h: o.height } : null; }
+      if (!result) return null;
+      const r = renderThemed(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined, id);
+      return { svg: result.type !== 'sketch' && hasEdits(result.edits) ? applyEdits(r.svg, result.edits).svg : r.svg, w: r.width, h: r.height };
+    } catch { return null; }
+  };
+  const themeThumbs = useMemo(() => (themeOpen ? Object.fromEntries(THEMES.map((t) => [t.id, thumbFor(t.id)])) : {}), [themeOpen, result, pageOn, pg, cells]); // eslint-disable-line react-hooks/exhaustive-deps
   const pageSrc = livePageSrc || pageSrc0; // 페이지 미리보기 그림(다른 이유로 다시 그려질 때마다 인코딩하지 않는다). 칸 가장자리를 끄는 동안에는 바뀌는 크기가 그림에 바로 보인다
   // 고른 칸 그림의 '실제로 보이는' 바깥 상자(그림 좌표): 그림을 작은 비트맵으로 그려 투명하지 않은 곳만 잰다. 그림 상자·모서리 점이 그림에 딱 맞게 하는 데 쓴다(못 재면 칸 맞춤 상자로 대신)
   const [ink, setInk] = useState(null);
@@ -1216,6 +1234,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   // ── 단축키(창 전체). 이 탭이 안 보이면 무시하고, 입력칸에 글자를 칠 때는 Ctrl+Enter·Ctrl+S 만 받는다. 페이지 단축키는 페이지 미리보기·설정을 마지막에 만졌을 때만(손스케치 편집기와 같은 키를 나눠 쓰므로) ──
   const onGlobalKey = (e) => {
     if (rootRef.current && rootRef.current.getClientRects().length === 0) return;
+    if (themeOpenRef.current) return; // 스타일 안 비교 창이 열려 있으면 뒤 화면(칸 지우기·옮기기·저장 등)은 움직이지 않는다
     const tag = e.target?.tagName || ''; const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target?.isContentEditable;
     const mod = e.ctrlKey || e.metaKey; const k = (e.key || '').toLowerCase();
     if (mod && e.key === 'Enter') { if (canGenerate) { e.preventDefault(); generate(); } return; }
@@ -1574,6 +1593,8 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
           <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
+          <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={() => setThemeOpen(true)} data-testid="theme-open" title="같은 그림을 색·글씨체·제목 크기 안 3개로 나란히 보고 고릅니다(AI 를 부르지 않습니다)">스타일 안 비교</button>
+          <ThemeCompare open={themeOpen} onClose={() => setThemeOpen(false)} themeId={pg.theme} onPick={(id) => setPg((p) => ({ ...p, theme: id }))} thumbs={themeThumbs} />
           <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>내 이미지 넣기</button>
           <input ref={myImgFileRef} type="file" accept="image/*" multiple hidden data-testid="my-image-input" onChange={(e) => { insertMyImages(e.target.files, ''); e.target.value = ''; }} />
           <span style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{pageOn && pageModel?.out ? `페이지 ${Math.round(pageModel.out.page.w)}×${Math.round(pageModel.out.page.h)}mm 크기로 저장됩니다(PNG ${pg.dpi}dpi). SVG 는 일러스트레이터에서 이 크기 그대로 열립니다.` : 'SVG는 일러스트레이터에서 글자·선까지 그대로 편집됩니다.'}</span>
@@ -1685,13 +1706,13 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           )}
           {result?.type === 'sketch' && rendered?.svg && (
             <div onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SketchEditor key={`${selCell}:${result.ver}`} sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'} />
+              <SketchEditor key={`${selCell}:${result.ver}`} themeId={pg.theme} sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} regionPick={regionPick} regionRect={regionBox && result.aiEdit ? regionBox.map((v) => (v * 100) / result.aiEdit.w) : null} onRegionPick={onRegionPick} ptInfo={ptInfoOf(pageModel)} spec={result.spec} onChange={(spec) => setResult((r) => ({ ...r, spec, isReadPreview: false }))} disabled={busy || reading} shortcutsEnabled={() => (!pageOn || ctxRef.current !== 'page') && !themeOpen} />
             </div>
           )}
           {result?.type !== 'sketch' && rendered?.svg && (
             <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
               <SvgEditor sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
-                shortcutsEnabled={() => !pageOn || ctxRef.current !== 'page'}
+                shortcutsEnabled={() => (!pageOn || ctxRef.current !== 'page') && !themeOpen}
                 onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />
             </div>

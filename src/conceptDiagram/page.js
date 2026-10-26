@@ -319,12 +319,14 @@ export function scopeIds(svg, prefix) {
 export const HEAD_ALIGNS = ['left', 'center', 'right'];
 export const HEAD_LS_MIN = -0.05; export const HEAD_LS_MAX = 0.4;
 export function composePage(page, items, opts = {}) {
-  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', corner = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null, headAlign = 'left', headLs = 0 } = opts;
+  const { title = '', subtitle = '', fontId = 'malgun', sizes = {}, layoutId = '1x1', measure = null, preview = false, selected = '', custom = null, margin = null, frame = null, kicker = '', corner = '', project = '', pageNo = '', accent = '#F28C28', labelPrefix = '', cellMeta = null, headAlign = 'left', headLs = 0, inkColor = '', titleK = 1 } = opts;
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(accent || '') ? accent : '#F28C28';
+  const ink = /^#[0-9a-fA-F]{6}$/.test(inkColor || '') ? inkColor : '#1f242b'; // 스타일 안의 글자색(제목·칸 제목·오른쪽 위 라벨 첫 줄)
+  const tk = Number.isFinite(Number(titleK)) && Number(titleK) > 0 ? Number(titleK) : 1; // 스타일 안의 제목·소제목 배율(직접 정한 크기에는 곱하지 않는다)
   const W = Number(page.w); const H = Number(page.h);
   if (!(W > 20 && H > 20)) throw new Error('용지 크기가 너무 작습니다(가로·세로 20mm 이상).');
   const rec = recommendType({ w: W, h: H, medium: page.medium });
-  const pt = { title: sizes.title || rec.title, sub: sizes.sub || rec.sub, label: sizes.label || rec.label, small: sizes.small || rec.small };
+  const pt = { title: sizes.title || rec.title * tk, sub: sizes.sub || rec.sub * tk, label: sizes.label || rec.label, small: sizes.small || rec.small };
   const font = fontById(fontId).css;
   // 바깥 여백(mm): 정하지 않으면 자동(인쇄 8mm·화면 6mm 이상, 짧은 변의 4%). 변마다 따로 정할 수 있고, 한 변은 용지의 30%를 넘지 못한다.
   const autoM = Math.max(page.medium === 'screen' ? 6 : 8, Math.min(W, H) * 0.04);
@@ -358,14 +360,14 @@ export function composePage(page, items, opts = {}) {
   let headW = textW;
   if (cornerLines.length) {
     const cp = [pt.label, pt.small, pt.small]; let cy = mg.t; let cw = 0;
-    cornerLines.forEach((txt, i) => { const fs = cp[i] * PT_MM; const w = Math.min(textW * 0.4, lineW(txt, fs)); cw = Math.max(cw, w); const base = cy + fs * 0.95; head.push(`<text x="${(W - mg.r).toFixed(2)}" y="${base.toFixed(2)}" text-anchor="end" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${i === 0 ? 800 : 500}" fill="${i === 0 ? '#1f242b' : '#6b7178'}">${esc(txt)}</text>`); cy = base + fs * 0.45; });
+    cornerLines.forEach((txt, i) => { const fs = cp[i] * PT_MM; const w = Math.min(textW * 0.4, lineW(txt, fs)); cw = Math.max(cw, w); const base = cy + fs * 0.95; head.push(`<text x="${(W - mg.r).toFixed(2)}" y="${base.toFixed(2)}" text-anchor="end" font-family="${font}" font-size="${fs.toFixed(3)}" font-weight="${i === 0 ? 800 : 500}" fill="${i === 0 ? ink : '#6b7178'}">${esc(txt)}</text>`); cy = base + fs * 0.45; });
     headW = Math.max(textW * 0.3, textW - cw - Math.min(W, H) * 0.03);
   }
   const headFmt = { align: hAlign, ls: hLs };
   const slotX = (t) => { const bw = Math.min(textW, t.w + 2); return hAlign === 'center' ? mg.l + (headW - bw) / 2 : hAlign === 'right' ? mg.l + headW - bw : mg.l; }; // 눌러 고치는 자리의 왼쪽 끝(정렬을 따라감)
   const slots = {}; // 제목·소제목이 놓인(또는 놓일) 자리 — 미리보기 위에서 눌러 바로 고칠 수 있게 위치를 알려 준다. rect: [x, y, w, h] mm, has: 지금 글자가 있는지
   if (kicker) { const y0 = y; const t = textLine(mg.l, y, `| ${kicker} |`, pt.label, 500, '#5b6168', headW, '구분 라벨', false, headFmt); head.push(t.svg); y = t.bottom + Math.min(W, H) * 0.004; slots.kicker = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: kicker }; }
-  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, '#1f242b', headW, '제목', true, headFmt); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
+  if (title) { const y0 = y; const t = textLine(mg.l, y, title, pt.title, 800, ink, headW, '제목', true, headFmt); head.push(t.svg); used.title = t.pt; y = t.bottom; slots.title = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: title }; }
   else slots.title = { rect: [mg.l, 0, textW, Math.max(4, mg.t)], has: false, text: '' };
   if (subtitle) { const y0 = y; const t = textLine(mg.l, y, subtitle, pt.sub, 500, '#555a60', headW, '소제목', true, headFmt); head.push(t.svg); used.sub = t.pt; y = t.bottom; slots.subtitle = { rect: [slotX(t), y0, Math.min(textW, t.w + 2), t.bottom - y0], has: true, text: subtitle }; }
   else if (title) slots.subtitle = { rect: [mg.l, y, textW, Math.max(4, Math.min(W, H) * 0.02 + 1)], has: false, text: '' };
@@ -403,7 +405,7 @@ export function composePage(page, items, opts = {}) {
         labRect = [cell.x, cy, cell.w, rowH]; cy += rowH;
       }
     }
-    if (multi && item.caption) { const t = textLine(cell.x, cy, item.caption, pt.sub, 600, '#1f242b', cell.w, `칸 ${idx + 1} 제목`); body.push(t.svg); capRect = [cell.x, cy, Math.min(cell.w, t.w + 2), t.bottom - cy]; cy = t.bottom + Math.min(cell.w, cell.h) * 0.01; capPt = t.pt; }
+    if (multi && item.caption) { const t = textLine(cell.x, cy, item.caption, pt.sub, 600, ink, cell.w, `칸 ${idx + 1} 제목`); body.push(t.svg); capRect = [cell.x, cy, Math.min(cell.w, t.w + 2), t.bottom - cy]; cy = t.bottom + Math.min(cell.w, cell.h) * 0.01; capPt = t.pt; }
     if (multi && String(meta.desc || '').trim()) {
       if (cell.h < 35 || cell.w < 45) warnings.push({ level: 'info', text: `칸 ${idx + 1}이 작아 설명을 그리지 않았습니다(칸을 키우거나 설명을 지우세요).` });
       else {

@@ -49,6 +49,7 @@ import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText'
 import { isPlainMemo, sketchBoxFor, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName } from './conceptDiagram/sketch';
 import { TEXT_FONTS, TEXT_WEIGHTS } from './conceptDiagram/fonts';
 import { sketchReplaceImage, sketchCropImage } from './conceptDiagram/sketch';
+import { applyTheme } from './conceptDiagram/theme';
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
 import ImageCropDialog from './ImageCropDialog';
@@ -62,7 +63,7 @@ import { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResi
 import { snapDeg } from './conceptDiagram/rotate';
 import { normText, pickByText, sketchTextTargets, sketchApplyText } from './conceptDiagram/inlineText';
 
-export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
+export default function SketchEditor({ spec, onChange, disabled, shortcutsEnabled, ptInfo, regionPick, regionRect, onRegionPick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick, themeId }) {
   const [selected, setSelected] = useState('');
   const [multi, setMulti] = useState([]); const multiOn = multi.length >= 2; // 여러 개 고르기(Shift·Ctrl+클릭, 빈 곳 끌기): 둘 이상 고르면 selected 는 비우고 아래 '여러 개 고름' 패널이 쓴다
   const [mboxes, setMboxes] = useState([]); const [marq, setMarq] = useState(null); // 고른 요소들의 바깥 상자 / 끌고 있는 고르기 상자(그림 좌표 1200x760)
@@ -114,8 +115,8 @@ export default function SketchEditor({ spec, onChange, disabled, shortcutsEnable
   const redo = () => { if (!future.current.length) return; const nxt = future.current[future.current.length - 1]; future.current = future.current.slice(0, -1); past.current = [...past.current, spec]; lastKey.current = ''; onChange(nxt); tick((n) => n + 1); };
 
   const svg = useMemo(() => {
-    try { return renderSketch(norm, { interactive: true, selected }).svg.replace(/^<svg([^>]*?) width="\d+" height="\d+"/, '<svg$1 width="100%" style="display:block"'); } catch { return ''; }
-  }, [norm, selected]);
+    try { return applyTheme(renderSketch(norm, { interactive: true, selected }).svg, themeId).replace(/^<svg([^>]*?) width="\d+" height="\d+"/, '<svg$1 width="100%" style="display:block"'); } catch { return ''; } // 안(스타일)은 편집 화면에도 입힌다(편집 손잡이는 theme.js 가 건드리지 않음)
+  }, [norm, selected, themeId]);
 
   const html = useMemo(() => ({ __html: svg }), [svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다
   const sel = selected ? sketchFind(norm, selected) : null;

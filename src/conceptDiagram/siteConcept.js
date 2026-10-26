@@ -119,11 +119,31 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
 
   const overlays = Array.isArray(panel.overlays) ? panel.overlays : [];
   const markers = [];
+  const legend = []; // style:'line' 흐름·구역·화살표에 label 이 있으면 아래 범례에 올린다
   let gi = 0;
 
   overlays.forEach((o) => {
     const color = hexOk(o.color, accent);
-    if (o.kind === 'flow') {
+    if (o.kind === 'flow' && o.style === 'line') { // 사내 도면 관례의 동선: 선명한 선(굵기 3.2, 점선 선택) + 화살촉 + 번호 배지 + 범례(번지는 띠·사람 모양 없음)
+      const from = P(o.from || 'center');
+      const targets = (Array.isArray(o.to) ? o.to : [o.to]).filter(Boolean);
+      const lid = `${uid}l${gi++}`;
+      defs.push(`<marker id="${lid}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="${color}"/></marker>`);
+      targets.forEach((tname, i) => {
+        const p1 = P(tname); const dx = p1[0] - from[0]; const dy = p1[1] - from[1]; const len = Math.hypot(dx, dy) || 1;
+        const off = targets.length > 1 ? len * 0.08 * (i % 2 ? -1 : 1) : 0;
+        const c = [(from[0] + p1[0]) / 2 - (dy / len) * off, (from[1] + p1[1]) / 2 + (dx / len) * off];
+        const d = `M${from[0].toFixed(1)} ${from[1].toFixed(1)} Q${c[0].toFixed(1)} ${c[1].toFixed(1)} ${p1[0].toFixed(1)} ${p1[1].toFixed(1)}`;
+        parts.push(`<path d="${d}" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="6.4" stroke-linecap="round"/>`);
+        parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round"${o.dashed ? ' stroke-dasharray="7 4"' : ''} marker-end="url(#${lid})"/>`);
+      });
+      const no = String(o.no ?? '').trim().slice(0, 2);
+      if (no) {
+        parts.push(`<circle cx="${from[0].toFixed(1)}" cy="${from[1].toFixed(1)}" r="9.5" fill="${color}" stroke="#fff" stroke-width="1.6"/>`);
+        parts.push(`<text x="${from[0].toFixed(1)}" y="${(from[1] + 4).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="11" font-weight="700" fill="#fff">${esc(no)}</text>`);
+      }
+      if (String(o.label ?? '').trim()) legend.push({ kind: 'flow', color, dashed: !!o.dashed, text: String(o.label).trim().slice(0, 8) });
+    } else if (o.kind === 'flow') {
       const from = P(o.from || 'center');
       const targets = (Array.isArray(o.to) ? o.to : [o.to]).filter(Boolean);
       const gid = `${uid}g${gi++}`;
@@ -159,6 +179,7 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
       }
       const fill = o.pattern === 'fill' ? color : `url(#${pid})`;
       parts.push(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${sz[0]}" ry="${sz[1]}" transform="rotate(-18 ${x.toFixed(1)} ${y.toFixed(1)})" fill="${fill}" fill-opacity="${o.pattern === 'fill' ? 0.3 : 0.85}" stroke="${color}" stroke-width="1.4" stroke-dasharray="${o.pattern === 'fill' ? '0' : '4 3'}"/>`);
+      if (String(o.label ?? '').trim()) legend.push({ kind: 'zone', color, text: String(o.label).trim().slice(0, 8) });
     } else if (o.kind === 'cycle') {
       const [x, y] = P(o.anchor || 'center');
       const aid = `${uid}a${gi++}`;
@@ -218,6 +239,19 @@ export function renderSitePanel(panel, ox, oy, uid, baseImage, base) {
     });
   });
 
+  // 범례(label 이 있는 선·구역만, 최대 4개): 대지 아래 가운데에 한 줄로. 선 견본은 흐름의 점선 여부를 따른다
+  if (legend.length) {
+    const items = legend.slice(0, 4); const fs = 11; const tw = (t) => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
+    const widths = items.map((it) => 28 + tw(it.text) + 14); const total = widths.reduce((a, b) => a + b, 0) - 14; const ly = PANEL_H - 22;
+    let lx = SITE.x + SITE.w / 2 - total / 2;
+    items.forEach((it, i) => {
+      parts.push(it.kind === 'zone'
+        ? `<rect x="${lx.toFixed(1)}" y="${ly - 5}" width="20" height="11" rx="2" fill="${it.color}" fill-opacity="0.35" stroke="${it.color}" stroke-width="1.2"/>`
+        : `<line x1="${lx.toFixed(1)}" y1="${ly}" x2="${(lx + 20).toFixed(1)}" y2="${ly}" stroke="${it.color}" stroke-width="3.2" stroke-linecap="round"${it.dashed ? ' stroke-dasharray="7 4"' : ''}/>`);
+      parts.push(`<text x="${(lx + 26).toFixed(1)}" y="${ly + 4}" font-family="${FONT}" font-size="${fs}" fill="#33383f">${esc(it.text)}</text>`);
+      lx += widths[i];
+    });
+  }
   const head = headingSvg(panel.heading, accent, PANEL_W / 2, 40);
   const underline = `<rect x="${PANEL_W / 2 - 34}" y="52" width="68" height="3" rx="1.5" fill="${accent}"/>`;
   return `<g transform="translate(${ox} ${oy})"><defs>${defs.join('')}</defs>${head}${underline}${parts.join('')}</g>`;

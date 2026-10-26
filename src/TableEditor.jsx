@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { parseTableText, normalizeTable, tableSetCell, tableAddRow, tableDelRow, tableMoveRow, tableSetCols, tableHasEmpty, tableFillEmpty, TABLE_STYLE_LABEL, TABLE_MAX_ROWS } from './conceptDiagram/table';
 
-// 개요표 속성: 제목 · 열 수(2~4) · 스타일 · 행 목록(칸마다 입력, 위·아래·삭제) · 행 추가. onChange(새 표, 되돌리기 묶음용 키)
+// 개요표 속성: 제목 · 열 수(2~4, 설계개요형은 3~5) · 스타일 · (설계개요형) 머리글·단위 · 행 목록(칸마다 입력, 위·아래·삭제) · 행 추가. onChange(새 표, 되돌리기 묶음용 키)
 // compact(개요표 칸의 왼쪽 ③ 탭): 글자 입력칸을 두지 않는다 — 칸·제목은 그림 위에서 더블클릭해 고치고, 여기서는 행·열·스타일·붙여넣기만 다룬다(새 행·열에는 기본 글자가 들어간다).
 export default function TableEditor({ table, onChange, testid = 'table-editor', compact = false }) {
   const t = normalizeTable(table);
@@ -34,11 +34,24 @@ export default function TableEditor({ table, onChange, testid = 'table-editor', 
         </label>
       )}
       <div style={lab}>열 수
-        <div style={{ display: 'flex', gap: 6 }}>{[2, 3, 4].map((n) => <button key={n} type="button" style={{ ...btn(t.cols === n), flex: 1 }} onClick={() => onChange(tableSetCols(t, n, compact))} data-testid={`${testid}-cols-${n}`}>{n}열</button>)}</div>
+        <div style={{ display: 'flex', gap: 6 }}>{(t.style === 'doc' ? [3, 4, 5] : [2, 3, 4]).map((n) => <button key={n} type="button" style={{ ...btn(t.cols === n), flex: 1 }} onClick={() => onChange(tableSetCols(t, n, compact))} data-testid={`${testid}-cols-${n}`}>{n}열</button>)}</div>
       </div>
       <div style={lab}>스타일
-        <div style={{ display: 'flex', gap: 6 }}>{Object.entries(TABLE_STYLE_LABEL).map(([v, name]) => <button key={v} type="button" style={{ ...btn(t.style === v), flex: 1, lineHeight: 1.25 }} onClick={() => onChange({ ...t, style: v })} data-testid={`${testid}-style-${v}`}>{name}</button>)}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{Object.entries(TABLE_STYLE_LABEL).map(([v, name]) => <button key={v} type="button" style={{ ...btn(t.style === v), flex: '1 1 30%', lineHeight: 1.25 }} onClick={() => onChange({ ...t, style: v })} data-testid={`${testid}-style-${v}`}>{name}</button>)}</div>
       </div>
+      {t.style === 'doc' && (
+        <>
+          <div style={lab}>머리글 (열 이름, 비워도 됩니다)
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${t.cols}, minmax(0, 1fr))`, gap: 3 }}>
+              {Array.from({ length: t.cols }, (_, j) => <input key={j} style={inp} value={t.header?.[j] ?? ''} maxLength={40} onChange={(e) => onChange({ ...t, header: Array.from({ length: t.cols }, (__, k) => (k === j ? e.target.value : (t.header?.[k] ?? ''))) }, `hdr:${j}`)} data-testid={`${testid}-header-${j}`} />)}
+            </div>
+          </div>
+          <label style={lab}>단위 줄 (예: 단위: ㎡)
+            <input style={inp} value={t.unit ?? ''} maxLength={20} onChange={(e) => onChange({ ...t, unit: e.target.value }, 'unit')} data-testid={`${testid}-unit`} />
+          </label>
+          <span style={{ fontSize: 10.5, color: 'var(--text-tertiary, #64748b)', lineHeight: 1.4 }}>구분 칸을 비워 두면 위 구분과 한 칸으로 합쳐집니다. 항목 칸을 “소계”·“합계”로 쓰면 그 줄이 굵게 강조됩니다.</span>
+        </>
+      )}
       <div style={lab}>행 ({t.rows.length}){compact ? ' — 글자는 그림에서 더블클릭해서 고칩니다' : ' — 칸을 고치거나 그림에서 칸을 더블클릭하세요'}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto', paddingRight: 2 }}>
           {t.rows.map((row, i) => (

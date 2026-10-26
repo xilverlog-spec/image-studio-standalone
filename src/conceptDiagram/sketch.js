@@ -799,7 +799,7 @@ export function renderSketch(raw, opts = {}) {
   });
   spec.lines.forEach((l) => {
     const Q = l.pts.map(P); const d = `M${Q.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`; const col = l.color || C.part;
-    if (selected === l.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${l.width + 9}" stroke-opacity="0.4" stroke-linecap="round"/>`);
+    if (selected === l.id) o.push(`<path data-ui="1" d="${d}" fill="none" stroke="#F28C28" stroke-width="${l.width + 9}" stroke-opacity="0.4" stroke-linecap="round"/>`);
     o.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${l.width}" stroke-linecap="${cap(l.dash)}" stroke-opacity="${pres && !l.color ? 0.75 : 1}"${dash(l.dash, l.dgap)}/>`);
     if (interactive) o.push(`<path class="hit" data-eid="${esc(l.id)}" d="${d}" fill="none" stroke="transparent" stroke-width="16" style="cursor:move"/>`);
     if (interactive && selected === l.id) { dot(l.id, 'start', Q[0][0], Q[0][1]); dot(l.id, 'end', Q[Q.length - 1][0], Q[Q.length - 1][1]); const bb = bbox(Q); handles.push(rotHandle(l.id, (bb[0] + bb[2]) / 2, Math.max(14, bb[1] - 34), Math.max(22, bb[1] - 8))); }
@@ -857,7 +857,7 @@ export function renderSketch(raw, opts = {}) {
   spec.winds.forEach((w) => {
     const geo = windGeom(w, P); const d = geo.d; const D = geo.dense;
     const ribbonLike = w.form === 'ribbon' || w.form === 'soft'; const thick = ribbonLike ? w.width * 5.6 : w.width;
-    if (selected === w.id) o.push(`<path d="${d}" fill="none" stroke="#F28C28" stroke-width="${(thick + 14).toFixed(1)}" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round"/>`);
+    if (selected === w.id) o.push(`<path data-ui="1" d="${d}" fill="none" stroke="#F28C28" stroke-width="${(thick + 14).toFixed(1)}" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round"/>`);
     if (w.form === 'line') {
       if (pres) o.push(`<path d="${d}" fill="none" stroke="${w.color}" stroke-opacity="0.22" stroke-width="${(w.width * 4.6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`);
       const mk = (w.head === 'end' || w.head === 'both' ? ` marker-end="url(#aw_${esc(w.id)})"` : '') + (w.head === 'start' || w.head === 'both' ? ` marker-start="url(#aw_${esc(w.id)})"` : '');
@@ -941,8 +941,10 @@ export function renderSketch(raw, opts = {}) {
       if (interactive) handles.push(wrapG(MT, rotHandle(m.id, x, y - m.size - 28, y - m.size - 2)));
     }
   });
-  o.push(...sel);
-  o.push(...handles);
+  // 편집 화면에만 그리는 선택 틀·손잡이는 data-ui 표시를 붙인다 — 스타일 안(theme.js)이 이 주황(편집용 색)을 건드리지 않게
+  const uiMark = (str) => String(str).replace(/<(rect|path|line|circle|ellipse|polygon|polyline|text)\b([^>]*?)(\/?)>/g, (tag, name, rest, close) => (/data-ui/.test(rest) ? tag : `<${name}${rest} data-ui="1"${close}>`));
+  o.push(...sel.map(uiMark));
+  o.push(...handles.map(uiMark));
   // 번호 표식(도형 위) + 우측 설명 칼럼 → 이름표가 도형을 가리지 않는다(도면용). 개념도는 도형 안에 이름을 쓰므로 칼럼이 없다
   let ry = 170; let n = 0;
   const side = !concept && spec.layout !== 'image'; // 오른쪽 설명 칸(번호·화살표·개구부·코어 범례): 그림 한 장이 영역을 채우는 'image' 배치에서는 그림 위에 겹쳐 그려지므로 쓰지 않는다

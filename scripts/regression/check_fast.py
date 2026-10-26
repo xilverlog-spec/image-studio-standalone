@@ -166,6 +166,10 @@ check(de.pick_resolution((900, 600)) == 1024 and de.pick_resolution((1743, 1167)
 check(de._parse_json(chr(96) * 3 + 'json' + chr(10) + '{"instruction": "a", "title": "t", "routes": []}' + chr(10) + chr(96) * 3)["title"] == "t", "지시문 JSON 해석(코드펜스)")
 check(de.build_workflow("x.png", "p", 1024, 25, 1)["6"]["inputs"]["images.image_1"] == ["5", 0], "Qwen 작업 흐름의 입력 연결")
 check("조닝 다이어그램" in de.fallback_instruction("조닝 다이어그램") and "Do NOT add any new text" in de.fallback_instruction(""), "대체 지시문에 사용자 요청과 글자 보존 문구가 없음")
+# 사내 도면 관례의 동선 색(차량·진입=빨강, 보행=파랑, 녹지·산책=초록, 주요·강조=주황)이 지시문 작성 규칙과 대체 지시문에 있어야 함(2026-10-26)
+for _t in (de._instruct_prompt("차량과 보행 동선"), de.fallback_instruction("차량과 보행 동선")):
+    _lo = _t.lower()
+    check("vehicle" in _lo and "pedestrian" in _lo and "red" in _lo and "blue" in _lo and "green" in _lo and "orange" in _lo, "동선 색 관례(차량 빨강·보행 파랑·녹지 초록·주요 주황)가 지시문 규칙에 없음")
 
 # 결과를 편집 가능한 층으로 나누기: 화살표 → 벡터 선, 구역 색 → 농도 마스크 + 기준 색, 바탕에는 선·글자만 남는다
 import numpy as _np  # noqa: E402

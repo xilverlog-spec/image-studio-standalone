@@ -1,5 +1,6 @@
 import React from 'react';
 import { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, LABEL_PREFIXES, presetById, recommendType, recommendFont } from './conceptDiagram/page';
+import { themeById } from './conceptDiagram/theme';
 
 // 페이지 설정(다이어그램 탭 왼쪽 ② 페이지). 계산은 conceptDiagram/page.js 가 하고 여기는 입력만 받는다.
 // 2026-10-20 단순화(R9 후속): 기본으로 보이는 것은 켜기 · 용지 크기 · 칸 배치(그림으로 고름)뿐이고, 칸은 오른쪽 미리보기에서 직접 눌러 고른다.
@@ -183,6 +184,7 @@ export default function PageBox({ on, setOn, pg, setPg, info, selCell, onClear, 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                     <label style={{ ...lab, gridColumn: '1 / 3' }} title={`${recommendFont(pg.medium)} 저장한 SVG 는 그 PC 에 이 글꼴이 설치돼 있어야 그대로 보입니다(없으면 비슷한 글꼴로 바뀜).`}>글씨체
                       <select style={inp} value={pg.font} onChange={(e) => set({ font: e.target.value })} data-testid="page-font">{FONT_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
+                      {themeById(pg.theme).fontId && <span style={{ fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.4 }} data-testid="page-font-theme-note">스타일 안 “{themeById(pg.theme).label.split(' — ')[0]}”의 글씨체({FONT_OPTIONS.find((f) => f.id === themeById(pg.theme).fontId)?.label.split(' (')[0]})가 적용 중이라 이 선택은 “스타일 안 비교”에서 “지금 모습”으로 돌아가야 먹습니다.</span>}
                     </label>
                     <label style={{ ...lab, gridColumn: '1 / 3' }} title="권장 방식은 그림은 칸에 맞춘 배율 그대로 두고, 그림 속 모든 글자에 같은 비율을 곱해 가장 많이 쓰인 글자(본문)가 목표 pt 가 되게 합니다. 그래서 큰 칸에서도 글자가 소제목보다 커지지 않습니다.">그림·글자 맞춤
                       <select style={inp} value={pg.fit || 'both'} onChange={(e) => set({ fit: e.target.value })} data-testid="page-fit">

@@ -13,7 +13,7 @@ export const DIAGRAM_TYPES = {
   site: { label: '배치 개념도 (흐름·정원·순환)', hint: '배치도 위에 흐름선, 해칭 구역, 아이콘 칩을 얹는 개념도' },
   massing: { label: '매스 과정도 (아이소 단계)', hint: 'EXTRUSION / SUBTRACTION / ADDITION 식으로 매스를 단계별로 보여주는 도식' },
   program: { label: '프로그램 버블도 (공간 구성·관계)', hint: '공간(프로그램)을 원으로, 면적·중요도를 크기로, 성격이 같은 것을 같은 색 묶음으로 그리고 연결 관계를 선으로 잇는 도식' },
-  table: { label: '개요표 (라벨–값 표)', hint: '건축개요·면적표 같은 2~4열 표 하나로 칸을 채운다. 엑셀·한글에서 복사한 표를 붙여넣어도 된다(병합 셀·계산은 없음)' },
+  table: { label: '개요표 (라벨–값 표)', hint: '건축개요·면적표 같은 표 하나로 칸을 채운다(2~4열 라벨형·줄무늬형, 3~5열 설계개요형: 구분 칸 합침·머리글·소계 줄). 엑셀·한글에서 복사한 표를 붙여넣어도 된다(계산은 없음)' },
   cards: { label: '카드 보드 (기술·상품 계획 요약)', hint: '핵심 가치 띠 + 큰 그림 자리(좌우 설명·표·아이콘 목록) + 카드 격자(최대 12개)로 된 사내 도집 형식의 계획 요약 보드. 그림은 내 이미지를 넣는다' },
   stack: { label: '층별 조닝도 (단면 스택)', hint: '건물을 단면처럼 층 띠로 쌓고 층마다 프로그램 칸, 보이드·코어·채광/바람/조망, 공공성 변화 화살표를 얹는 도식' },
 };
@@ -25,7 +25,7 @@ export const OFFERED_TYPES = Object.keys(DIAGRAM_TYPES).filter((t) => !HIDDEN_TY
 
 export const EXAMPLE_SPECS = {
   cards: CARD_PRESETS.plan.spec,
-  table: { title: '', accent: '#2F6B4F', size: 18, table: SAMPLE_TABLE },
+  table: { title: '건축개요', accent: '#2F6B4F', size: 18, table: { title: '건축개요', style: 'doc', cols: 4, header: ['구분', '항목', '설계내용', '비고'], unit: '단위: ㎡', rows: [['건물개요', '대지위치', '서울시 ○○구 ○○동', ''], ['', '용도', '공동주택', ''], ['', '대지면적', '12,345.00㎡', ''], ['', '건축면적', '3,210.50㎡', '건폐율 26.0%'], ['', '규모', '지하 2층 / 지상 15층', ''], ['면적', '지상층', '36,400.00㎡', ''], ['', '지하층', '12,500.00㎡', ''], ['', '소계', '48,900.00㎡', '용적률 295%'], ['주차개요', '계획 대수', '215대', '법정 203대']] } },
   site: {
     title: '',
     panels: [
@@ -121,8 +121,9 @@ export const SITE_SCHEMA = `{
       "accent": "#RRGGBB (이 패널의 대표색)",
       "siteShape": "blob" | "wedge" | "rect",
       "overlays": [
-        {"kind":"flow",   "from":"center", "to":["n","e","sw"], "color":"#RRGGBB"},          // 사람/동선의 흐름(중심에서 퍼짐)
-        {"kind":"zone",   "anchor":"e", "size":"s|m|l", "pattern":"hatch|dots|fill", "color":"#RRGGBB"}, // 성격이 같은 구역
+        {"kind":"flow",   "from":"center", "to":["n","e","sw"], "color":"#RRGGBB"},          // 사람/동선의 흐름(중심에서 퍼짐, 번지는 띠)
+        {"kind":"flow",   "style":"line", "from":"w", "to":["e"], "color":"#RRGGBB", "dashed":false, "no":1, "label":"보행 동선"}, // (선택) 선명한 선 동선: 도면 위 표시용. no=번호 배지(1~99), label=범례 이름(8자)
+        {"kind":"zone",   "anchor":"e", "size":"s|m|l", "pattern":"hatch|dots|fill", "color":"#RRGGBB", "label":"(선택)범례 이름 8자"}, // 성격이 같은 구역
         {"kind":"marker", "anchor":"nw", "label":"그린가든", "icon":"leaf", "color":"#RRGGBB", "side":"left|right"}, // 위치 표시 + 아이콘 칩
         {"kind":"cycle",  "anchor":"ne", "color":"#RRGGBB"},                                  // 순환/회전 구조
         {"kind":"arrow",  "from":"w", "to":"e", "color":"#RRGGBB", "dashed":false},           // 방향/연결
@@ -170,7 +171,10 @@ const STACK_SCHEMA = `{
   "gradient": {"label":"공공성", "from":"높음", "to":"낮음"}                      // 아래→위로 변하는 정도(없으면 null)
 }`;
 
-export const SITE_RULES = `위치는 반드시 이 9개 앵커 중 하나로만 지정한다: ${ANCHORS.join(', ')} (center=대지 중앙, n=북쪽/위, e=동쪽/오른쪽 …).
+export const SITE_RULES = `- 도면·평면·배치도 위에 동선·구역을 표시하는 요청(번호·범례·차량/보행 구분이 나오는 것)이면 flow 에 "style":"line" 을 쓴다(선명한 선 + 화살촉). 같은 패널에 흐름의 종류가 둘 이상이면 label(8자 이내)을 붙여 범례를 만들고, 순서가 있으면 no(1~99)로 번호 배지를 붙인다. 점선은 계획·예정·보조 동선에만 쓴다(dashed:true).
+- 색의 뜻(사내 도면 관례): 차량·진입 = 빨강 #D0342F, 보행 = 파랑 #2F7FBF, 녹지·산책 = 초록 #3E8E41, 주요·강조 흐름 = 주황 #F28C28. 요청에 뜻이 없으면 한 가지 색만 쓴다. 한 패널에 선 동선은 4개 이하.
+- 부드럽게 퍼지는 개념 포스터(플로우 허브·커뮤니티 가든 같은 문장형 요청)는 style 을 생략한다(기존 번지는 띠).
+위치는 반드시 이 9개 앵커 중 하나로만 지정한다: ${ANCHORS.join(', ')} (center=대지 중앙, n=북쪽/위, e=동쪽/오른쪽 …).
 icon은 반드시 아래 목록의 이름(왼쪽 영문) 중 하나로만 쓴다(뜻이 가장 가까운 것을 고른다). 분류별: ${ICON_GROUPS.map((g) => `[${g.label}] ${g.names.map((n) => `${n}(${ICON_LABEL[n]})`).join(', ')}`).join(' / ')}.
 - 한 패널에는 개념 하나만 담는다(흐름이면 flow, 구역이면 zone+marker, 순환이면 cycle).
 - marker는 한 패널에 최대 6개. label 텍스트는 15자 이내. 모든 글자는 한국어 그대로 쓴다.
@@ -199,7 +203,7 @@ const IMAGE_RULE = `참고 이미지가 첨부되어 있다. 이미지를 먼저
 // 소재 이미지를 '바탕'이 아니라 '내용을 읽어 올 자료'로 쓰는 종류(imgs.ref): 이미지에 보이는 글자·항목만 옮기고 지어내지 않는다
 export const REF_TYPES = ['table', 'cards']; // 내용 읽기가 되는 종류(버블도·조닝도는 제공 목록에서 뺐다)
 const REF_RULES = {
-  table: '이미지는 표(건축개요·면적표·일람표 등)를 찍거나 캡처한 것이다. 보이는 라벨–값을 위에서 아래 순서대로 rows 에 옮긴다. cols 는 보이는 열 수에 맞추되 최대 4(열이 더 많으면 핵심 4열만), 숫자 열이 많은 표(면적표 등)는 style 을 "stripe" 로 한다. 표 제목이 보이면 table.title 에 쓰고, 글자가 흐려 읽지 못한 칸은 비워 둔다.',
+  table: '이미지는 표(건축개요·면적표·일람표 등)를 찍거나 캡처한 것이다. 보이는 라벨–값을 위에서 아래 순서대로 rows 에 옮긴다. cols 는 보이는 열 수에 맞추되 최대 4(열이 더 많으면 핵심 4열만), 숫자 열이 많은 표(면적표 등)는 style 을 "stripe" 로 한다. 구분(건물개요·주차개요 등) 칸이 여러 줄에 걸쳐 합쳐져 있거나 비고 열·소계 줄이 있는 설계개요 표는 style "doc"(cols 3~5, 구분은 첫 줄에만 쓰고 아래는 "")으로 옮기고, 회색 머리글 줄이 보이면 header 에 열 이름을 쓴다. 표 제목이 보이면 table.title 에 쓰고, 글자가 흐려 읽지 못한 칸은 비워 둔다.',
   stack: '이미지는 단면도·입면도·층별 면적표·층 구성표 중 하나다. 층 수와 층별 용도(프로그램)를 읽어 floors 를 아래층부터 채운다(지하층은 B1 처럼 쓰고, 8층을 넘으면 비슷한 층을 묶는다). 층 안의 구획이 보이면 programs 로, 비어 있는 높은 공간(보이드)과 코어가 보이면 voids·cores 로 넣는다. 글자로 적힌 용도만 쓰고 적히지 않은 프로그램을 지어내지 않는다.',
   program: '이미지는 평면도·공간 목록·면적표·기능 관계 스케치 중 하나다. 보이는 공간(방·실)의 이름을 nodes 로 옮기고, 면적이 적혀 있으면 면적에 비례해 size 를 정한다(없으면 중요도로). 성격이 같은 공간을 묶어 groups 로 나누고, 평면에서 서로 붙어 있거나 문·복도로 이어진 공간, 또는 선으로 이어진 공간은 links 로 연결한다. 공간이 25개를 넘으면 큰 공간·중요한 공간 위주로 하고, 이미지에 없는 공간은 지어내지 않는다.',
   cards: '이미지는 계획 자료(문서·표·도면 설명)다. 이미지에 적힌 항목과 수치를 읽어 핵심 가치 띠와 카드로 나누어 요약한다. 카드 제목과 불릿은 이미지에 적힌 말을 줄여서 쓰고, 이미지에 없는 성능 수치나 주장을 지어내지 않는다.',
@@ -390,6 +394,7 @@ export function getTextFields(type, spec) {
       (p.overlays || []).forEach((o, j) => {
         if (o.kind === 'marker') out.push({ path: ['panels', i, 'overlays', j, 'label'], label: `패널 ${i + 1} 칩`, value: o.label || '' });
         if (o.kind === 'label') out.push({ path: ['panels', i, 'overlays', j, 'text'], label: `패널 ${i + 1} 주석`, value: o.text || '' });
+        if ((o.kind === 'flow' || o.kind === 'zone') && o.label) out.push({ path: ['panels', i, 'overlays', j, 'label'], label: `패널 ${i + 1} 범례 ${j + 1}`, value: String(o.label) });
       });
     });
   }

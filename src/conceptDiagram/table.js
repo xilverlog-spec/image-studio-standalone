@@ -1,9 +1,12 @@
-// 개요표(건축개요·면적표 등 라벨–값 표): 2~4열, 두 스타일. 병합 셀·계산은 없다.
+// 개요표(건축개요·면적표 등 라벨–값 표): 2~4열 두 스타일(label·stripe) + 설계개요형(doc, 3~5열). 계산은 없다.
 // 손스케치(memo.table)와 구조형(adds kind 'table')이 함께 쓴다. 좌표는 그리는 좌표(px), (x, y) = 표의 왼쪽 위.
-//  table = { title, cols(2~4), style('label'|'stripe'), rows:[[셀,…],…] }   — 열 너비는 글자 길이에 맞춰 자동
+//  table = { title, cols(label·stripe 2~4 / doc 3~5), style('label'|'stripe'|'doc'), rows:[[셀,…],…], header?:[열 이름,…](doc), unit?:'단위: ㎡'(doc) }   — 열 너비는 글자 길이에 맞춰 자동
+//  설계개요형(doc): 열 = [구분, 항목, 내용…, (비고)]. 구분 칸이 비면 위 구분을 잇는다(한 칸으로 합쳐 그림). 이름이 소계·합계·총계·전체·계인 줄은 굵게 + 연한 회색 면. 숫자 칸은 오른쪽 정렬.
 
-export const TABLE_STYLES = ['label', 'stripe'];
-export const TABLE_STYLE_LABEL = { label: '회색 라벨 열 + 가는 선', stripe: '색 띠 + 줄무늬' };
+export const TABLE_STYLES = ['label', 'stripe', 'doc'];
+export const TABLE_STYLE_LABEL = { label: '회색 라벨 열 + 가는 선', stripe: '색 띠 + 줄무늬', doc: '설계개요형 (구분 합침·머리글·소계 줄)' };
+export const TABLE_MAX_UNIT = 20;
+const TOTAL_ROW = /^(소계|합계|총계|전체|계)$/;
 export const TABLE_COLOR = '#2F6B4F';
 export const TABLE_MAX_ROWS = 30;
 export const TABLE_MAX_CELL = 40;
@@ -20,14 +23,29 @@ export const SAMPLE_TABLE = { title: '건축개요', cols: 2, style: 'label', ro
 // 어떤 입력이든 올바른 표로: 열 수 2~4, 모든 행의 칸 수가 열 수와 같게, 글자 길이·행 수 한도
 export function normalizeTable(t) {
   const o = t && typeof t === 'object' ? t : {};
-  const cols = Math.min(4, Math.max(2, Math.round(Number(o.cols)) || 2));
-  const rows = (Array.isArray(o.rows) ? o.rows : []).slice(0, TABLE_MAX_ROWS).map((r) => { const a = Array.isArray(r) ? r : []; return Array.from({ length: cols }, (_, i) => String(a[i] ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_CELL)); });
-  return { title: String(o.title ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_TITLE), cols, style: TABLE_STYLES.includes(o.style) ? o.style : 'label', rows };
+  const style = TABLE_STYLES.includes(o.style) ? o.style : 'label'; const doc = style === 'doc';
+  const minC = doc ? 3 : 2; const maxC = doc ? 5 : 4;
+  const cols = Math.min(maxC, Math.max(minC, Math.round(Number(o.cols)) || minC));
+  const clean = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_CELL);
+  const rows = (Array.isArray(o.rows) ? o.rows : []).slice(0, TABLE_MAX_ROWS).map((r) => { const a = Array.isArray(r) ? r : []; return Array.from({ length: cols }, (_, i) => clean(a[i])); });
+  const out = { title: String(o.title ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_TITLE), cols, style, rows };
+  if (doc) { // 머리글·단위는 설계개요형에서만(없으면 필드 자체를 두지 않는다)
+    const hd = Array.isArray(o.header) ? Array.from({ length: cols }, (_, i) => clean(o.header[i]).trim()) : null;
+    if (hd && hd.some((v) => v !== '')) out.header = hd;
+    const unit = String(o.unit ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, TABLE_MAX_UNIT); if (unit) out.unit = unit;
+  }
+  return out;
 }
+// 설계개요형의 구분 칸 합침: 첫째 열이 비어 있으면 위 구분을 잇는다. 반환 [{r0, r1}] (구분이 처음 나오기 전의 빈 칸은 합치지 않는다)
+export function tableGroups(t) {
+  const out = []; (t.rows || []).forEach((r, i) => { if (String(r[0] ?? '') !== '') out.push({ r0: i, r1: i }); else if (out.length) out[out.length - 1].r1 = i; });
+  return out;
+}
+export const isTotalRow = (t, r) => t.style === 'doc' && !!r && [r[0], r[1]].some((v) => TOTAL_ROW.test(String(v ?? '').replace(/\s+/g, '')));
 
 // 편집 도우미(모두 새 표를 돌려준다)
 export const tableSetCell = (t, r, c, v) => { const n = normalizeTable(t); if (r < 0) return { ...n, title: String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_TITLE) }; if (!n.rows[r] || c < 0 || c >= n.cols) return n; return { ...n, rows: n.rows.map((row, i) => (i === r ? row.map((x, j) => (j === c ? String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, TABLE_MAX_CELL) : x)) : row)) }; };
-export const tableAddRow = (t, at, fill = false) => { const n = normalizeTable(t); if (n.rows.length >= TABLE_MAX_ROWS) return n; const row = Array.from({ length: n.cols }, (_, ci) => (fill ? (ci === 0 ? '항목' : '내용') : '')); const i = at === undefined ? n.rows.length : Math.min(n.rows.length, Math.max(0, at)); return { ...n, rows: [...n.rows.slice(0, i), row, ...n.rows.slice(i)] }; }; // fill: 그림 위에서 바로 고칠 수 있게 기본 글자를 채운다
+export const tableAddRow = (t, at, fill = false) => { const n = normalizeTable(t); if (n.rows.length >= TABLE_MAX_ROWS) return n; const row = Array.from({ length: n.cols }, (_, ci) => (fill ? (n.style === 'doc' ? (ci === 0 ? '' : ci === 1 ? '항목' : '내용') : (ci === 0 ? '항목' : '내용')) : '')); const i = at === undefined ? n.rows.length : Math.min(n.rows.length, Math.max(0, at)); return { ...n, rows: [...n.rows.slice(0, i), row, ...n.rows.slice(i)] }; }; // fill: 그림 위에서 바로 고칠 수 있게 기본 글자를 채운다
 export const tableDelRow = (t, i) => { const n = normalizeTable(t); return n.rows.length <= 1 || i < 0 || i >= n.rows.length ? n : { ...n, rows: n.rows.filter((_, k) => k !== i) }; };
 export const tableMoveRow = (t, i, d) => { const n = normalizeTable(t); const j = i + d; if (i < 0 || j < 0 || i >= n.rows.length || j >= n.rows.length) return n; const rows = [...n.rows]; [rows[i], rows[j]] = [rows[j], rows[i]]; return { ...n, rows }; };
 export const tableSetCols = (t, cols, fill = false) => { // 줄이면 오른쪽 열이 잘리고 늘리면 빈 열이 생긴다(fill 이면 새 칸에 기본 글자)
@@ -45,17 +63,61 @@ const NUM = /^[-+]?[\d,.]+\s*(㎡|m²|㎥|m|mm|cm|%|대|세대|층|명|원|억|�
 // 배치: 열 너비(글자 길이에 맞춤)·행 높이·셀 위치·전체 크기
 export function tableLayout(c) {
   const t = normalizeTable(c.table ?? c); const s = Math.max(6, Number(c.size) || 14); const x = Number(c.x) || 0; const y = Number(c.y) || 0;
+  const doc = t.style === 'doc';
   const padX = s * 0.7; const rowH = s * 2.0; const titleH = t.title ? s * (t.style === 'stripe' ? 2.2 : 2.0) : 0;
-  const colW = Array.from({ length: t.cols }, (_, ci) => Math.max(s * 3.2, ...t.rows.map((r) => textW(r[ci], s) * (isLabelCol(t, ci) ? 1.06 : 1))) + padX * 2);
+  const unitH = doc && t.unit ? s * 1.5 : 0; const hdrH = doc && t.header ? rowH : 0; // 설계개요형: 제목 아래 단위 줄, 그 아래 머리글 띠
+  const colW = Array.from({ length: t.cols }, (_, ci) => Math.max(s * 3.2, ...t.rows.map((r) => textW(r[ci], s) * (isLabelCol(t, ci) || (doc && ci === 0) ? 1.1 : 1)), ...(doc && t.header ? [textW(t.header[ci], s) * 1.1] : [])) + padX * 2);
   const w = colW.reduce((a, b) => a + b, 0); const tw = t.title ? textW(t.title, s * 1.05) * 1.08 + padX * 2 : 0; if (tw > w) colW[t.cols - 1] += tw - w; // 제목이 더 길면 마지막 열을 넓힌다
   const W = colW.reduce((a, b) => a + b, 0); const colX = colW.reduce((a, cw, i) => { a.push(i ? a[i - 1] + colW[i - 1] : x); return a; }, []);
-  const rows = t.rows.map((r, ri) => ({ y: y + titleH + ri * rowH, h: rowH, cells: r.map((v, ci) => ({ r: ri, c: ci, x: colX[ci], w: colW[ci], text: v })) }));
-  return { t, s, x, y, w: W, h: titleH + t.rows.length * rowH, titleH, rowH, padX, colW, colX, rows };
+  const top = y + titleH + unitH + hdrH;
+  const rows = t.rows.map((r, ri) => ({ y: top + ri * rowH, h: rowH, cells: r.map((v, ci) => ({ r: ri, c: ci, x: colX[ci], w: colW[ci], text: v })) }));
+  return { t, s, x, y, w: W, h: titleH + unitH + hdrH + t.rows.length * rowH, titleH, unitH, hdrH, rowH, padX, colW, colX, rows, groups: doc ? tableGroups(t) : [] };
+}
+
+// 설계개요형 그림: 머리글 띠(#D9D9D9)·구분 칸 합침(#F2F2F2)·소계 줄 강조·숫자 오른쪽 정렬. 선은 가는 선 + 위·아래 굵은 선(사내 참고사례 값의 비율)
+function docSvg(L, c, { id, interactive, font }) {
+  const { t, s } = L; const col = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : TABLE_COLOR; const o = [];
+  const lw = Math.max(0.8, s * 0.06); const heavy = Math.max(1.6, s * 0.14); const INK = '#222222'; const RULE = '#333333';
+  const x0 = L.x; const x1 = L.x + L.w; const yTop = L.y + L.titleH + L.unitH; const yEnd = L.y + L.h;
+  if (interactive) o.push(`<rect x="${f1(L.x)}" y="${f1(L.y)}" width="${f1(L.w)}" height="${f1(L.h)}" fill="transparent"/>`);
+  if (t.title) {
+    o.push(`<text x="${f1(x0 + L.padX)}" y="${f1(L.y + L.titleH / 2 + s * 0.38)}" font-family="${font}" font-size="${f1(s * 1.05)}" font-weight="800" fill="${INK}">${esc(t.title)}</text>`);
+    o.push(`<line x1="${f1(x0)}" y1="${f1(L.y + L.titleH)}" x2="${f1(x1)}" y2="${f1(L.y + L.titleH)}" stroke="${col}" stroke-width="${f1(heavy)}"/>`);
+  }
+  if (t.unit) o.push(`<text x="${f1(x1 - L.padX * 0.4)}" y="${f1(L.y + L.titleH + L.unitH * 0.68)}" text-anchor="end" font-family="${font}" font-size="${f1(s * 0.8)}" fill="#555555">${esc(t.unit)}</text>`);
+  if (t.header) { // 회색 머리글 띠 + 열 이름(가운데, 굵게)
+    o.push(`<rect x="${f1(x0)}" y="${f1(yTop)}" width="${f1(L.w)}" height="${f1(L.hdrH)}" fill="#D9D9D9"/>`);
+    t.header.forEach((h, ci) => { if (h) o.push(`<text x="${f1(L.colX[ci] + L.colW[ci] / 2)}" y="${f1(yTop + L.hdrH / 2 + s * 0.35)}" text-anchor="middle" font-family="${font}" font-size="${f1(s)}" font-weight="700" fill="${INK}">${esc(h)}</text>`); });
+  }
+  L.groups.forEach((g) => o.push(`<rect x="${f1(x0)}" y="${f1(L.rows[g.r0].y)}" width="${f1(L.colW[0])}" height="${f1((g.r1 - g.r0 + 1) * L.rowH)}" fill="#F2F2F2"/>`)); // 합친 구분 칸의 바탕(한 덩어리)
+  const starts = new Set(L.groups.map((g) => g.r0));
+  L.rows.forEach((row, ri) => {
+    const total = isTotalRow(t, t.rows[ri]);
+    if (total) o.push(`<rect x="${f1(L.colX[1])}" y="${f1(row.y)}" width="${f1(x1 - L.colX[1])}" height="${f1(row.h)}" fill="#F2F2F2"/>`);
+    if (ri < L.rows.length - 1) { const full = starts.has(ri + 1) || !starts.size; o.push(`<line x1="${f1(full ? x0 : L.colX[1])}" y1="${f1(row.y + row.h)}" x2="${f1(x1)}" y2="${f1(row.y + row.h)}" stroke="#B5B5B5" stroke-width="${f1(lw)}"/>`); }
+    row.cells.forEach((cell) => {
+      if (cell.c === 0 || !cell.text) return; // 구분 글자는 합친 칸에 한 번만(아래)
+      const right = cell.c >= 2 && NUM.test(cell.text.trim());
+      o.push(`<text x="${f1(right ? cell.x + cell.w - L.padX : cell.x + L.padX)}" y="${f1(row.y + row.h / 2 + s * 0.35)}"${right ? ' text-anchor="end"' : ''} font-family="${font}" font-size="${f1(s)}" font-weight="${total || cell.c === 1 ? 700 : 500}" fill="${INK}">${esc(cell.text)}</text>`);
+    });
+  });
+  L.groups.forEach((g) => { // 합친 구분 칸: 글자는 그 칸 가운데
+    const gy = L.rows[g.r0].y; const gh = (g.r1 - g.r0 + 1) * L.rowH; const txt = t.rows[g.r0][0];
+    o.push(`<text x="${f1(L.colX[0] + L.colW[0] / 2)}" y="${f1(gy + gh / 2 + s * 0.35)}" text-anchor="middle" font-family="${font}" font-size="${f1(s)}" font-weight="700" fill="${INK}">${esc(txt)}</text>`);
+  });
+  o.push(`<line x1="${f1(x0)}" y1="${f1(yTop)}" x2="${f1(x1)}" y2="${f1(yTop)}" stroke="${RULE}" stroke-width="${f1(heavy)}"/>`);
+  o.push(`<line x1="${f1(x0)}" y1="${f1(yEnd)}" x2="${f1(x1)}" y2="${f1(yEnd)}" stroke="${RULE}" stroke-width="${f1(heavy)}"/>`);
+  if (interactive) { // 셀 하나하나를 눌러 고칠 수 있게. 제목은 -1,0
+    if (t.title) o.push(`<rect data-cell="-1,0" x="${f1(L.x)}" y="${f1(L.y)}" width="${f1(L.w)}" height="${f1(L.titleH)}" fill="transparent"/>`);
+    L.rows.forEach((row) => row.cells.forEach((cell) => o.push(`<rect data-cell="${cell.r},${cell.c}" x="${f1(cell.x)}" y="${f1(row.y)}" width="${f1(cell.w)}" height="${f1(row.h)}" fill="transparent"/>`)));
+  }
+  return `<g${interactive && id ? ` data-eid="${esc(id)}" style="cursor:move"` : ''}>${o.join('')}</g>`;
 }
 
 // 그림(SVG 조각). id·interactive 가 있으면 눌러서 고를 수 있게(data-eid) 하고 셀마다 data-cell="행,열"(제목은 -1,0)인 투명 사각형을 둔다
 export function tableSvg(c, { id = '', interactive = false, font = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif" } = {}) {
-  const L = tableLayout(c); const col = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : TABLE_COLOR; const { t, s } = L; const stripe = t.style === 'stripe';
+  const L = tableLayout(c); if (L.t.style === 'doc') return docSvg(L, c, { id, interactive, font });
+  const col = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : TABLE_COLOR; const { t, s } = L; const stripe = t.style === 'stripe';
   const o = [];
   if (interactive) o.push(`<rect x="${f1(L.x)}" y="${f1(L.y)}" width="${f1(L.w)}" height="${f1(L.h)}" fill="transparent"/>`);
   if (t.title) {

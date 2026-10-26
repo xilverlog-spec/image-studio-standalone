@@ -28,6 +28,8 @@ const cardboardJs = path.resolve(here, '../../src/conceptDiagram/cardboard.js');
 const tabledocJs = path.resolve(here, '../../src/conceptDiagram/tabledoc.js');
 const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
+const themeJs = path.resolve(here, '../../src/conceptDiagram/theme.js');
+const fontcheckJs = path.resolve(here, '../../src/conceptDiagram/fontcheck.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, OFFERED_TYPES, HIDDEN_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
@@ -51,7 +53,7 @@ export { editAddTable } from ${fwd(svgeditJs)};
 export { imageFx, clampPct, hasFx, CONTEXT_FX } from ${fwd(imgfxJs)};
 export { cardsInitialEdits, cardsRebase } from ${fwd(cardboardJs)};
 export { cardsSetBullets, cardsToggleSub, cardsToggleCaption } from ${fwd(cardboardJs)};
-export { tableHasEmpty, tableFillEmpty } from ${fwd(tableJs)};
+export { tableHasEmpty, tableFillEmpty, TABLE_STYLES, TABLE_STYLE_LABEL } from ${fwd(tableJs)};
 export { normalizeCards, renderCards, wrapText, cardsHeroAdds, CARD_PRESETS, MAX as CARD_MAX, TONES as CARD_TONES, cardsAddCard, cardsDelCard, cardsMoveCard, cardsSetSlots, cardsAddKeypoint, cardsDelKeypoint, cardsAddBand, cardsDelBand, cardsMoveBand, cardsCount, getCardsTextFields } from ${fwd(cardboardJs)};
 export { textW } from ${fwd(tableJs)};
 export { normalizeTableDoc, renderTableDoc, getTableDocFields, TABLE_DOC_SCHEMA } from ${fwd(tabledocJs)};
@@ -70,6 +72,8 @@ export { sketchSetDimStart } from ${fwd(sketch)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
+export { THEMES, themeById, applyTheme } from ${fwd(themeJs)};
+export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
@@ -1878,10 +1882,10 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const sp = { accent: 'x', size: 999, table: { title: '건축개요', cols: 2, rows: [['a', 'b']] } }; const n = m.normalizeTableDoc(sp); expect(n.size === 40 && n.accent === '#2F6B4F' && n.table.rows.length === 1, '정리: 크기 한도·색'); expect(m.normalizeTableDoc({}).table.rows.length === 4, '빈 입력은 예시 표');
     let threw = false; try { m.normalizeTableDoc({ table: { rows: [] } }); } catch { threw = true; } expect(threw, '행이 없으면 오류(생성 검증에서 걸림)');
     const r = m.renderTableDoc(sp); expect(r.width > 100 && r.height > 50 && r.svg.includes('>a<') && r.svg.includes('viewBox') && !/NaN|undefined/.test(r.svg) && !r.svg.includes('data-cell'), '그림: 표 + 여백, 편집 표시 없음'); }
-  { const spec = m.EXAMPLE_SPECS.table; const r = m.renderSpec('table', spec); expect(r.svg.includes('>건축개요<') && r.svg.includes('>용도<'), '예시 개요표'); const f = m.getTextFields('table', spec); expect(f.length === 1 + 4 * 2 && f[0].path.join('.') === 'table.title' && f[1].path.join('.') === 'table.rows.0.0', '글자 목록: 제목 + 칸마다');
+  { const spec = m.EXAMPLE_SPECS.table; const r = m.renderSpec('table', spec); expect(r.svg.includes('>건축개요<') && r.svg.includes('>용도<'), '예시 개요표'); const f = m.getTextFields('table', spec); expect(f.length === 1 + 9 * 4 && f[0].path.join('.') === 'table.title' && f[1].path.join('.') === 'table.rows.0.0', '글자 목록: 제목 + 칸마다');
     const f2 = f.find((x) => x.value === '공동주택'); const sp2 = m.setByPath(spec, f2.path, '업무시설'); expect(m.renderSpec('table', sp2).svg.includes('>업무시설<'), '칸 고치기(setByPath)가 그림에 반영');
-    expect(m.DIAGRAM_TYPES.table.label.includes('개요표') && m.normalizeSpec('table', spec).table.cols === 2, '종류 등록'); }
-  { const pr = m.buildConceptPrompt('table', '건축개요표: 대지위치 서울, 용도 공동주택'); expect(pr.includes('"rows"') && pr.includes('라벨–값 표만 만든다') && pr.includes('요청: 건축개요표'), '프롬프트: 스키마·규칙·요청'); expect(m.buildConceptPrompt('auto', 'x').includes('[table 스키마]'), '자동 종류에도 개요표 선택지'); }
+    expect(m.DIAGRAM_TYPES.table.label.includes('개요표') && m.normalizeSpec('table', spec).table.cols === 4 && m.normalizeSpec('table', spec).table.style === 'doc', '종류 등록(예시는 설계개요형 4열)'); }
+  { const pr = m.buildConceptPrompt('table', '건축개요표: 대지위치 서울, 용도 공동주택'); expect(pr.includes('"rows"') && pr.includes('설계개요형(doc)만 만든다') && pr.includes('"style": "label"') && pr.includes('요청: 건축개요표'), '프롬프트: 스키마·규칙·요청'); expect(m.buildConceptPrompt('auto', 'x').includes('[table 스키마]'), '자동 종류에도 개요표 선택지'); }
   // 구조 지문 맞춤(rebaseEdits)
   { const a = m.renderSpec('table', m.EXAMPLE_SPECS.table).svg; const E0 = { ...m.emptyEdits(a), ops: { e2: { t: [4, 4] } }, adds: [{ id: 'a1', kind: 'icon', icon: 'zap', shape: 'rounded', x: 1, y: 1, w: 30, h: 30, fill: '#222222' }] };
     expect(m.rebaseEdits(E0, a) === E0 && m.rebaseEdits(null, a) === null, '구조가 같으면 그대로');
@@ -2056,6 +2060,173 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const sp = clone(M0); sp.steps[3].boxes[0].color = '#2B6CB0'; const r = m.renderSpec('massing', sp).svg; expect(r.includes('#2B6CB0') && r.includes('#2B6CB0'.toLowerCase()) === false || r.includes('#2B6CB0'), '색 입체: 지정한 색이 오른쪽 면에 쓰임'); }
   expect(m.getTextFields('massing', M0).some((f) => f.label.includes('지시선') && f.value === '라운지'), '글자 수정 목록에 지시선 이름이 있음');
   { const sp = clone(M0); sp.cols = 1; const r = m.renderSpec('massing', sp); expect(!/NaN|undefined/.test(r.svg) && r.height >= 4 * 360, '1열(세로로 쌓기)에서도 깨지지 않음'); }
+}
+// 스타일 안(theme): 안 3개, 색 계열 치환, 구조·손잡이·직접 칠한 색 보존(2026-10-26)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`스타일 안: ${label}`); };
+  const T = m.themeById;
+  const hsl = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l = (mx + mn) / 2; const d = mx - mn; let h = 0; let sat = 0; if (d) { sat = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return { h, s: sat, l }; };
+  const fillsOf = (svg) => [...svg.matchAll(/fill="(#[0-9A-Fa-f]{6})"/g)].map((x) => x[1].toUpperCase());
+  const oneFill = (c, id) => fillsOf(m.applyTheme(`<svg><rect fill="${c}"/></svg>`, id))[0];
+  expect(JSON.stringify(m.THEMES.map((t) => t.id)) === '["current","blue","mono"]', '안은 current·blue·mono 3개');
+  const bl = T('blue'); const mo = T('mono'); const cu = T('current');
+  expect(bl.a1 === '#DFA837' && bl.a2 === '#2F4E9A' && bl.a3 === '#7BA23A' && bl.ink === '#231815' && bl.fontId === 'pretendard' && bl.titleK === 1.1, 'blue 값이 명세와 같음');
+  expect(mo.a1 === '#E8832A' && mo.a2 === '#5F6670' && mo.a3 === '#8A9097' && mo.ink === '#1F2328' && mo.fontId === 'noto' && mo.titleK === 1, 'mono 값이 명세와 같음');
+  expect(cu.fontId === null && cu.titleK === 1 && cu.ink === null, 'current 는 글씨체·글자색을 건드리지 않고 배율 1');
+  expect(T(undefined).id === 'current' && T('zzz').id === 'current' && T(null).id === 'current', 'themeById: 없는·모르는 값은 current');
+  const S0 = '<svg viewBox="0 0 10 10"><rect fill="#F28C28"/><path stroke="#1E90C8" d="M0 0"/><text fill="#222222" font-family="' + m.ENGINE_FONT + '">가</text></svg>';
+  expect(m.applyTheme(S0, 'current') === S0 && m.applyTheme(S0, 'zzz') === S0 && m.applyTheme(S0, undefined) === S0, 'current·모르는 안은 입력과 완전히 같음');
+  expect(JSON.stringify(['#F28C28', '#1E90C8', '#3E8E41'].map((c) => oneFill(c, 'blue'))) === '["#DFA837","#2F4E9A","#7BA23A"]', '기준색 3종이 blue 의 a1·a2·a3 로 감');
+  expect(JSON.stringify(['#F28C28', '#1E90C8', '#3E8E41'].map((c) => oneFill(c, 'mono'))) === '["#E8832A","#5F6670","#8A9097"]', '기준색 3종이 mono 의 a1·a2·a3 로 감');
+  { const light = hsl(oneFill('#FFE2B8', 'blue')).l; const dark = hsl(oneFill('#6D3F12', 'blue')).l; const t1 = hsl('#DFA837').l;
+    expect(light - t1 >= 0.2 && t1 - dark >= 0.2, `명도 차이 유지: 옅은 면 ${light.toFixed(2)} > 안 색 ${t1.toFixed(2)} > 어두운 갈색 ${dark.toFixed(2)}`); }
+  expect(['#FFFFFF', '#C4C7CC', '#8A9097', '#EDEDED'].every((c) => oneFill(c, 'blue') === c && oneFill(c, 'mono') === c), '흰색·밝은 회색은 그대로');
+  { const inkL = hsl('#231815').l; const ok3 = ['#222222', '#1F2328', '#1F242B'].every((c) => { const o = oneFill(c, 'blue'); const h = hsl(o); return Math.abs(h.l - inkL) <= 0.05 && Math.abs(h.h - 223) > 40; });
+    expect(ok3, '아주 어두운 글자색(청회색 #1F242B 포함)은 ink 쪽으로 가고 청색 계열로 가지 않음'); }
+  expect(oneFill('#D0342F', 'blue') === '#D0342F' && oneFill('#D0342F', 'mono') === '#D0342F', '빨강은 그대로');
+  expect(hsl(oneFill('#3E8E41', 'mono')).s < 0.15, 'mono 에서는 초록이 회색 계열');
+  { const tricky = '<svg><image href="data:image/png;base64,iVBOR#F28C28"/><rect fill="url(#grad1)"/><g data-handle="x" stroke="#F28C28"/><rect style="fill:#F28C28;stroke:#1E90C8"/></svg>';
+    const o = m.applyTheme(tricky, 'blue');
+    expect(o.includes('base64,iVBOR#F28C28') && o.includes('url(#grad1)') && o.includes('<g data-handle="x" stroke="#F28C28"/>'), '이미지 데이터·url 참조·편집 손잡이는 그대로');
+    expect(o.includes('fill:#DFA837') && o.includes('stroke:#2F4E9A'), 'style 속성 안의 색은 바뀜'); }
+  { const sig = (svg) => m.emptyEdits(svg).sig; const base = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg;
+    expect((base.match(/</g) || []).length === (m.applyTheme(base, 'blue').match(/</g) || []).length && sig(base) === sig(m.applyTheme(base, 'blue')) && sig(base) === sig(m.applyTheme(base, 'mono')), '안을 입혀도 태그 수·구조 지문이 같음'); }
+  { const pret = m.FONT_OPTIONS.find((f) => f.id === 'pretendard').css; const noto = m.FONT_OPTIONS.find((f) => f.id === 'noto').css;
+    const b = m.applyTheme(S0, 'blue'); const n = m.applyTheme(S0, 'mono');
+    expect(b.includes(pret) && !b.includes(m.ENGINE_FONT) && n.includes(noto) && !n.includes(m.ENGINE_FONT) && m.applyTheme(S0, 'current').includes(m.ENGINE_FONT), '안의 글꼴로 바뀌고 current 는 그대로'); }
+  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['blue', 'mono']) {
+    try { const svg = m.applyTheme(m.renderSpec(t, m.EXAMPLE_SPECS[t]).svg, id); expect(/^<svg[\s\S]*<\/svg>$/.test(svg) && !/NaN|undefined/.test(svg), `예시 ${t} × ${id} 이 깨지지 않음`); } catch (e) { fails.push(`스타일 안: 예시 ${t} × ${id}: ${e.message}`); }
+  }
+}
+// 쪽 조립의 안 옵션(inkColor·titleK, 2026-10-26)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`쪽 조립 안 옵션: ${label}`); };
+  const art = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><rect width="100" height="60" fill="#fff"/><rect x="10" y="10" width="80" height="40" fill="#D8DCE2"/></svg>' };
+  const pgSpec = { w: 420, h: 297, medium: 'print' };
+  const mk = (extra = {}) => m.composePage(pgSpec, [{ id: 'c1', render: art, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', corner: '종단면도 / SCALE : 1/400', fontId: 'pretendard', ...extra });
+  const base = mk();
+  expect(base.svg.includes('fill="#1f242b"'), '옵션이 없으면 제목은 예전 글자색(#1f242b)');
+  const inked = mk({ inkColor: '#231815' });
+  expect(inked.svg.includes('fill="#231815"') && !inked.svg.includes('font-weight="800" fill="#1f242b"'), 'inkColor 가 제목 글자색이 됨');
+  expect((inked.svg.match(/fill="#231815"/g) || []).length >= 2, 'inkColor 가 제목과 오른쪽 위 라벨 첫 줄에 쓰임');
+  const k = mk({ titleK: 1.1 });
+  expect(Math.abs(k.report.pt.title - base.report.rec.title * 1.1) < 0.6 && Math.abs(k.report.pt.sub - base.report.rec.sub * 1.1) < 0.6, 'titleK 가 추천 제목·소제목 크기에 곱해짐');
+  expect(mk({ titleK: 1.1, sizes: { title: 40 } }).report.pt.title === 40, '직접 정한 제목 크기는 titleK 가 건드리지 않음');
+  for (const bad of [{ inkColor: '' }, { inkColor: 'red' }, { inkColor: null }, { titleK: 0 }, { titleK: -2 }, { titleK: 'x' }, { titleK: NaN }, { titleK: undefined }]) {
+    let svg = ''; try { svg = mk(bad).svg; } catch (e) { svg = `ERR ${e.message}`; }
+    expect(svg === base.svg, `이상한 값 ${JSON.stringify(bad)} 은 옵션이 없을 때와 같은 그림`);
+  }
+}
+// 안 적용 순서(renderSpec → applyTheme → applyEdits): 직접 칠한 색 보존, 편집 손잡이 보존, 쪽 조립 연결(2026-10-26)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`안 적용 순서: ${label}`); };
+  { const svg = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg; const scan = m.scanSvg(svg);
+    const leaf = scan.els.find((e) => e.kind === 'e' && e.attrs.fill && /^#[0-9a-fA-F]{6}$/.test(e.attrs.fill) && e.attrs.fill.toUpperCase() !== '#FFFFFF');
+    expect(!!leaf, '시험 대상 요소를 찾음');
+    if (leaf) {
+      const edits = m.editSet(m.emptyEdits(svg), leaf.id, { fill: '#123456' }, scan.sig);
+      for (const id of ['blue', 'mono', 'current']) {
+        const out = m.applyEdits(m.applyTheme(svg, id), edits).svg; const again = m.scanSvg(out).els.find((e) => e.id === leaf.id);
+        expect(again && again.attrs.fill === '#123456', `직접 칠한 색은 안(${id})을 바꿔도 유지됨`);
+      }
+    } }
+  { const spk = { frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40] }], lines: [{ id: 'p1', pts: [[10, 10], [30, 10]] }], winds: [], memos: [] };
+    const out = m.renderSketch(spk, { interactive: true, selected: 'b1' }).svg; const handles = out.match(/<[^>]*data-handle=[^>]*>/g) || [];
+    expect(handles.length > 0, '편집 출력에 손잡이 태그가 있음');
+    const themed = m.applyTheme(out, 'blue'); expect(handles.every((h) => themed.includes(h)), '편집 손잡이(주황 #F28C28 포함)는 안에 따라 변하지 않음'); }
+  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['current', 'blue', 'mono']) {
+    try {
+      const th = m.themeById(id); const svg = m.applyTheme(m.renderSpec(t, m.EXAMPLE_SPECS[t]).svg, id);
+      const page = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: th.fontId || 'pretendard', inkColor: th.ink || undefined, titleK: th.titleK, measure: null });
+      expect(/^<svg[\s\S]*<\/svg>$/.test(page.svg) && !/NaN|undefined/.test(page.svg), `예시 ${t} × ${id} 쪽 조립이 깨지지 않음`);
+    } catch (e) { fails.push(`안 적용 순서: 예시 ${t} × ${id} 쪽 조립: ${e.message}`); }
+  }
+}
+// 안 비교(글꼴 설치 확인·안마다 다른 쪽 그림, 2026-10-26)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`안 비교: ${label}`); };
+  expect(m.fontInstalled('Pretendard') === true && m.fontInstalled('아무글꼴') === true, 'DOM 이 없으면(node 시험) 설치된 것으로 본다(화면에서만 판정)');
+  { const art = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg; const mkPage = (id) => { const th = m.themeById(id); return m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: m.applyTheme(art, id) }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: th.fontId || 'pretendard', inkColor: th.ink || undefined, titleK: th.titleK, measure: null }).svg; };
+    const cur = mkPage('current'); const bl = mkPage('blue'); const mo = mkPage('mono');
+    const plain = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: art }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: 'pretendard', measure: null }).svg;
+    expect(cur !== bl && bl !== mo && cur !== mo, '안마다 쪽 그림이 서로 다름');
+    expect(cur === plain, 'current 쪽 그림은 안을 입히지 않은 것과 같음'); }
+}
+// 배치 개념도 선명한 선 동선 스타일(style:'line'): 사내 도면 관례의 선 굵기·점선·번호 배지·범례(2026-10-26)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`선 동선: ${label}`); };
+  const mk = (overlays) => ({ title: '', panels: [{ heading: '동선', accent: '#2F7FBF', siteShape: 'wedge', overlays }] });
+  const L = (extra = {}) => ({ kind: 'flow', style: 'line', from: 'w', to: ['e'], color: '#D0342F', ...extra });
+  const svgOf = (ov) => m.renderSpec('site', mk(ov)).svg;
+  { const r = svgOf([L({ no: 1, label: '차량 동선' })]);
+    expect(r.includes('stroke="#D0342F" stroke-width="3.2"') && r.includes('stroke-width="6.4"') && /marker-end="url\(#s0l\d+\)"/.test(r), '선 굵기 3.2 + 흰 테두리 6.4 + 화살촉');
+    expect(!r.includes('radialGradient') && !r.includes('#4a3426') && !r.includes('stroke-width="30"'), '번지는 띠·사람 모양 없음'); }
+  expect(svgOf([L({ dashed: true })]).includes('stroke-dasharray="7 4"') && !svgOf([L()]).includes('stroke-dasharray="7 4"'), '점선은 dashed 일 때만');
+  { const r = svgOf([L({ no: 7 })]); expect(r.includes('r="9.5"') && r.includes('>7</text>'), '번호 배지'); }
+  expect(svgOf([L({ no: 123 })]).includes('>12</text>') && !svgOf([L({ no: '' })]).includes('r="9.5"') && !svgOf([L()]).includes('r="9.5"'), '번호는 2글자까지, 없으면 배지 없음');
+  { const r = svgOf([L({ label: '차량 동선' }), L({ from: 'nw', to: ['se'], color: '#2F7FBF', label: '보행 동선' }), { kind: 'zone', anchor: 'se', size: 'm', pattern: 'fill', color: '#3E8E41', label: '공원 구역' }]);
+    expect(r.includes('>차량 동선<') && r.includes('>보행 동선<') && r.includes('>공원 구역<'), '범례에 이름이 나옴');
+    expect(r.includes('y="358"') || r.includes('y1="358"'), '범례는 대지 아래 한 줄(y=358)'); }
+  { const r = svgOf([1, 2, 3, 4, 5].map((i) => L({ label: `이름${i}` }))); const n = [1, 2, 3, 4, 5].filter((i) => r.includes(`>이름${i}<`)).length; expect(n === 4, `범례는 4개까지(실제 ${n})`); }
+  expect(svgOf([L({ label: '아주아주긴이름의동선입니다' })]).includes('>아주아주긴이름의<') , '범례 이름은 8자까지');
+  { const old = m.renderSpec('site', mk([{ kind: 'flow', from: 'center', to: ['n', 'e'], color: '#F28C28', label: '무시' }])).svg;
+    expect(old.includes('radialGradient') && old.includes('stroke-width="30"') && !old.includes('stroke-width="6.4"') && !old.includes('>무시<'), 'style 이 없으면 예전 번지는 띠 그대로(범례도 안 생김)'); }
+  { const r = m.renderSpec('site', m.EXAMPLE_SPECS.site).svg; expect(r.includes('radialGradient') && !r.includes('stroke-width="6.4"'), '기본 예시(포스터)는 그대로'); }
+  for (const [lab, ov] of [['to 없음', [L({ to: undefined })]], ['색 이상', [L({ color: 'red' })]], ['no null·label 숫자', [L({ no: null, label: 123 })]], ['목표 5개', [L({ to: ['n', 'ne', 'e', 'se', 's'] })]], ['같은 자리', [L({ from: 'center', to: ['center'] })]]]) {
+    let r = ''; try { r = svgOf(ov); } catch (e) { r = `ERR ${e.message}`; } expect(/^<svg[\s\S]*<\/svg>$/.test(r) && !/NaN|undefined/.test(r), `이상한 입력도 깨지지 않음: ${lab}`);
+  }
+  { const f = m.getTextFields('site', mk([L({ label: '차량 동선' }), { kind: 'zone', anchor: 'e', size: 'm', pattern: 'fill', color: '#3E8E41', label: '공원' }])); expect(f.filter((x) => x.label.includes('범례')).map((x) => x.value).join('|') === '차량 동선|공원', '글자 수정 목록에 범례 이름'); }
+  { const pr = m.buildConceptPrompt('site', '차량과 보행 동선을 나눠서 표시', {}); expect(pr.includes('"style":"line"') && pr.includes('#D0342F') && pr.includes('차량') && pr.includes('범례'), 'AI 규칙에 선 동선 스타일과 색의 뜻이 있음'); }
+}
+// 개요표 설계개요형(style:'doc'): 구분 칸 합침·머리글 띠·단위 줄·소계 줄 강조·숫자 오른쪽 정렬(2026-10-26, 사내 참고사례 7-6 값)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`개요표 설계개요형: ${label}`); };
+  const DOC = { title: '건축개요', style: 'doc', cols: 4, header: ['구분', '항목', '설계내용', '비고'], unit: '단위: ㎡',
+    rows: [['건물개요', '대지면적', '53,954.00㎡', ''], ['', '연면적', '12,448.85㎡', '지하 포함'], ['', '소계', '12,448.85㎡', ''], ['주차개요', '주차대수', '203대', '법정 150대']] };
+  expect(m.TABLE_STYLES.join() === 'label,stripe,doc' && m.TABLE_STYLE_LABEL.doc, '스타일 3개(label·stripe·doc)와 이름표');
+  expect(m.normalizeTable({ style: 'doc', cols: 2, rows: [] }).cols === 3 && m.normalizeTable({ style: 'doc', cols: 9, rows: [] }).cols === 5 && m.normalizeTable({ style: 'label', cols: 9, rows: [] }).cols === 4 && m.normalizeTable({ style: 'stripe', cols: 1, rows: [] }).cols === 2, '열 수: 설계개요형 3~5, 나머지는 예전처럼 2~4');
+  expect(m.normalizeTable({ style: 'zzz', cols: 3 }).style === 'label', '모르는 스타일은 label');
+  { const n = m.normalizeTable({ ...DOC, header: ['구분'], unit: '아주아주아주아주아주아주긴단위표기입니다' });
+    expect(n.header?.length === 4 && n.header?.[0] === '구분' && n.header?.[3] === '' && n.unit?.length === 20, '머리글은 열 수에 맞춰 채우고 단위는 20자까지'); }
+  { const n = m.normalizeTable({ style: 'label', cols: 2, header: ['a', 'b'], unit: 'x', rows: [['a', 'b']] }); expect(n.header === undefined && n.unit === undefined, '머리글·단위는 설계개요형에서만'); }
+  expect(m.normalizeTable({ style: 'doc', cols: 4, header: ['', ''], unit: '  ', rows: [['a', 'b', 'c', 'd']] }).header === undefined, '머리글이 모두 비면 없는 것으로');
+  { const L = m.tableLayout({ table: DOC, size: 18, x: 0, y: 0 });
+    expect(JSON.stringify(L.groups) === '[{"r0":0,"r1":2},{"r0":3,"r1":3}]', `구분 칸 합침: 빈 칸은 위 구분을 잇는다 ${JSON.stringify(L.groups)}`);
+    const flat = m.tableLayout({ table: { ...DOC, style: 'label', cols: 2, rows: [['a', 'b'], ['', 'c']] }, size: 18 }); expect(flat.groups === undefined || flat.groups.length === 0, 'label 스타일에는 합침 없음');
+    const svg = m.tableSvg({ table: DOC, size: 18, x: 0, y: 0 });
+    expect((svg.match(/>건물개요</g) || []).length === 1 && (svg.match(/>주차개요</g) || []).length === 1, '구분 글자는 합친 칸에 한 번만');
+    expect(new RegExp(`<rect [^>]*height="${(L.rowH * 3).toFixed(1)}"[^>]*fill="#F2F2F2"`).test(svg) || new RegExp(`<rect [^>]*fill="#F2F2F2"[^>]*height="${(L.rowH * 3).toFixed(1)}"`).test(svg), '합친 구분 칸의 면 높이가 3행');
+    expect(svg.includes('fill="#D9D9D9"') && ['>구분<', '>항목<', '>설계내용<', '>비고<'].every((t) => svg.includes(t)), '회색 머리글 띠 + 열 이름');
+    expect(/text-anchor="end"[^>]*>단위: ㎡<|>단위: ㎡<\/text>/.test(svg) && svg.includes('단위: ㎡'), '단위 줄');
+    expect(/text-anchor="end"[^>]*font-weight="500"[^>]*>53,954\.00㎡<|text-anchor="end"[^>]*>53,954\.00㎡</.test(svg), '숫자 칸은 오른쪽 정렬');
+    expect(/font-weight="700"[^>]*>소계<[\s\S]*font-weight="700"[^>]*>12,448\.85㎡<\/text>/.test(svg.slice(svg.indexOf('>연면적<'))), '소계 줄은 굵게');
+    expect(!/NaN|undefined/.test(svg), 'NaN·undefined 없음'); }
+  { const lbl = m.tableSvg({ table: m.SAMPLE_TABLE, size: 18 }); expect(!lbl.includes('#D9D9D9') && !lbl.includes('#F2F2F2'), '예전 label 표의 모양은 그대로'); }
+  { const r = m.renderTableDoc({ table: DOC }); expect(/^<svg[\s\S]*<\/svg>$/.test(r.svg) && !/NaN|undefined/.test(r.svg) && r.width > 100 && r.height > 100, '개요표 칸이 설계개요형도 그려짐'); }
+  { const t2 = m.tableSetCols({ ...DOC }, 3, true); expect(t2.cols === 3 && t2.header?.length === 3, '열을 줄이면 머리글도 줄어듦');
+    const t3 = m.tableAddRow(DOC, undefined, true); expect(JSON.stringify(t3.rows[t3.rows.length - 1]) === JSON.stringify(['', '항목', '내용', '내용']), '새 행은 구분 칸을 비워(위 구분을 잇고) 항목·내용을 채움'); }
+  { const pr = m.TABLE_DOC_SCHEMA; expect(pr.includes('"doc"') && pr.includes('header') && pr.includes('unit'), 'AI 스키마에 doc·header·unit'); }
+}
+// 스타일 안 검토 보완(2026-10-26): 거의 흰 옅은 색 처리(I5), 손스케치 편집 화면의 선택 표시(I2)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`스타일 안 보완: ${label}`); };
+  const hsl = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l = (mx + mn) / 2; const d = mx - mn; let h = 0; let sat = 0; if (d) { sat = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return { h, s: sat, l }; };
+  const one = (c, id) => (m.applyTheme(`<svg><rect fill="${c}"/></svg>`, id).match(/fill="(#[0-9A-Fa-f]{6})"/) || [])[1];
+  // I5: 거의 흰 청회색·연회색 바탕은 안을 입혀도 그대로(무채색), 옅은 초록 면은 사라지지 않고 바탕과 구별됨
+  expect(['#F6F7F4', '#F4F5F7', '#F7FAFC', '#FBFBFB'].every((c) => one(c, 'blue') === c && one(c, 'mono') === c), '거의 흰 색(#F6F7F4·#F4F5F7·#F7FAFC)은 그대로');
+  { const face = one('#E4EFD9', 'mono'); const bg = one('#F6F7F4', 'mono'); const edge = one('#CFE3BE', 'mono');
+    expect(Math.abs(hsl(face).l - hsl(bg).l) >= 0.03 && face !== '#FBFBFB' && edge !== face, `mono: 녹지 면·테두리가 대지 바탕과 구별됨(${face} / ${edge} / ${bg})`);
+    expect(hsl(one('#E4EFD9', 'blue')).l < 0.97 && hsl(one('#E4EFD9', 'blue')).l > 0.8, 'blue: 옅은 초록 면은 옅은 색으로 남음'); }
+  { const a = hsl(one('#FFE2B8', 'mono')).l; const b = hsl(one('#6D3F12', 'mono')).l; const c = hsl(one('#E8832A', 'mono')).l; expect(a > c + 0.15 && c > b + 0.15, '명도 순서 유지(옅은 면 > 안 색 > 어두운 색)'); }
+  // I2: 손스케치 편집 화면의 선택·회전 표시(주황)는 안을 입혀도 바뀌지 않음(손잡이 점뿐 아니라 줄기·선택 틀·강조선도)
+  { const spk = { frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40] }], lines: [{ id: 'p1', pts: [[10, 10], [30, 10]] }], winds: [{ id: 'w1', pts: [[10, 50], [40, 50]], form: 'ribbon', shape: 's', head: 'end' }], memos: [{ id: 'm1', x: 50, y: 15, text: '메모', size: 12, color: '#222222' }] };
+    for (const sel of ['b1', 'p1', 'w1', 'm1']) {
+      const raw = m.renderSketch(spk, { interactive: true, selected: sel }).svg; const themed = m.applyTheme(raw, 'blue');
+      const orangeIn = (raw.match(/#F28C28/g) || []).length; const orangeOut = (themed.match(/#F28C28/g) || []).length;
+      expect(orangeIn > 0 && orangeOut === orangeIn, `선택한 ${sel}: 편집용 주황 표시 ${orangeIn}개가 안을 입혀도 그대로(${orangeOut}개)`);
+    } }
+  { const raw = m.renderSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40], fill: '#F2C94C' }], lines: [], winds: [], memos: [] }, { interactive: false }).svg;
+    expect(!raw.includes('data-ui'), '저장용(비편집) 그림에는 편집 표시 묶음이 없음'); }
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

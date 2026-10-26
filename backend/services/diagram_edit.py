@@ -110,7 +110,8 @@ def fallback_instruction(ask):
         "Keep the image exactly as it is: every line, shape, object, existing text, label and number stays unchanged and legible. Do NOT add any new text, title or legend. "
         f'Overlay the diagram the user asked for on top of the image (the request, in Korean: "{(ask or "").strip() or "동선을 표시한 다이어그램"}"). '
         "Use soft translucent pastel color fills for the zones, rooms or objects involved, giving the same color to those of the same use or department so that no relevant room or area is left uncolored, "
-        "and bold continuous dashed arrows with clear arrowheads for any flows, each flow type in a different color, drawn strictly along real paths such as corridors, roads, sidewalks and open spaces."
+        "and bold continuous dashed arrows with clear arrowheads for any flows, each flow type in a different color, drawn strictly along real paths such as corridors, roads, sidewalks and open spaces. "
+        "Color convention for flows: vehicle or entry flows red, pedestrian flows blue, green or promenade flows green, the main or emphasized flow orange."
     )
 
 
@@ -127,6 +128,7 @@ The attached image can be any architectural image: a floor plan, a site/aerial v
   2. decide what kind of diagram the request means (e.g. circulation/movement, zoning or functional areas, access, sun/daylight/wind, massing) and describe precisely what to overlay: soft translucent pastel color fills for the zones or objects involved (name them using text visible in the image, or by position/appearance if there is no text), and bold continuous dashed arrows with clear arrowheads for flows, each flow type in a different color;
   3. say where each arrow starts and ends and which real paths it follows (corridors, roads, sidewalks, open space, entrance), using left/right/top/bottom and the names or objects visible in the image; for a perspective or aerial view say the arrows lie on the ground or floor following the perspective;
   4. if the image is a plan with many rooms, list the Korean room names you can read (copy them exactly), group them into 3-5 zones with distinct pastel colors, say every room is colored, and start the main route at the main entrance.
+  5. when there are flows of different kinds, use this color convention: vehicle or entry flow = red, pedestrian flow = blue, green or promenade flow = green, the main or emphasized flow = orange (use only the kinds the request mentions; with a single kind, use one color; keep every color name used in the legend).
 - "title": a short Korean diagram title (max 20 characters) that fits the request.
 - "legend": one entry per color you used, with the same color name, "kind" = "zone" for a color fill or "flow" for an arrow, and a short Korean label (max 16 characters, e.g. "가공 구역" or "주 동선: 출입구→중앙홀"). Use each color name only once across the whole legend (at most 6 entries); if you need more zones, merge related ones."""
 
