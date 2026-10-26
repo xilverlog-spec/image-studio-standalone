@@ -7,6 +7,7 @@
 - 다이어그램: 예시와 일부러 망가뜨린 입력(빈 배열·빠진 필드)을 넣어도 렌더가 예외 없이 SVG 를 내는지(node 필요)
 """
 import itertools
+import math
 import os
 import subprocess
 import sys
@@ -165,6 +166,16 @@ check(de._names_for([{"color": "#F61918"}, {"color": "#2870E9"}, {"color": "#3DB
 check(de.pick_resolution((900, 600)) == 1024 and de.pick_resolution((1743, 1167)) == 1536, "해상도 선택 규칙")
 check(de._parse_json(chr(96) * 3 + 'json' + chr(10) + '{"instruction": "a", "title": "t", "routes": []}' + chr(10) + chr(96) * 3)["title"] == "t", "지시문 JSON 해석(코드펜스)")
 check(de.build_workflow("x.png", "p", 1024, 25, 1)["6"]["inputs"]["images.image_1"] == ["5", 0], "Qwen 작업 흐름의 입력 연결")
+# Gemini 의 JSON 에서 흔한 문법 오류(후행 쉼표·객체/배열 사이 쉼표 누락·줄바꿈 뒤 쉼표 누락)는 고쳐서 읽는다. 고칠 수 없으면 예전처럼 오류
+check(de._parse_json('{"a": [{"x": 1} {"x": 2}], "b": "t",}')["a"][1]["x"] == 2, "객체 사이 쉼표 누락·후행 쉼표를 고쳐 읽어야 함")
+check(de._parse_json('{"a": "가", \n "b": "나"\n "c": 3}')["c"] == 3, "줄바꿈 뒤 쉼표 누락을 고쳐 읽어야 함")
+check(de._parse_json('{"a": "x, }", "b": [1, 2,]}')["a"] == "x, }", "문자열 안의 쉼표·괄호는 건드리지 않아야 함")
+_bad_ok = False
+try:
+    de._parse_json('{"a": [1, 2')
+except Exception:
+    _bad_ok = True
+check(_bad_ok, "고칠 수 없는 JSON 은 오류여야 함")
 check("조닝 다이어그램" in de.fallback_instruction("조닝 다이어그램") and "Do NOT add any new text" in de.fallback_instruction(""), "대체 지시문에 사용자 요청과 글자 보존 문구가 없음")
 # 사내 도면 관례의 동선 색(차량·진입=빨강, 보행=파랑, 녹지·산책=초록, 주요·강조=주황)이 지시문 작성 규칙과 대체 지시문에 있어야 함(2026-10-26)
 for _t in (de._instruct_prompt("차량과 보행 동선"), de.fallback_instruction("차량과 보행 동선")):
@@ -430,6 +441,190 @@ try:
     check(_fbr.get("status") == "done" and _fbr["result"]["zone_fill"] == "model", f"fallback 지시문이면 예전 방식(zone_fill=model) {_fbr.get('status')} {_fbr.get('result', {}).get('zone_fill')}")
 finally:
     de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server = _saved2
+
+# Qwen 그림 서버가 도중에 멈추면(연결 거부) 서버를 다시 켜서 한 번만 다시 해 본다. 모델 오류(RuntimeError)는 다시 하지 않는다
+import urllib.error as _ue  # noqa: E402
+_saved3 = (de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server)
+_calls3 = {"qwen": 0, "ensure": 0}
+
+
+def _flaky_qwen(*a, **k):
+    _calls3["qwen"] += 1
+    if _calls3["qwen"] == 1:
+        raise _ue.URLError(ConnectionRefusedError(10061, "refused"))
+    return _qwen_out
+
+
+def _count_ensure(*a, **k):
+    _calls3["ensure"] += 1
+
+
+try:
+    de.build_plan = _flows_plan
+    de.run_qwen, de._out_dir, de._up, de._free, de.ensure_server = _flaky_qwen, (lambda: _tmp2), (lambda *a, **k: True), (lambda *a, **k: None), _count_ensure
+    de.verify_zone_legend = lambda final, legend: (legend, True)
+    de.JOBS["rt"] = {"status": "queued", "created": 0}
+    de._run("rt", _fb.getvalue(), "차량 동선", 25, 1)
+    check(de.JOBS["rt"].get("status") == "done" and _calls3 == {"qwen": 2, "ensure": 2}, f"그림 서버 연결이 끊기면 서버를 다시 켜고 한 번 다시 해야 함 {de.JOBS['rt'].get('status')} {de.JOBS['rt'].get('error')} {_calls3}")
+    _calls3.update(qwen=0, ensure=0)
+    de.run_qwen = lambda *a, **k: (_calls3.__setitem__("qwen", _calls3["qwen"] + 1), (_ for _ in ()).throw(_ue.URLError(ConnectionRefusedError(10061, "refused"))))[1]
+    de.JOBS["rt2"] = {"status": "queued", "created": 0}
+    de._run("rt2", _fb.getvalue(), "차량 동선", 25, 1)
+    check(de.JOBS["rt2"].get("status") == "error" and _calls3["qwen"] == 2, f"두 번 다 끊기면 실패로 끝나야 함(무한 반복 금지) {de.JOBS['rt2'].get('status')} {_calls3}")
+    _calls3.update(qwen=0, ensure=0)
+    de.run_qwen = lambda *a, **k: (_calls3.__setitem__("qwen", _calls3["qwen"] + 1), (_ for _ in ()).throw(RuntimeError("그림 서버에서 오류가 났습니다")))[1]
+    de.JOBS["rt3"] = {"status": "queued", "created": 0}
+    de._run("rt3", _fb.getvalue(), "차량 동선", 25, 1)
+    check(de.JOBS["rt3"].get("status") == "error" and _calls3["qwen"] == 1, f"모델 오류는 다시 하지 않아야 함 {de.JOBS['rt3'].get('status')} {_calls3}")
+finally:
+    de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server = _saved3
+
+# 동선 경로를 코드가 찾는다(2026-10-26, B): Gemini 는 '출발·경유·도착'(종류·순서·열린 공간 위의 점)만, 길은 도면의 벽·복도를 비용 지도로 삼아 코드가 찾고 사내 문법의 벡터 화살표로 그린다
+from services import diagram_route as dr  # noqa: E402
+
+_ri = Image.new("RGB", (600, 400), "white")
+_rd = ImageDraw.Draw(_ri)
+_rd.rectangle([298, 0, 301, 399], fill="black")                  # 가운데 세로 벽(4px)
+_rd.rectangle([298, 130, 301, 148], fill="white")                # 벽의 문 틈(19px) — 출발·도착 높이(y=100)에서 30~48px 아래
+# 0~1000 → 화소: x = v*0.6, y = v*0.4
+_rp = {"routes": [
+    {"label": "주 동선: 출입구→홀", "kind": "main", "via": [{"name": "출입구", "point_2d": [250, 167]}, {"name": "홀", "point_2d": [250, 833]}]},
+    {"label": "보행", "kind": "pedestrian", "via": [{"name": "a", "point_2d": [900, 100]}, {"name": "b", "point_2d": [900, 200]}, {"name": "c", "point_2d": [850, 300]}]},
+    {"label": "차량", "kind": "vehicle", "via": [{"name": "한 점만", "point_2d": [500, 500]}]},
+    {"label": "나쁜 점", "kind": "vehicle", "via": [{"name": "x", "point_2d": [2000, 100]}, {"name": "y", "point_2d": "z"}]},
+    {"label": "L" * 40, "kind": "unknown", "via": [{"name": "p", "point_2d": [100, 100]}, {"name": "q", "point_2d": [100, 100]}, {"name": "r", "point_2d": [200, 400]}]},
+]}
+_R = dr.parse_routes(_rp, _ri.size)
+check(len(_R) == 3 and [r["kind"] for r in _R] == ["main", "pedestrian", "other"], f"경로 해석: 점이 모자라거나 이상한 경로는 버림 {[(r['kind'], len(r['points'])) for r in _R]}")
+check(_R[0]["color"] == "orange" and _R[1]["color"] == "blue" and _R[2]["color"] in dr.ROUTE_COLORS and _R[0]["points"] == [(100, 100), (500, 100)], f"종류별 색(주=주황·보행=파랑)과 화소 좌표 {_R[0]}")
+check(len(_R[2]["label"]) <= 16 and len(_R[2]["points"]) == 2, "라벨은 16자까지, 겹치는 연속 점은 하나로")
+check(dr.parse_routes(None, (600, 400)) == [] and dr.parse_routes({"routes": "x"}, (600, 400)) == [] and len(dr.parse_routes({"routes": [_rp["routes"][0]] * 9}, (600, 400))) == 6, "경로가 비었거나 이상하면 빈 목록, 최대 6개")
+# 길 찾기: 가운데 벽을 그대로 뚫지 않고 문 틈으로 돌아가며, 벽을 못 건너는 경우에도 길은 나온다
+_cg = dr.cost_grid(_ri)
+_pa, _sa = dr.find_path(_cg, [(100, 100), (500, 100)])
+def _y_at(path, x):      # 꺾은선이 세로선 x 를 지나는 높이
+    for p, q in zip(path, path[1:]):
+        if (p[0] - x) * (q[0] - x) <= 0 and p[0] != q[0]:
+            return p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0])
+    return None
+
+
+_yd = _y_at(_pa, 300)
+check(_yd is not None and 128 <= _yd <= 150 and _sa["wall_cells"] == 0, f"문 틈(y 130~148)으로 지나야 함 y={_yd} {_sa}")
+check(abs(_pa[0][0] - 100) <= 6 and abs(_pa[-1][0] - 500) <= 6 and abs(_pa[0][1] - 100) <= 6 and abs(_pa[-1][1] - 100) <= 6, f"출발·도착점이 맞아야 함 {_pa[0]} {_pa[-1]}")
+check(len(_pa) <= 8, f"경로가 곧게 펴져야 함(계단 모양 금지) {len(_pa)}점")
+_ri2 = Image.new("RGB", (600, 400), "white")
+ImageDraw.Draw(_ri2).rectangle([298, 0, 301, 399], fill="black")                  # 문이 없는 벽
+_pb, _sb = dr.find_path(dr.cost_grid(_ri2), [(100, 100), (500, 100)])
+check(len(_pb) >= 2 and _sb["wall_cells"] >= 1, f"벽을 건널 수밖에 없으면 건너고 그 수를 알려야 함 {_sb}")
+_pc, _sc = dr.find_path(_cg, [(100, 100), (300, 50), (500, 100)])                 # 경유점이 벽 위에 있어도 벽 밖으로 옮겨 쓴다
+check(len(_pc) >= 3 and _sc["wall_cells"] <= 2, f"벽 위의 경유점을 옮겨 쓰지 못함 {_sc}")
+# 화살표 목록(화면이 읽는 형식)과 그리기
+_A, _lgf, _stA = dr.build_arrows(_ri, _R[:2])
+check(len(_A) == 2 and all(set(("pts", "width", "color", "head", "dash", "smooth", "band", "length")) <= set(a) for a in _A), f"화살표 항목 형식 {[sorted(a) for a in _A[:1]]}")
+_a0 = _A[0]
+check(_a0["head"] == "end" and _a0["color"] == dr.ROUTE_COLORS["orange"] and _a0["band"] == "orange" and _a0["dash"] == "dashed" and _a0["width"] > 0 and abs(_a0["pts"][0][0] - 100) <= 6 and abs(_a0["pts"][-1][0] - 500) <= 6, f"주 동선 화살표: 끝 화살촉·주황·점선 {_a0}")
+check(_A[1]["color"] == dr.ROUTE_COLORS["blue"] and _A[1]["dash"] == "dashed" and all(a["dash"] == "dashed" for a in _A), "동선 화살표는 모두 점선(앱의 동선 관례), 보행은 파랑")
+check([(l["kind"], l["label"]) for l in _lgf] == [("flow", "주 동선: 출입구→홀"), ("flow", "보행")] and _lgf[0]["color"] == _a0["color"], f"동선 범례 {_lgf}")
+check(_stA["routes"] == 2 and "wall_cells" in _stA, f"통계 {_stA}")
+_dg = dr.draw_arrows(_ri, _A)
+_dq = _np.asarray(_dg).astype(int)
+_mid = _a0["pts"][len(_a0["pts"]) // 2]
+_sm = lambda a_: (int(round((a_["pts"][0][0] + a_["pts"][1][0]) / 2)), int(round((a_["pts"][0][1] + a_["pts"][1][1]) / 2)))     # 첫 선분의 가운데
+def _orange_share(img_arr, a_):     # 그려진 곡선을 따라(곡선 위 점 둘레 1화소 안에) 주황 화소가 있는 점의 비율(점선이라 틈이 있고 선이 가늘다)
+    ks = [(int(round(x)), int(round(y))) for x, y in dr.spline_points([tuple(p) for p in a_["pts"]], per=20)]
+    hit = 0
+    for x, y in ks:
+        win = img_arr[max(0, y - 1):y + 2, max(0, x - 1):x + 2].reshape(-1, 3)
+        if ((win[:, 0] > 200) & (win[:, 2] < 130) & (win[:, 1] < 190)).any():
+            hit += 1
+    return hit / len(ks)
+
+
+check(_dg.size == _ri.size and _orange_share(_dq, _a0) >= 0.4, f"그린 화살표(주황 점선)가 경로 위에 있어야 함 {_orange_share(_dq, _a0):.2f}")
+_far = _np.abs(_dq - _np.asarray(_ri).astype(int)).sum(axis=2)
+check(int(_far[200:, 350:].max()) == 0 and int(_far[:60, :].max()) == 0, "화살표에서 먼 곳의 원본은 그대로")
+check(dr.draw_arrows(_ri, []).tobytes() == _ri.tobytes(), "화살표가 없으면 그림 그대로")
+
+# 표현: 큰 도면(1820px)에서 AI 방식의 화살표(5.5~7.5px 점선)만큼 굵고, 꼭짓점이 적고(≤9), 부드러운 곡선이다
+_bi = Image.new("RGB", (1820, 1287), "white")
+_bd = ImageDraw.Draw(_bi)
+for _x in range(100, 1700, 9):                                     # 가는 세로선 여러 개(주차 구획 같은 잔 선) — 곧게 펴기가 자꾸 끊겨 꼭짓점이 많아지는 상황
+    _bd.line([_x, 300, _x, 900], fill=(120, 120, 120), width=1)
+_bR = [{"label": "주 동선", "kind": "main", "color": "orange", "dash": "dashed", "points": [(60, 600), (1750, 650)]},
+       {"label": "차량", "kind": "vehicle", "color": "red", "dash": "dashed", "points": [(60, 200), (900, 240), (1750, 200)]}]
+_bA, _bl, _bs = dr.build_arrows(_bi, _bR)
+check(len(_bA) == 2 and _bA[0]["width"] >= 6.5 and _bA[1]["width"] >= 5.5 and all(a["dash"] == "dashed" and a["smooth"] is True for a in _bA), f"굵기·점선·부드러운 곡선 {[(a['width'], a['dash'], a['smooth']) for a in _bA]}")
+check(all(len(a["pts"]) <= 9 for a in _bA), f"꼭짓점 수는 9개 이하(AI 방식은 2~10개) {[len(a['pts']) for a in _bA]}")
+_zz = [(float(x), 300 + (12 if (x // 40) % 2 else -12)) for x in range(0, 1200, 20)]
+_zs = dr.simplify_path(_zz, eps=30.0, max_pts=9)
+check(len(_zs) <= 9 and _zs[0] == _zz[0] and _zs[-1] == _zz[-1], f"지그재그는 시작·끝을 지키며 9점 이하로 줄어야 함 {len(_zs)}")
+_sp = dr.spline_points([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], per=8)
+check(len(_sp) > 3 and _sp[0] == (0.0, 0.0) and _sp[-1] == (100.0, 100.0) and any(abs(x - 100) < 1e-9 and abs(y) < 1e-9 for x, y in _sp), "스플라인은 시작·끝과 모든 꼭짓점을 정확히 지나는 부드러운 곡선(복도 모서리를 정확히 지남)")
+check(dr.draw_arrows(_bi, _bA[:1]).getbbox() is not None, "굵은 점선 화살표 그리기")
+
+# 경로 다듬기: 큰 흐름은 따르되 잔 지그재그는 펴고, 시작·끝과 고정한 점(문 틈 같은 좁은 곳)은 그대로
+_zig = _np.array([[float(x), 300.0 + (9.0 if (x // 10) % 2 else -9.0)] for x in range(0, 400, 5)])
+_sm1 = dr.smooth_path(_zig, win=15)
+check(_sm1.shape == _zig.shape and tuple(_sm1[0]) == tuple(_zig[0]) and tuple(_sm1[-1]) == tuple(_zig[-1]), "다듬어도 시작·끝은 그대로")
+check(float(_np.abs(_sm1[10:-10, 1] - 300.0).max()) < 5.0 and float(_np.abs(_zig[:, 1] - 300.0).max()) == 9.0, f"지그재그(±9)가 절반 아래로 펴져야 함 {float(_np.abs(_sm1[10:-10, 1] - 300.0).max()):.1f}")
+_pin = _np.zeros(len(_zig), bool)
+_pin[40] = True
+_sm2 = dr.smooth_path(_zig, win=15, pin=_pin)
+check(tuple(_sm2[40]) == tuple(_zig[40]), "고정한 점(문 틈)은 그대로")
+_bad2 = lambda pts: (pts[:, 0] > 150) & (pts[:, 0] < 170) & (_np.abs(pts[:, 1] - 300.0) < 3)      # 다듬은 점이 장애물 위에 놓이는 곳
+_sm3 = dr.smooth_path(_zig, win=15, bad=_bad2)
+check(not _bad2(_sm3).any() or all(tuple(_sm3[i]) == tuple(_zig[i]) for i in range(len(_zig)) if _bad2(_sm3[i:i + 1])[0]), "장애물 위로 다듬어진 점은 원래 자리로 되돌아가야 함")
+# 장애물이 많은 도면에서도 경로가 문 틈을 지나고 꼭짓점이 적다(다듬어도 벽을 뚫지 않는다)
+_pd, _sd = dr.find_path(dr.cost_grid(_ri), [(100, 100), (500, 100)])
+_yd2 = _y_at(_pd, 300)
+check(_yd2 is not None and 128 <= _yd2 <= 150 and _sd["wall_cells"] == 0 and len(_pd) <= 9, f"다듬은 뒤에도 문 틈으로 지나야 함 y={_yd2} {len(_pd)}점")
+
+# 화살표의 시작·끝이 글자(굵은 덩어리) 위에 걸리지 않는다: 경유점이 글자 위에 있어도 글자에서 떨어진 빈 곳으로 옮겨 쓴다
+_ti = Image.new("RGB", (600, 400), "white")
+ImageDraw.Draw(_ti).rectangle([200, 193, 259, 207], fill="black")              # 글자 덩어리(60×15)
+_pt_, _st_ = dr.find_path(dr.cost_grid(_ti), [(230, 200), (450, 200)])
+_dx = max(200 - _pt_[0][0], _pt_[0][0] - 259, 0)
+_dy = max(193 - _pt_[0][1], _pt_[0][1] - 207, 0)
+check(math.hypot(_dx, _dy) >= dr.DT_END - 1 and _st_["wall_cells"] == 0, f"시작점이 글자에서 {dr.DT_END - 1:.0f}px 이상(이 그림은 1칸=1px) 떨어져야 함 {_pt_[0]} {_st_}")
+_pt2, _ = dr.find_path(dr.cost_grid(_ti), [(450, 200), (230, 200)])
+_dx = max(200 - _pt2[-1][0], _pt2[-1][0] - 259, 0)
+_dy = max(193 - _pt2[-1][1], _pt2[-1][1] - 207, 0)
+check(math.hypot(_dx, _dy) >= dr.DT_END - 1, f"끝점도 글자에서 {dr.DT_END - 1:.0f}px 이상 떨어져야 함 {_pt2[-1]}")
+
+# 작업 흐름: 구역과 동선을 모두 코드가 그리면 Qwen 을 아예 부르지 않고, 화살표는 편집 가능한 선으로 나뉜다
+_saved4 = (de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server)
+_tmp4 = __import__("tempfile").mkdtemp()
+_rbuf = __import__("io").BytesIO()
+_ri.save(_rbuf, "PNG")
+
+
+def _plan_with_routes(png, ask, allow_zones=False):
+    return {"instruction": "x" * 80, "title": "동선도", "legend": [], "source": "gemini", "zones": [], "arrows": True, "zones_asked": False, "routes": _R[:2]}
+
+
+def _no_qwen4(*a, **k):
+    raise AssertionError("경로를 코드가 그리는데 Qwen 을 불렀음")
+
+
+try:
+    de.build_plan = _plan_with_routes
+    de.run_qwen, de._out_dir, de.ensure_server = _no_qwen4, (lambda: _tmp4), _no_qwen4
+    de.verify_zone_legend = lambda *a, **k: (_ for _ in ()).throw(AssertionError("범례 확인을 불렀음"))
+    de.JOBS["rc"] = {"status": "queued", "created": 0}
+    de._run("rc", _rbuf.getvalue(), "동선", 25, 1)
+    _rj = de.JOBS["rc"]
+    check(_rj.get("status") == "done", f"동선을 코드가 그리는 작업이 끝나지 않음 {_rj.get('status')} {_rj.get('error')}")
+    if _rj.get("status") == "done":
+        _rr = _rj["result"]
+        check(_rr.get("route_by") == "code" and _rr["layers"] is not None and len(_rr["layers"]["arrows"]) == 2, f"편집 가능한 화살표 2개 {None if _rr['layers'] is None else len(_rr['layers']['arrows'])} {_rr.get('route_by')}")
+        check([l["label"] for l in _rr["legend"] if l["kind"] == "flow"] == ["주 동선: 출입구→홀", "보행"], f"결과 범례 {_rr['legend']}")
+        _ro = _np.asarray(Image.open(__import__("os").path.join(_tmp4, "diagram_edit_rc.png")).convert("RGB")).astype(int)
+        check(int(_np.abs(_ro - _np.asarray(_ri).astype(int)).sum(axis=2)[200:, 350:].max()) == 0 and _orange_share(_ro, _A[0]) >= 0.4, "결과 그림: 화살표는 얹히고 나머지 원본은 그대로")
+        _bs4 = _np.asarray(Image.open(__import__("os").path.join(_tmp4, "diagram_edit_rc_base.png")).convert("RGB")).astype(int)
+        check(int(_np.abs(_bs4 - _np.asarray(_ri).astype(int)).sum(axis=2).max()) <= 3, "층의 바탕에는 화살표가 없어야 함(원본 그대로)")
+finally:
+    de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server = _saved4
 
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
