@@ -32,7 +32,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, OFFERED_TYPES, HIDDEN_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, isPlainMemo, sketchBoxFor, sketchUnionBox, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
-export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
+export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, OFFERED_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
 export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
@@ -381,23 +381,21 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
 {
   const R = m.routeSubject;
   const expect = (cond, msg) => { if (!cond) fails.push('자동 판별: ' + msg); else ok++; };
-  expect(R('hand_sketch') === 'sketch' && R('artwork_3d') === 'freeform' && R('building_photo') === 'form' && R('site_plan') === 'site', '기본 경로(스케치·입체 그림·사진·배치도)');
-  expect(R('plan_drawing') === 'plan', '단서 없는 평면도는 평면 다이어그램');
-  expect(R('plan_drawing', { hasRef: true }) === 'axon', '참고 이미지가 있는 평면도는 분석 축측도');
-  for (const t of ['맞통풍을 보여줘', '남향 채광 분석', '일조와 조망', '입체로']) expect(R('plan_drawing', { text: t }) === 'axon', `분석 단서 '${t}' → 분석 축측도`);
-  expect(R('plan_drawing', { text: '공용과 사적 공간 구분' }) === 'plan', '분석 단서 없는 설명은 평면 다이어그램');
+  expect(R('hand_sketch') === 'sketch' && R('artwork_3d') === 'other' && R('building_photo') === 'form' && R('site_plan') === 'site', '기본 경로(스케치·입체 그림은 범위 밖·사진·배치도)');
+  // 2026-10-26: 평면 단순화·자유 해석·분석 축측도는 제공하지 않는다 → 평면도는 항상 도면 위 표시, 제공하지 않는 그림은 'other'(범위 밖 안내)
+  for (const o of [{}, { hasRef: true }, { text: '맞통풍을 보여줘' }, { text: '남향 채광 분석' }, { text: '공용과 사적 공간 구분' }, { text: '통풍과 동선', hasRef: true }]) expect(R('plan_drawing', o) === 'edit', `평면도 ${JSON.stringify(o)} → 도면 위 표시`);
   for (const t of ['동선을 표시한 다이어그램', '동선을 나타내는 건축다이어그램을 만들어줘', '부서별 조닝', 'zoning diagram']) expect(R('plan_drawing', { text: t }) === 'edit', `동선·조닝 요청 '${t}' → AI 이미지 편집`);
-  expect(R('plan_drawing', { text: '통풍과 동선' }) === 'axon' && R('plan_drawing', { text: '동선', hasRef: true }) === 'axon', '분석 단서·참고 이미지가 있으면 동선 요청이어도 분석 축측도가 우선');
+  expect(!['plan', 'freeform', 'axon'].some((k) => ['hand_sketch', 'artwork_3d', 'building_photo', 'plan_drawing', 'site_plan', 'other'].some((ty) => R(ty, { text: '바람 흐름' }) === k || R(ty, { text: '', hasRef: true }) === k)), '제공하지 않는 방식(평면·자유 해석·축측도)으로는 어떤 경우에도 보내지 않음');
   // 사진·3D 뷰·배치도·그 밖의 그림: 흐름·구역·방향·색을 얹는 요청 → AI 이미지 편집, 아니면 기존 경로(2026-10-16)
   for (const [ty, t, want] of [['building_photo', '주출입구와 보행자 접근 동선', 'edit'], ['building_photo', '일조 방향과 시선', 'edit'], ['building_photo', '기능별로 색을 나눠 구분', 'edit'], ['building_photo', '', 'form'], ['building_photo', '매스 과정도', 'form'],
     ['site_plan', '차량 동선과 보행 동선', 'edit'], ['site_plan', '구역 구분', 'edit'], ['site_plan', '', 'site'], ['site_plan', '코어 스퀘어와 순환', 'site'],
-    ['artwork_3d', '동선을 표시', 'edit'], ['artwork_3d', '가변형 공간이 많다는 다이어그램', 'freeform'], ['artwork_3d', '바람 흐름', 'freeform'], ['other', '접근 동선', 'edit'], ['other', '', 'freeform'], ['hand_sketch', '동선', 'sketch']]) {
+    ['artwork_3d', '동선을 표시', 'edit'], ['artwork_3d', '가변형 공간이 많다는 다이어그램', 'other'], ['artwork_3d', '바람 흐름', 'other'], ['other', '접근 동선', 'edit'], ['other', '', 'other'], ['hand_sketch', '동선', 'sketch']]) {
     expect(R(ty, { text: t }) === want, `${ty} + '${t}' → ${want} (실제 ${R(ty, { text: t })})`);
   }
   for (const ty of ['building_photo', 'site_plan', 'artwork_3d', 'other']) expect(R(ty, { text: '동선', hasRef: true }) !== 'edit', `${ty}: 스타일 참고 이미지가 있으면 이미지 편집으로 보내지 않음(참고 이미지를 쓰지 못함)`);
-  expect(R('other') === 'freeform' && R('엉뚱') === 'freeform' && R(undefined) === 'freeform', '모르는 종류는 자유 해석');
+  expect(R('other') === 'other' && R('엉뚱') === 'other' && R(undefined) === 'other', '모르는 종류는 범위 밖(other)');
   expect(m.normalizeSubjectType({ type: 'Hand_Sketch', reason: 'x' }).type === 'hand_sketch' && m.normalizeSubjectType({ type: 'zzz' }).type === 'other' && m.normalizeSubjectType(null).type === 'other', '분류 응답 정리');
-  expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon', 'edit'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음');
+  expect(m.SUBJECT_TYPES.every((t) => m.SUBJECT_TYPE_LABEL[t]) && ['sketch', 'freeform', 'form', 'plan', 'site', 'axon', 'edit'].every((k) => m.SUBJECT_KINDS[k]), '종류 이름표가 모두 있음(예전 결과를 위해 뺀 방식의 이름표도 남김)');
   expect(m.SUBJECT_TYPES.every((t) => m.buildSubjectClassifyPrompt().includes(t)), '분류 프롬프트에 모든 종류가 있음');
 }
 // 도면 위에 표시(AI 이미지 편집) 결과: 그림을 바탕으로 깔고 제목·범례가 편집 가능한 글자로 얹힌다
@@ -1041,7 +1039,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const ids = m.CATALOG.map((c) => c.id);
   expect(new Set(ids).size === ids.length, '카탈로그 id 가 겹치지 않음');
   expect(m.OFFERED_TYPES.every((t) => m.CATALOG.some((c) => c.group === 'text' && c.id === t && c.thumb?.type === t)) && m.CATALOG.filter((c) => c.group === 'text').length === m.OFFERED_TYPES.length, '제공하는 모든 종류(배치·매스·개요표·카드 보드)가 카탈로그에 있고, 뺀 종류(버블도·층별 조닝도)는 없음');
-  expect(Object.keys(m.SUBJECT_KINDS).filter((k) => !['other', 'site'].includes(k)).every((k) => m.CATALOG.some((c) => c.group === 'image' && c.id === k)), '이미지로 만드는 모든 방식(도면 위 표시·평면·형태·손스케치·자유 해석·축측도)이 카탈로그에 있음(배치도 읽기는 배치 개념도 카드가 안내)');
+  expect(m.OFFERED_KINDS.filter((k) => k !== 'site').every((k) => m.CATALOG.some((c) => c.group === 'image' && c.id === k)) && m.CATALOG.filter((c) => c.group === 'image').length === 3 && !['plan', 'freeform', 'axon'].some((k) => m.CATALOG.some((c) => c.id === k)), '이미지로 만드는 방식(도면 위 표시·건물 형태·손스케치)만 카탈로그에 있고 뺀 방식(평면·자유 해석·축측도)은 없음(배치도 읽기는 배치 개념도 카드가 안내)');
   expect(m.CATALOG.filter((c) => c.group !== 'out').every((c) => c.can.length && c.cannot.length && c.needs && c.summary && c.label), '지원 종류마다 가능·불가·입력 안내가 있음');
   expect(m.CATALOG.filter((c) => c.group === 'out').every((c) => c.alt && (c.status === 'no' || c.status === 'plan') && Array.isArray(c.nearest)), '지원 안 함 종류마다 대안 안내가 있음');
   expect(m.CATALOG.every((c) => (c.nearest || []).every((n) => m.catalogById(n.type))), '가까운 종류가 모두 카탈로그에 있음');
@@ -1058,7 +1056,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(sc('조직도를 그려줘').nearest[0]?.type === 'table' && sc('평면도를 그려줘').nearest[0]?.type === 'edit', '가까운 종류 제안(조직도→개요표, 도면→도면 위 표시)');
   expect(sc('조직도를 그려줘').nearest[0]?.label.includes('개요표'), '제안에 종류 이름이 붙음');
   for (const t of ['중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조', '이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계', '1층 로비·카페, 2~3층 연구실, 중앙 보이드와 채광', '배치도 위에 보행 동선과 차량 동선을 표시', '조감도 위에 보행 흐름을 얹어줘', '대표 공간과 표지 디자인', '']) expect(sc(t).inScope === true, `범위 안 설명은 그대로 통과: ${t.slice(0, 20)}`);
-  expect(m.IMAGE_OTHER_NEAREST.every((n) => m.SUBJECT_KINDS[n.kind]) && m.IMAGE_OTHER_NEAREST[0].kind === 'freeform', '이미지 그 외 안내의 방식이 실제 읽기 방식이고 자유 해석이 맨 앞');
+  expect(m.IMAGE_OTHER_NEAREST.every((n) => m.OFFERED_KINDS.includes(n.kind)) && m.IMAGE_OTHER_NEAREST[0].kind === 'edit', '이미지 그 외 안내의 방식이 제공하는 방식이고 도면 위 표시가 맨 앞');
 }
 // 회전(R3): 계산 모듈 + 손스케치
 {

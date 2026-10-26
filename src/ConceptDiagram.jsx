@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EmptyState } from './Icon';
 import { toIllustratorSvg, externalImageRefs } from './conceptDiagram/svgexport';
 import { DIAGRAM_TYPES, OFFERED_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, OFFERED_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
 import { composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
@@ -201,7 +201,7 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
 }
 
 // 설명·참고 이미지가 바뀌면 다시 정할 수 있는 자동 판단 결과(손스케치는 읽기가 비싸고 이 경로로 바뀌지 않으므로 제외)
-const AUTO_REROUTE = ['plan', 'axon', 'edit', 'form', 'site', 'freeform'];
+const AUTO_REROUTE = ['edit', 'form', 'site'];
 
 export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const [userText, setUserText] = useState('');
@@ -231,7 +231,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   // 유료 이미지 생성 공급자(키가 있는 것만)와 누적 사용액. 키가 없으면 유료 버튼은 아예 나타나지 않는다
   const [paidImg, setPaidImg] = useState({ providers: [], usage: null }); const [paidProvider, setPaidProvider] = useState(''); const [paidImgBusy, setPaidImgBusy] = useState(false);
   const [axonVector, setAxonVector] = useState(null); // 유료로 매끈하게 다시 그리기 전의 벡터 결과(되돌리기용)
-  const [editAvail, setEditAvail] = useState(null);  // 서버에 'AI 이미지 편집(Qwen)' 환경이 있는지(없으면 자동 판단이 평면 다이어그램으로 대신한다)
+  const [editAvail, setEditAvail] = useState(null);  // 서버에 'AI 이미지 편집(Qwen)' 환경이 있는지(없으면 평면도·사진은 만들 수 없다는 안내를 띄운다)
   const [editProg, setEditProg] = useState(null);    // 진행 중인 AI 이미지 편집 { stage, percent, sec }
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
@@ -812,7 +812,8 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     }
     if (info.type === 'other') { setScopeNotice({ kind: 'image', reason: info.reason }); return 'other'; } // 지원하는 종류가 아니면 멈추고 가까운 방식을 권한다
     let kind = routeSubject(info.type, { hasRef: !!styleImage, text: userText });
-    if (kind === 'edit' && editAvail && editAvail.available === false) { kind = 'plan'; addToast?.('info', 'AI 이미지 편집 환경이 이 서버에 없어 평면 다이어그램으로 만듭니다', '동선·구역 표시는 큰 도면에서 품질이 떨어질 수 있습니다.'); }
+    if (kind === 'other') { setScopeNotice({ kind: 'image', reason: info.reason }); return 'other'; } // 입체·수채 그림 등 제공하지 않는 그림
+    if (kind === 'edit' && editAvail && editAvail.available === false) { setScopeNotice({ kind: 'image', reason: 'AI 이미지 편집 환경이 이 서버에 없어 도면 위 표시를 쓸 수 없습니다.' }); return 'other'; }
     setAutoKind(kind); setAutoInfo(info);
     addToast?.('success', `이미지를 "${SUBJECT_TYPE_LABEL[info.type]}"로 판단했습니다`, `${SUBJECT_KINDS[kind]} 방식으로 ${kind === 'edit' ? '그립니다(무료, 약 3~6분)' : '읽습니다'}. ${info.reason} (바꾸려면 아래 "이미지 종류 직접 지정")`);
     return kind;
@@ -854,9 +855,9 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
       if (kind === 'freeform') { const rd = await readFreeform({ fresh, paid }); if (paid) apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {}); return rd; }
       if (kind === 'sketch') { // 손스케치: 해석하지 않고 그려진 도형을 있는 그대로 읽고, 읽은 모습을 바로 편집 가능한 상태로 보여 준다
         const cacheKey = hashStr(subjectImage);
-        const forceSketch = !!(opts && opts.forceSketch === true); // '평면 스케치로 다시 읽기': 입체 그림으로 판단돼 자유 해석으로 읽던 것을 되돌린다
+        const forceSketch = !!(opts && opts.forceSketch === true) || subjectKind === 'sketch'; // 사용자가 손스케치를 직접 골랐거나 '평면 스케치로 다시 읽기'를 누르면 입체 그림 판단을 무시하고 읽는다
         if (forceSketch) skCachePut(`${cacheKey}:view3d`, false);
-        else if (skCacheGet(`${cacheKey}:view3d`)) return await readFreeform({ fresh, paid, notice: '입체·채색 그림이라 자유 해석으로 읽었습니다. ' });
+        else if (skCacheGet(`${cacheKey}:view3d`)) { setScopeNotice({ kind: 'image', reason: '입체·채색 그림이라 손스케치 정리 대상이 아닙니다.' }); return null; }
         const cached = fresh ? null : (skCacheGet(`${cacheKey}:paid`) || skCacheGet(cacheKey)); // 정밀 읽기로 읽은 적이 있으면 그것을 우선
         if (cached) { const cr = { ...cached, fromCache: true }; setRead(cr); setReadOrig(cr); setSelBox(0); setResult({ type: 'sketch', spec: makeSketchSpec(cached, null), isReadPreview: true, ver: Date.now() }); addToast?.('success', '저장된 읽기 결과를 사용했습니다', '같은 그림이라 AI 를 다시 부르지 않았습니다. 새로 읽으려면 "새로 읽기"를 누르세요.'); return cr; }
         // 사진 정리(백엔드): EXIF 방향·기울어짐을 바로잡고 그림 영역만 잘라 읽기 좋은 크기로 만든다. AI 읽기와 잉크 보정이 같은 정리 이미지를 쓰므로 좌표 변환이 필요 없다. 실패하면 원본 그대로
@@ -883,9 +884,9 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
             for (let k = 0; k < 2 && reads.length < 2; k++) reads = [...reads, ...(await Promise.all([one(), one()])).filter(Boolean)];
           }
         }
-        if (reads.filter((r) => r.view === '3d').length * 2 > reads.length) { // 입체·채색 그림: 평면 도면용 읽기는 맞지 않는다
+        if (!forceSketch && reads.filter((r) => r.view === '3d').length * 2 > reads.length) { // 입체·채색 그림: 손스케치 정리 대상이 아니다(자유 해석은 제공하지 않으므로 범위 밖 안내)
           skCachePut(`${cacheKey}:view3d`, true);
-          return await readFreeform({ fresh, paid, notice: '입체·채색 그림이라 자유 해석으로 읽었습니다. ' });
+          setScopeNotice({ kind: 'image', reason: '입체·채색 그림이라 손스케치 정리 대상이 아닙니다.' }); return null;
         }
         let sk = fuseSketchReads(reads, pickConsensusSketch(reads));
         if (!sk) throw skErr || new Error('스케치를 읽지 못했습니다.');
@@ -1310,7 +1311,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
                     <summary style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)', cursor: 'pointer' }}>이미지 종류 직접 지정 (보통은 필요 없습니다)</summary>
                     <select value={subjectKind} onChange={(e) => { setSubjectKind(e.target.value); setRead(null); setAutoKind(null); setAutoInfo(null); }} style={inputBase} disabled={reading || busy}>
                     <option value="auto">이미지 종류: 자동 판단</option>
-                    {Object.entries(SUBJECT_KINDS).filter(([id]) => id !== 'other').map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                    {Object.entries(SUBJECT_KINDS).filter(([id]) => OFFERED_KINDS.includes(id)).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
                   </details>
                   {effKind === 'axon' && (
@@ -1459,10 +1460,10 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
                 </div>
               </>) : (<>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>이 이미지는 지원하는 종류로 판단되지 않았습니다{scopeNotice.reason ? ` (${scopeNotice.reason})` : ''}</div>
-                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--warn)' }}>평면도·배치도·건물 사진·손스케치·입체 스케치가 아니면 결과가 기대와 다를 수 있습니다. 표·조직도·문서 스캔은 이 탭에서 만들지 않습니다(“만들 수 있는 것 · 없는 것” 참고). 가장 가까운 방식으로 진행하려면 고르세요.</div>
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--warn)' }}>평면도·배치도·건물 사진·손스케치가 아니면 결과가 기대와 다를 수 있습니다. 표·조직도·문서 스캔은 이 탭에서 만들지 않습니다(“만들 수 있는 것 · 없는 것” 참고). 가장 가까운 방식으로 진행하려면 고르세요.</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {IMAGE_OTHER_NEAREST.map((n) => (
-                    <button key={n.kind} style={{ ...btn(n.kind === 'freeform', false), padding: '5px 9px', fontSize: 11.5 }} title={n.why} data-testid={`scope-image-${n.kind}`}
+                    <button key={n.kind} style={{ ...btn(n.kind === 'edit', false), padding: '5px 9px', fontSize: 11.5 }} title={n.why} data-testid={`scope-image-${n.kind}`}
                       onClick={() => { setSubjectKind(n.kind); setRead(null); setAutoKind(null); setAutoInfo(null); setScopeNotice(null); setPendingGen(true); }}>{SUBJECT_KINDS[n.kind].split(' (')[0].split('(')[0]}(으)로 진행</button>
                   ))}
                   <button style={{ ...btn(false, false), padding: '5px 9px', fontSize: 11.5 }} onClick={() => setScopeNotice(null)} data-testid="scope-close">닫기</button>
@@ -1474,7 +1475,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '다이어그램 만들기'}
           </button>
           <button style={{ ...btn(false, busy), fontSize: 11.5, padding: '5px 8px' }} disabled={busy} onClick={loadTestState} data-testid="test-fill" title="AI 없이, 다이어그램을 만든 것처럼 페이지 칸 4개에 예시 그림을 바로 채워서 페이지 편집 화면을 시험합니다. Ctrl+Z 로 되돌릴 수 있습니다">테스트: 만든 것처럼 바로 보기</button>
-          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note"><b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(평면 다이어그램·건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
+          {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note"><b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
           {editProg && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
               <div style={{ height: 8, borderRadius: 4, background: 'var(--border-color, var(--line-strong))', overflow: 'hidden' }}><div style={{ width: `${Math.max(2, editProg.percent)}%`, height: '100%', background: 'var(--primary)', transition: 'width .6s' }} /></div>

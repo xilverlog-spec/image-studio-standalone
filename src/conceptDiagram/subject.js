@@ -13,6 +13,9 @@ export const SUBJECT_KINDS = {
   edit: '도면 위에 표시(AI 이미지 편집 — 도면·글자는 그대로, 색과 동선만 얹기)',
   other: '그 외(지원 안 함)',
 };
+// 2026-10-26: 이미지로 만드는 방식은 도면 위 표시·건물 형태·배치도·손스케치만 제공한다(참고삽도 근거가 약한 평면 단순화·자유 해석·분석 축측도는 선택지에서 뺌).
+// SUBJECT_KINDS 는 예전 결과의 이름표를 위해 그대로 두고, 고르는 목록과 자동 판별은 OFFERED_KINDS 만 쓴다.
+export const OFFERED_KINDS = ['edit', 'form', 'site', 'sketch'];
 
 // ── 이미지 종류 자동 판별(2026-10-16): 사용자가 종류를 고르지 않아도 AI 가 한 번 보고 알맞은 읽기 방식으로 보낸다 ──
 export const SUBJECT_TYPES = ['hand_sketch', 'artwork_3d', 'building_photo', 'plan_drawing', 'site_plan', 'other'];
@@ -31,23 +34,22 @@ export function normalizeSubjectType(parsed) {
   const t = String(parsed?.type ?? '').toLowerCase().trim();
   return { type: SUBJECT_TYPES.includes(t) ? t : 'other', reason: String(parsed?.reason ?? '').slice(0, 80) };
 }
-// 설명·참고 이미지에 '분석' 단서(바람·일조 등)가 있으면 평면도를 분석 축측도로, 없으면 기존 평면 다이어그램으로 보낸다
-const ANALYSIS_CUES = /바람|통풍|환기|일조|채광|남향|조망|축측|입체|아이소/;
 // 그림 위에 흐름·구역·방향·색을 얹는 요청은 'AI 이미지 편집'이 맞다(2026-10-16 시험: 평면 조닝·항공 배치 동선·렌더 일조·외관 기능별 색 구분·분해 매스가 모두 됨).
 // 평면도는 방 수가 많으면 우리 코드로 다시 짓는 평면 다이어그램보다 훨씬 낫다. 사진·3D 뷰·배치도·그 밖의 그림도 같은 경로로 된다.
 export const EDIT_CUES = /동선|조닝|zoning|부서별|구역별/i;   // 평면도
 export const OVERLAY_CUES = /동선|접근|진입|출입|시선|조닝|zoning|구역|기능별|용도별|부서별|색으로|색을|색 구분|일조|채광|조망|바람|통풍|화살표/i;   // 사진·3D 뷰·배치도·그 밖의 그림
 export const OVERLAY_CUES_ART = /동선|접근|진입|출입|시선|조닝|zoning|구역|기능별|용도별|부서별/i;   // 입체 스케치·수채: 바람·통풍·화살표는 자유 해석(편집 가능한 흐름 화살표)이 맡는다
-// 스타일 참고 이미지가 있으면 이 경로는 참고 이미지를 쓰지 못하므로 보내지 않는다(평면도는 분석 축측도, 나머지는 기존 읽기 경로가 참고 이미지를 쓴다).
+// 스타일 참고 이미지가 있으면 '도면 위 표시'는 참고 이미지를 쓰지 못하므로 요청 단서만으로는 보내지 않는다(기존 읽기 경로가 참고 이미지를 쓴다).
+// 돌려주는 값: 'sketch' | 'edit' | 'form' | 'site' | 'other'(제공하지 않는 그림 → 호출한 쪽이 범위 밖 안내를 띄운다)
 export function routeSubject(type, { hasRef = false, text = '' } = {}) {
   const over = !hasRef && OVERLAY_CUES.test(text);
   switch (type) {
     case 'hand_sketch': return 'sketch';
-    case 'artwork_3d': return !hasRef && OVERLAY_CUES_ART.test(text) ? 'edit' : 'freeform';
+    case 'artwork_3d': return !hasRef && OVERLAY_CUES_ART.test(text) ? 'edit' : 'other';
     case 'building_photo': return over ? 'edit' : 'form';
-    case 'plan_drawing': return hasRef || ANALYSIS_CUES.test(text) ? 'axon' : EDIT_CUES.test(text) ? 'edit' : 'plan';
+    case 'plan_drawing': return 'edit'; // 평면도는 도면은 그대로 두고 동선·구역만 얹는다
     case 'site_plan': return over ? 'edit' : 'site';
-    default: return over ? 'edit' : 'freeform';
+    default: return over ? 'edit' : 'other';
   }
 }
 

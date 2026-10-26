@@ -4,7 +4,7 @@ export const ENGINE_FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR'
 export const TEXT_FONTS = [
   { id: 'malgun', label: '맑은 고딕 (Windows 기본)', css: ENGINE_FONT },
   { id: 'noto', label: 'Noto Sans KR (본고딕)', css: "'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif" },
-  { id: 'pretendard', label: 'Pretendard (사내 보드 기본 · 그 PC에 설치돼 있어야 보임)', css: "'Pretendard','Malgun Gothic','Noto Sans KR',sans-serif" },
+  { id: 'pretendard', label: 'Pretendard (사내 보드 기본 · 화면과 PNG 는 앱에 내장, 저장한 SVG 는 그 PC 에 설치돼 있어야 보임)', css: "'Pretendard','Malgun Gothic','Noto Sans KR',sans-serif" },
   { id: 'nanum', label: '나눔고딕', css: "'NanumGothic','Nanum Gothic','Malgun Gothic',sans-serif" },
   { id: 'dotum', label: '돋움', css: "'Dotum','Malgun Gothic',sans-serif" },
   { id: 'batang', label: '바탕 (명조 계열)', css: "'Batang','Noto Serif KR','Malgun Gothic',serif" },
