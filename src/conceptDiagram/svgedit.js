@@ -17,6 +17,7 @@ import { dimSvg, DIM_COLOR, DIM_DEFAULT_TEXT } from './dim';
 import { ICON_NAMES, CHIP_SHAPES, iconChipSvg } from './icons';
 import { normalizeTable, tableSvg, tableLayout, SAMPLE_TABLE, TABLE_COLOR } from './table';
 import { imageFx } from './imgfx';
+import { applyTheme } from './theme';
 import { northSvg, scaleBarSvg, normalizeScale, scaleBarHeight, NORTH_STYLES, SYMBOL_COLOR } from './symbols';
 
 const LEAF = new Set(['path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse', 'text']);
@@ -104,10 +105,10 @@ export function rawSetText(sh, text) {
   });
   return { ...sh, el };
 }
-export function appendShapes(svg, shapes) {
+export function appendShapes(svg, shapes, themer) {
   if (!shapes || !shapes.length) return svg;
   const end = svg.lastIndexOf('</svg>'); if (end < 0) return svg;
-  return svg.slice(0, end) + shapes.map(shapeSvg).join('') + svg.slice(end);
+  return svg.slice(0, end) + shapes.map(shapeSvg).map((x) => (themer ? themer(x) : x)).join('') + svg.slice(end);
 }
 // 화면 한가운데(box=[x,y,w,h])에 놓을 새 도형의 기본값
 export function newShape(kind, box, scale = 1) {
@@ -167,12 +168,13 @@ const tableTag = (a, interactive) => tableSvg(tableOf(a), { id: a.id, interactiv
 const northTag = (a, interactive) => northSvg({ cx: a.x + a.w / 2, cy: a.y + a.w / 2, size: a.w, color: a.fill, rot: a.rot || 0, style: NORTH_STYLES.includes(a.style) ? a.style : 'circle', id: a.id, interactive });
 const scaleTag = (a, interactive) => scaleBarSvg({ x: a.x, y: a.y, w: a.w, segs: a.segs, total: a.total, unit: a.unit, size: a.size || 14, color: a.fill, id: a.id, interactive });
 const addTag = (a, interactive) => a.kind === 'dim' ? dimTag(a, interactive) : a.kind === 'north' ? northTag(a, interactive) : a.kind === 'scale' ? scaleTag(a, interactive) : a.kind === 'badge' ? badgeTag(a, interactive) : a.kind === 'callout' ? calloutTag(a, interactive) : a.kind === 'icon' ? iconTag(a, interactive) : a.kind === 'table' ? tableTag(a, interactive) : imgTag(a, interactive);
-function insertAdds(svg, _els, adds, interactive) {
+function insertAdds(svg, _els, adds, interactive, themer) {
   if (!adds || !adds.length) return svg;
   const valid = adds.filter((a) => a && ((a.href && a.kind === 'image') || a.kind === 'badge' || a.kind === 'callout' || a.kind === 'dim' || a.kind === 'icon' || a.kind === 'table' || a.kind === 'north' || a.kind === 'scale'));
   if (!valid.length) return svg;
-  const back = valid.filter((a) => a.behind).map((a) => addTag(a, interactive)).join('');
-  const front = valid.filter((a) => !a.behind).map((a) => addTag(a, interactive)).join('');
+  const tag = (a) => { const x = addTag(a, interactive); return themer ? themer(x) : x; };
+  const back = valid.filter((a) => a.behind).map(tag).join('');
+  const front = valid.filter((a) => !a.behind).map(tag).join('');
   let out = svg;
   const end = out.lastIndexOf('</svg>');
   if (front && end >= 0) out = out.slice(0, end) + front + out.slice(end);
@@ -203,17 +205,20 @@ export function opTransformStr(op) {
 }
 
 // 고친 내용을 그림에 입힌다. opts.ids 가 참이면 편집 화면용: 요소마다 data-eid 를 달고, 얇은 선에는 눌리기 쉽게 보이지 않는 굵은 선을 덧댄다.
+// opts.theme(스타일 안 id): 내가 새로 넣거나 복사해 붙인 도형(shapes)·부속(adds)에도 같은 안의 색·글꼴을 입힌다. 그림 본체는 호출한 쪽이 이미 입혀서 넘긴다(렌더 → 안 → 수정 순서).
+// opts.orig: 편집 화면용 — 안이 입혀진 곳마다 원래 값을 data-o-* 로 남긴다(theme.js 의 restoreOriginals 로 되돌림).
 // 반환: { svg, ok(구조가 같아 적용했는가), sig, els }
 export function applyEdits(svg0, edits, opts = {}) {
   const baseScan = scanSvg(svg0); const sig = baseScan.sig; const baseLeaf = baseScan.els.filter((e) => e.kind === 'e').length;
   const shapes = edits && edits.shapes && edits.shapes.length ? edits.shapes : null;
-  const svg = shapes ? appendShapes(svg0, shapes) : svg0;                // 내가 그린 도형은 맨 끝에 붙여 다른 요소 번호가 바뀌지 않게 한다
+  const themer = opts.theme ? (x) => applyTheme(x, opts.theme, { orig: !!opts.orig }) : null;
+  const svg = shapes ? appendShapes(svg0, shapes, themer) : svg0;        // 내가 그린 도형은 맨 끝에 붙여 다른 요소 번호가 바뀌지 않게 한다
   const els = shapes ? scanSvg(svg).els : baseScan.els;
   const ok = !edits || edits.sig === undefined || edits.sig === sig;
   const ops = ok && edits ? edits.ops || {} : {};
   const interactive = !!opts.ids;
   const adds = edits && edits.adds && edits.adds.length ? edits.adds : null;
-  if (!interactive && !Object.keys(ops).length) return { svg: insertAdds(svg, els, adds, false), ok, sig, els, baseLeaf };
+  if (!interactive && !Object.keys(ops).length) return { svg: insertAdds(svg, els, adds, false, themer), ok, sig, els, baseLeaf };
   let out = ''; let pos = 0;
   for (const el of els) {
     const op = ops[el.id];
@@ -231,6 +236,7 @@ export function applyEdits(svg0, edits, opts = {}) {
       attrs['data-eid'] = el.id;
       if (el.self && ['line', 'path', 'polyline'].includes(tag) && !(op && op.del)) { // 눌리기 쉽게: 같은 모양의 투명한 굵은 선
         const hit = { ...attrs, fill: 'none', stroke: 'transparent', 'stroke-width': '12', 'stroke-dasharray': null, 'stroke-linecap': 'round', 'pointer-events': 'stroke', 'data-hit': '1', 'marker-start': null, 'marker-end': null, 'marker-mid': null, opacity: null };
+        Object.keys(hit).forEach((k) => { if (k.startsWith('data-o-')) delete hit[k]; }); // 원래 색 표시는 눌림용 투명 선에 옮기지 않는다(복원 때 투명이 풀리지 않게)
         extra = buildTag(tag, hit, true);
       }
     }
@@ -241,7 +247,7 @@ export function applyEdits(svg0, edits, opts = {}) {
     }
   }
   out += svg.slice(pos);
-  return { svg: insertAdds(out, els, adds, interactive), ok, sig, els, baseLeaf };
+  return { svg: insertAdds(out, els, adds, interactive, themer), ok, sig, els, baseLeaf };
 }
 
 // ── 고친 내용 만들기(불변) ──

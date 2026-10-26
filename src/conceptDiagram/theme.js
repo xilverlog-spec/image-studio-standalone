@@ -2,10 +2,11 @@
 // 순수 함수(DOM 없음). 항상 '새로 그린 SVG' 에서 시작한다(이미 안이 입혀진 SVG 에 다시 입히지 않는다) — 호출 순서: renderSpec → applyTheme → applyEdits.
 import { ENGINE_FONT, fontCssOf } from './fonts';
 
+// 2026-10-26: 안 2번을 '참고 A형(파랑 중심)'에서 '사내 평균형(주황 중심)'으로 바꿨다(id blue → avg; 예전에 저장한 blue 는 모르는 값이라 current 로 동작).
 // a1 = 주황 계열 역할, a2 = 청·청록 계열 역할, a3 = 초록 계열 역할. ink = 아주 어두운 글자·선. fontId/ink 가 null 이면 건드리지 않는다.
 export const THEMES = [
   { id: 'current', label: '지금 모습', source: '', a1: null, a2: null, a3: null, ink: null, fontId: null, titleK: 1 },
-  { id: 'blue', label: '참고 A형 — 파랑 중심', source: '참고삽도 A형', a1: '#DFA837', a2: '#2F4E9A', a3: '#7BA23A', ink: '#231815', fontId: 'pretendard', titleK: 1.1 },
+  { id: 'avg', label: '사내 평균형 — 주황 중심', source: '사내 참고사례 PDF 728건의 포인트색 평균(주황 36%·파랑 24%·초록 18% 쓰임)', a1: '#D78B31', a2: '#266BB0', a3: '#7BB728', ink: '#231F20', fontId: 'pretendard', titleK: 1 },
   { id: 'mono', label: '먹색 정돈형 — 포인트 하나', source: '', a1: '#E8832A', a2: '#5F6670', a3: '#8A9097', ink: '#1F2328', fontId: 'noto', titleK: 1 },
 ];
 export const themeById = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
@@ -42,16 +43,37 @@ function mapColor(hex, th) {
 }
 
 // 태그 단위로 훑어 fill·stroke·stop-color·flood-color 와 style 안의 #RRGGBB 만 바꾼다. 편집 손잡이(data-handle)·편집 표시(data-ui)·히트 영역 태그는 건드리지 않는다.
-export function applyTheme(svg, themeId) {
+// opts.orig 가 참이면(편집 화면용) 바뀐 태그마다 원래 값을 data-o-fill·data-o-stroke·data-o-stop-color·data-o-flood-color·data-o-style, 글꼴을 바꾼 태그에는 data-o-ff="1" 로 태그 끝에 남긴다.
+// 복사·붙여넣기한 요소(raw)를 만들 때 이 표시로 '안이 입혀지기 전의 값'을 되찾는다(restoreOriginals). 저장·내보내기용 그림에는 표시를 달지 않는다.
+const COLOR_ATTR = /\b(fill|stroke|stop-color|flood-color)="(#[0-9a-fA-F]{6})"/g;
+export function applyTheme(svg, themeId, opts = {}) {
   const th = themeById(themeId); const src = String(svg ?? '');
   if (th.id === 'current') return src;
+  const orig = !!opts.orig; const fontCss = th.fontId ? fontCssOf(th.fontId) : null;
   const swap = (v) => v.replace(/#[0-9a-fA-F]{6}\b/g, (c) => mapColor(c, th));
   let out = src.replace(/<[^>]+>/g, (tag) => {
     if (/data-handle=|data-ui=|class="hit"/.test(tag)) return tag;
-    return tag
-      .replace(/\b(fill|stroke|stop-color|flood-color)="(#[0-9a-fA-F]{6})"/g, (m0, k, v) => `${k}="${HEX.test(v) ? swap(v) : v}"`)
-      .replace(/\bstyle="([^"]*)"/g, (m0, v) => `style="${swap(v)}"`);
+    const marks = [];
+    let t = tag
+      .replace(COLOR_ATTR, (m0, k, v) => { const nv = HEX.test(v) ? swap(v) : v; if (orig && nv !== v) marks.push(`data-o-${k}="${v}"`); return `${k}="${nv}"`; })
+      .replace(/\bstyle="([^"]*)"/g, (m0, v) => { const nv = swap(v); if (orig && nv !== v) marks.push(`data-o-style="${v}"`); return `style="${nv}"`; });
+    if (fontCss && t.includes(ENGINE_FONT)) { t = t.split(ENGINE_FONT).join(fontCss); if (orig) marks.push('data-o-ff="1"'); }
+    return marks.length ? t.replace(/(\s*\/?>)$/, ` ${marks.join(' ')}$1`) : t;
   });
-  if (th.fontId) out = out.split(ENGINE_FONT).join(fontCssOf(th.fontId));
+  if (fontCss) out = out.split(ENGINE_FONT).join(fontCss); // 태그 밖(<style> 글 등)에 있는 글꼴 값
   return out;
+}
+
+// applyTheme(…, { orig: true }) 로 달린 원래 값 표시(data-o-*)를 써서 안이 입혀지기 전의 마크업으로 되돌리고 표시를 지운다. 표시가 없으면 그대로.
+export function restoreOriginals(markup, themeId) {
+  const src = String(markup ?? ''); if (!src.includes('data-o-')) return src;
+  const ff = themeById(themeId).fontId ? fontCssOf(themeById(themeId).fontId) : null;
+  return src.replace(/<[^>]+>/g, (tag) => {
+    if (!tag.includes('data-o-')) return tag;
+    const o = {}; let t = tag.replace(/\sdata-o-([a-z-]+)="([^"]*)"/g, (m0, k, v) => { o[k] = v; return ''; });
+    ['fill', 'stroke', 'stop-color', 'flood-color'].forEach((k) => { if (o[k] !== undefined) t = t.replace(new RegExp(String.raw`(\s)${k}="[^"]*"`), (m0, sp) => `${sp}${k}="${o[k]}"`); });
+    if (o.style !== undefined) t = t.replace(/(\s)style="[^"]*"/, (m0, sp) => `${sp}style="${o.style}"`);
+    if (o.ff !== undefined && ff) t = t.split(ff).join(ENGINE_FONT);
+    return t;
+  });
 }

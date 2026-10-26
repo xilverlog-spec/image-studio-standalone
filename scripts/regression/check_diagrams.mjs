@@ -72,7 +72,7 @@ export { sketchSetDimStart } from ${fwd(sketch)};
 export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCursor, snapDeg, parseTransform, applyMat } from ${fwd(rotateJs)};
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
-export { THEMES, themeById, applyTheme } from ${fwd(themeJs)};
+export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
@@ -2068,33 +2068,33 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const hsl = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l = (mx + mn) / 2; const d = mx - mn; let h = 0; let sat = 0; if (d) { sat = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return { h, s: sat, l }; };
   const fillsOf = (svg) => [...svg.matchAll(/fill="(#[0-9A-Fa-f]{6})"/g)].map((x) => x[1].toUpperCase());
   const oneFill = (c, id) => fillsOf(m.applyTheme(`<svg><rect fill="${c}"/></svg>`, id))[0];
-  expect(JSON.stringify(m.THEMES.map((t) => t.id)) === '["current","blue","mono"]', '안은 current·blue·mono 3개');
-  const bl = T('blue'); const mo = T('mono'); const cu = T('current');
-  expect(bl.a1 === '#DFA837' && bl.a2 === '#2F4E9A' && bl.a3 === '#7BA23A' && bl.ink === '#231815' && bl.fontId === 'pretendard' && bl.titleK === 1.1, 'blue 값이 명세와 같음');
+  expect(JSON.stringify(m.THEMES.map((t) => t.id)) === '["current","avg","mono"]', '안은 current·avg·mono 3개');
+  const bl = T('avg'); const mo = T('mono'); const cu = T('current');
+  expect(bl.a1 === '#D78B31' && bl.a2 === '#266BB0' && bl.a3 === '#7BB728' && bl.ink === '#231F20' && bl.fontId === 'pretendard' && bl.titleK === 1, 'avg(사내 평균형) 값이 명세와 같음');
   expect(mo.a1 === '#E8832A' && mo.a2 === '#5F6670' && mo.a3 === '#8A9097' && mo.ink === '#1F2328' && mo.fontId === 'noto' && mo.titleK === 1, 'mono 값이 명세와 같음');
   expect(cu.fontId === null && cu.titleK === 1 && cu.ink === null, 'current 는 글씨체·글자색을 건드리지 않고 배율 1');
   expect(T(undefined).id === 'current' && T('zzz').id === 'current' && T(null).id === 'current', 'themeById: 없는·모르는 값은 current');
   const S0 = '<svg viewBox="0 0 10 10"><rect fill="#F28C28"/><path stroke="#1E90C8" d="M0 0"/><text fill="#222222" font-family="' + m.ENGINE_FONT + '">가</text></svg>';
   expect(m.applyTheme(S0, 'current') === S0 && m.applyTheme(S0, 'zzz') === S0 && m.applyTheme(S0, undefined) === S0, 'current·모르는 안은 입력과 완전히 같음');
-  expect(JSON.stringify(['#F28C28', '#1E90C8', '#3E8E41'].map((c) => oneFill(c, 'blue'))) === '["#DFA837","#2F4E9A","#7BA23A"]', '기준색 3종이 blue 의 a1·a2·a3 로 감');
+  expect(JSON.stringify(['#F28C28', '#1E90C8', '#3E8E41'].map((c) => oneFill(c, 'avg'))) === '["#D78B31","#266BB0","#7BB728"]', '기준색 3종이 blue 의 a1·a2·a3 로 감');
   expect(JSON.stringify(['#F28C28', '#1E90C8', '#3E8E41'].map((c) => oneFill(c, 'mono'))) === '["#E8832A","#5F6670","#8A9097"]', '기준색 3종이 mono 의 a1·a2·a3 로 감');
-  { const light = hsl(oneFill('#FFE2B8', 'blue')).l; const dark = hsl(oneFill('#6D3F12', 'blue')).l; const t1 = hsl('#DFA837').l;
+  { const light = hsl(oneFill('#FFE2B8', 'avg')).l; const dark = hsl(oneFill('#6D3F12', 'avg')).l; const t1 = hsl('#D78B31').l;
     expect(light - t1 >= 0.2 && t1 - dark >= 0.2, `명도 차이 유지: 옅은 면 ${light.toFixed(2)} > 안 색 ${t1.toFixed(2)} > 어두운 갈색 ${dark.toFixed(2)}`); }
-  expect(['#FFFFFF', '#C4C7CC', '#8A9097', '#EDEDED'].every((c) => oneFill(c, 'blue') === c && oneFill(c, 'mono') === c), '흰색·밝은 회색은 그대로');
-  { const inkL = hsl('#231815').l; const ok3 = ['#222222', '#1F2328', '#1F242B'].every((c) => { const o = oneFill(c, 'blue'); const h = hsl(o); return Math.abs(h.l - inkL) <= 0.05 && Math.abs(h.h - 223) > 40; });
+  expect(['#FFFFFF', '#C4C7CC', '#8A9097', '#EDEDED'].every((c) => oneFill(c, 'avg') === c && oneFill(c, 'mono') === c), '흰색·밝은 회색은 그대로');
+  { const inkL = hsl('#231F20').l; const ok3 = ['#222222', '#1F2328', '#1F242B'].every((c) => { const o = oneFill(c, 'avg'); const h = hsl(o); return Math.abs(h.l - inkL) <= 0.05 && Math.abs(h.h - 210) > 40; });
     expect(ok3, '아주 어두운 글자색(청회색 #1F242B 포함)은 ink 쪽으로 가고 청색 계열로 가지 않음'); }
-  expect(oneFill('#D0342F', 'blue') === '#D0342F' && oneFill('#D0342F', 'mono') === '#D0342F', '빨강은 그대로');
+  expect(oneFill('#D0342F', 'avg') === '#D0342F' && oneFill('#D0342F', 'mono') === '#D0342F', '빨강은 그대로');
   expect(hsl(oneFill('#3E8E41', 'mono')).s < 0.15, 'mono 에서는 초록이 회색 계열');
   { const tricky = '<svg><image href="data:image/png;base64,iVBOR#F28C28"/><rect fill="url(#grad1)"/><g data-handle="x" stroke="#F28C28"/><rect style="fill:#F28C28;stroke:#1E90C8"/></svg>';
-    const o = m.applyTheme(tricky, 'blue');
+    const o = m.applyTheme(tricky, 'avg');
     expect(o.includes('base64,iVBOR#F28C28') && o.includes('url(#grad1)') && o.includes('<g data-handle="x" stroke="#F28C28"/>'), '이미지 데이터·url 참조·편집 손잡이는 그대로');
-    expect(o.includes('fill:#DFA837') && o.includes('stroke:#2F4E9A'), 'style 속성 안의 색은 바뀜'); }
+    expect(o.includes('fill:#D78B31') && o.includes('stroke:#266BB0'), 'style 속성 안의 색은 바뀜'); }
   { const sig = (svg) => m.emptyEdits(svg).sig; const base = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg;
-    expect((base.match(/</g) || []).length === (m.applyTheme(base, 'blue').match(/</g) || []).length && sig(base) === sig(m.applyTheme(base, 'blue')) && sig(base) === sig(m.applyTheme(base, 'mono')), '안을 입혀도 태그 수·구조 지문이 같음'); }
+    expect((base.match(/</g) || []).length === (m.applyTheme(base, 'avg').match(/</g) || []).length && sig(base) === sig(m.applyTheme(base, 'avg')) && sig(base) === sig(m.applyTheme(base, 'mono')), '안을 입혀도 태그 수·구조 지문이 같음'); }
   { const pret = m.FONT_OPTIONS.find((f) => f.id === 'pretendard').css; const noto = m.FONT_OPTIONS.find((f) => f.id === 'noto').css;
-    const b = m.applyTheme(S0, 'blue'); const n = m.applyTheme(S0, 'mono');
+    const b = m.applyTheme(S0, 'avg'); const n = m.applyTheme(S0, 'mono');
     expect(b.includes(pret) && !b.includes(m.ENGINE_FONT) && n.includes(noto) && !n.includes(m.ENGINE_FONT) && m.applyTheme(S0, 'current').includes(m.ENGINE_FONT), '안의 글꼴로 바뀌고 current 는 그대로'); }
-  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['blue', 'mono']) {
+  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['avg', 'mono']) {
     try { const svg = m.applyTheme(m.renderSpec(t, m.EXAMPLE_SPECS[t]).svg, id); expect(/^<svg[\s\S]*<\/svg>$/.test(svg) && !/NaN|undefined/.test(svg), `예시 ${t} × ${id} 이 깨지지 않음`); } catch (e) { fails.push(`스타일 안: 예시 ${t} × ${id}: ${e.message}`); }
   }
 }
@@ -2125,7 +2125,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
     expect(!!leaf, '시험 대상 요소를 찾음');
     if (leaf) {
       const edits = m.editSet(m.emptyEdits(svg), leaf.id, { fill: '#123456' }, scan.sig);
-      for (const id of ['blue', 'mono', 'current']) {
+      for (const id of ['avg', 'mono', 'current']) {
         const out = m.applyEdits(m.applyTheme(svg, id), edits).svg; const again = m.scanSvg(out).els.find((e) => e.id === leaf.id);
         expect(again && again.attrs.fill === '#123456', `직접 칠한 색은 안(${id})을 바꿔도 유지됨`);
       }
@@ -2133,8 +2133,8 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const spk = { frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40] }], lines: [{ id: 'p1', pts: [[10, 10], [30, 10]] }], winds: [], memos: [] };
     const out = m.renderSketch(spk, { interactive: true, selected: 'b1' }).svg; const handles = out.match(/<[^>]*data-handle=[^>]*>/g) || [];
     expect(handles.length > 0, '편집 출력에 손잡이 태그가 있음');
-    const themed = m.applyTheme(out, 'blue'); expect(handles.every((h) => themed.includes(h)), '편집 손잡이(주황 #F28C28 포함)는 안에 따라 변하지 않음'); }
-  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['current', 'blue', 'mono']) {
+    const themed = m.applyTheme(out, 'avg'); expect(handles.every((h) => themed.includes(h)), '편집 손잡이(주황 #F28C28 포함)는 안에 따라 변하지 않음'); }
+  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['current', 'avg', 'mono']) {
     try {
       const th = m.themeById(id); const svg = m.applyTheme(m.renderSpec(t, m.EXAMPLE_SPECS[t]).svg, id);
       const page = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: th.fontId || 'pretendard', inkColor: th.ink || undefined, titleK: th.titleK, measure: null });
@@ -2147,7 +2147,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const expect = (cond, label) => { if (cond) ok++; else fails.push(`안 비교: ${label}`); };
   expect(m.fontInstalled('Pretendard') === true && m.fontInstalled('아무글꼴') === true, 'DOM 이 없으면(node 시험) 설치된 것으로 본다(화면에서만 판정)');
   { const art = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg; const mkPage = (id) => { const th = m.themeById(id); return m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: m.applyTheme(art, id) }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: th.fontId || 'pretendard', inkColor: th.ink || undefined, titleK: th.titleK, measure: null }).svg; };
-    const cur = mkPage('current'); const bl = mkPage('blue'); const mo = mkPage('mono');
+    const cur = mkPage('current'); const bl = mkPage('avg'); const mo = mkPage('mono');
     const plain = m.composePage({ w: 420, h: 297, medium: 'print' }, [{ id: 'c1', render: { svg: art }, caption: '칸 제목' }], { layoutId: '1x1', title: '제목', fontId: 'pretendard', measure: null }).svg;
     expect(cur !== bl && bl !== mo && cur !== mo, '안마다 쪽 그림이 서로 다름');
     expect(cur === plain, 'current 쪽 그림은 안을 입히지 않은 것과 같음'); }
@@ -2213,20 +2213,50 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   const hsl = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l = (mx + mn) / 2; const d = mx - mn; let h = 0; let sat = 0; if (d) { sat = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return { h, s: sat, l }; };
   const one = (c, id) => (m.applyTheme(`<svg><rect fill="${c}"/></svg>`, id).match(/fill="(#[0-9A-Fa-f]{6})"/) || [])[1];
   // I5: 거의 흰 청회색·연회색 바탕은 안을 입혀도 그대로(무채색), 옅은 초록 면은 사라지지 않고 바탕과 구별됨
-  expect(['#F6F7F4', '#F4F5F7', '#F7FAFC', '#FBFBFB'].every((c) => one(c, 'blue') === c && one(c, 'mono') === c), '거의 흰 색(#F6F7F4·#F4F5F7·#F7FAFC)은 그대로');
+  expect(['#F6F7F4', '#F4F5F7', '#F7FAFC', '#FBFBFB'].every((c) => one(c, 'avg') === c && one(c, 'mono') === c), '거의 흰 색(#F6F7F4·#F4F5F7·#F7FAFC)은 그대로');
   { const face = one('#E4EFD9', 'mono'); const bg = one('#F6F7F4', 'mono'); const edge = one('#CFE3BE', 'mono');
     expect(Math.abs(hsl(face).l - hsl(bg).l) >= 0.03 && face !== '#FBFBFB' && edge !== face, `mono: 녹지 면·테두리가 대지 바탕과 구별됨(${face} / ${edge} / ${bg})`);
-    expect(hsl(one('#E4EFD9', 'blue')).l < 0.97 && hsl(one('#E4EFD9', 'blue')).l > 0.8, 'blue: 옅은 초록 면은 옅은 색으로 남음'); }
+    expect(hsl(one('#E4EFD9', 'avg')).l < 0.97 && hsl(one('#E4EFD9', 'avg')).l > 0.8, 'blue: 옅은 초록 면은 옅은 색으로 남음'); }
   { const a = hsl(one('#FFE2B8', 'mono')).l; const b = hsl(one('#6D3F12', 'mono')).l; const c = hsl(one('#E8832A', 'mono')).l; expect(a > c + 0.15 && c > b + 0.15, '명도 순서 유지(옅은 면 > 안 색 > 어두운 색)'); }
   // I2: 손스케치 편집 화면의 선택·회전 표시(주황)는 안을 입혀도 바뀌지 않음(손잡이 점뿐 아니라 줄기·선택 틀·강조선도)
   { const spk = { frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40] }], lines: [{ id: 'p1', pts: [[10, 10], [30, 10]] }], winds: [{ id: 'w1', pts: [[10, 50], [40, 50]], form: 'ribbon', shape: 's', head: 'end' }], memos: [{ id: 'm1', x: 50, y: 15, text: '메모', size: 12, color: '#222222' }] };
     for (const sel of ['b1', 'p1', 'w1', 'm1']) {
-      const raw = m.renderSketch(spk, { interactive: true, selected: sel }).svg; const themed = m.applyTheme(raw, 'blue');
+      const raw = m.renderSketch(spk, { interactive: true, selected: sel }).svg; const themed = m.applyTheme(raw, 'avg');
       const orangeIn = (raw.match(/#F28C28/g) || []).length; const orangeOut = (themed.match(/#F28C28/g) || []).length;
       expect(orangeIn > 0 && orangeOut === orangeIn, `선택한 ${sel}: 편집용 주황 표시 ${orangeIn}개가 안을 입혀도 그대로(${orangeOut}개)`);
     } }
   { const raw = m.renderSketch({ frame: [0, 0, 100, 60], blocks: [{ id: 'b1', kind: 'slab', rect: [20, 20, 60, 40], fill: '#F2C94C' }], lines: [], winds: [], memos: [] }, { interactive: false }).svg;
     expect(!raw.includes('data-ui'), '저장용(비편집) 그림에는 편집 표시 묶음이 없음'); }
+}
+// 직접 넣은·복사한 도형·부속(adds)도 안을 따라감(2026-10-26 사용자 결정): applyEdits 의 theme 옵션, 편집 화면용 원래 색 표시(data-o-*)와 복원
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`도형도 안을 따라감: ${label}`); };
+  const base = m.renderSpec('massing', m.EXAMPLE_SPECS.massing).svg; const sig = m.scanSvg(base).sig; const BOX = [0, 0, 1000, 700];
+  const one = (c, id) => (m.applyTheme(`<svg><rect fill="${c}"/></svg>`, id).match(/fill="(#[0-9A-Fa-f]{6})"/) || [])[1];
+  let E = m.emptyEdits(base);
+  for (const sh of [m.newShape('arrow', BOX), m.newShape('text', BOX), m.newShape('rect', BOX), { kind: 'raw', defs: '', el: `<rect x="1" y="1" width="9" height="9" fill="#F28C28" stroke="#1E90C8" font-family="${m.ENGINE_FONT}"/>` }]) E = m.editAddShape(E, sig, sh).edits;
+  const cur = m.applyEdits(base, E).svg;
+  expect(cur.includes('stroke="#E8832A"') && cur.includes('fill="#222222"') && cur.includes('fill="#F28C28" stroke="#1E90C8"'), '안이 없으면 예전과 같음(도형 기본 색 그대로)');
+  const avg = m.applyEdits(base, E, { theme: 'avg' }).svg;
+  expect(avg.includes(`stroke="${one('#E8832A', 'avg')}"`) && one('#E8832A', 'avg') !== '#E8832A', '새 화살표 색이 안을 따라감');
+  expect(avg.includes(`fill="${one('#F28C28', 'avg')}" stroke="${one('#1E90C8', 'avg')}"`) && one('#F28C28', 'avg') !== '#F28C28', '복사한 요소(raw)의 색이 안을 따라감');
+  expect(!avg.includes('fill="#F28C28" stroke="#1E90C8"') && avg.includes(m.FONT_OPTIONS.find((f) => f.id === 'pretendard').css), '글꼴도 안을 따라감');
+  const mono = m.applyEdits(base, E, { theme: 'mono' }).svg;
+  expect(mono.includes(`fill="${one('#222222', 'mono')}"`) && one('#222222', 'mono') !== '#222222' && mono.includes(m.FONT_OPTIONS.find((f) => f.id === 'noto').css), '새 글자의 색·글꼴이 mono 를 따라감');
+  expect(m.applyEdits(base, E, { theme: 'current' }).svg === cur && m.applyEdits(base, E, { theme: 'zzz' }).svg === cur, 'current·모르는 안은 그대로');
+  expect(m.scanSvg(avg).sig === m.scanSvg(cur).sig && (avg.match(/</g) || []).length === (cur.match(/</g) || []).length, '구조 지문·태그 수는 그대로');
+  expect(!avg.includes('data-o-') && !mono.includes('data-o-'), '저장용(깨끗한) 그림에는 원래 색 표시가 없음');
+  { const E2 = m.editAddTable(m.emptyEdits(base), sig, { box: BOX }).edits; const a0 = m.applyEdits(base, E2).svg; const a1 = m.applyEdits(base, E2, { theme: 'mono' }).svg;
+    expect(a0 !== a1 && !a1.includes('#2F6B4F'), '새로 넣은 표(부속)의 색도 안을 따라감'); }
+  // 편집 화면용: 바뀐 색마다 원래 색을 data-o-* 로 남기고, restoreOriginals 로 정확히 되돌린다
+  for (const t of Object.keys(m.DIAGRAM_TYPES)) for (const id of ['avg', 'mono']) {
+    const raw = m.renderSpec(t, m.EXAMPLE_SPECS[t]).svg; const th = m.applyTheme(raw, id, { orig: true });
+    expect(th.includes('data-o-') && !th.includes('data-o-undefined') && m.restoreOriginals(th, id) === raw, `예시 ${t} × ${id}: 원래 색 표시를 달았다가 정확히 복원됨`);
+    expect(!/data-o-/.test(m.applyTheme(raw, id)), `예시 ${t} × ${id}: 옵션이 없으면 표시를 달지 않음`);
+  }
+  { const orig = m.applyEdits(base, E, { ids: true }).svg; const th = m.applyEdits(base, E, { ids: true, theme: 'avg', orig: true }).svg;
+    expect(th !== orig && th.includes('data-o-stroke="#E8832A"') && m.restoreOriginals(th, 'avg') === orig, '편집 화면 그림(도형·복사본 포함)이 정확히 원래 색으로 복원됨'); }
+  expect(m.restoreOriginals('<rect fill="#123456"/>', 'avg') === '<rect fill="#123456"/>' && m.restoreOriginals('', 'avg') === '' && m.restoreOriginals(undefined, 'avg') === '', '복원할 표시가 없으면 그대로');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

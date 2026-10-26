@@ -322,9 +322,12 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const rendered = useMemo(() => {
     if (!result) return null;
     try {
-      const r = renderThemed(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined, pg.theme); // 안(스타일)은 그린 직후에 입힌다 — 손으로 고친 내용(edits)은 그 위에 덮인다
-      if (result.type !== 'sketch' && hasEdits(result.edits)) return { ...r, svg: applyEdits(r.svg, result.edits).svg, baseSvg: r.svg, error: null }; // 구조형 결과: 도형을 손으로 고친 내용(색·위치·곡선·선 종류)
-      return { ...r, error: null };
+      const r0 = renderSpec(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined);
+      const themed = !!pg.theme && pg.theme !== 'current';
+      const r = themed ? { ...r0, svg: applyTheme(r0.svg, pg.theme) } : r0; // 안(스타일)은 그린 직후에 입힌다 — 손으로 고친 내용(edits)은 그 위에 덮인다
+      const editBase = themed && result.type !== 'sketch' ? applyTheme(r0.svg, pg.theme, { orig: true }) : undefined; // 편집 화면용: 안이 입혀진 곳마다 원래 값 표시(data-o-*)를 남긴다(복사한 요소가 원래 색으로 돌아가도록)
+      if (result.type !== 'sketch' && hasEdits(result.edits)) return { ...r, svg: applyEdits(r.svg, result.edits, { theme: pg.theme }).svg, baseSvg: r.svg, editBase, error: null }; // 구조형 결과: 도형을 손으로 고친 내용(색·위치·곡선·선 종류). 내가 넣은 도형·부속에도 같은 안을 입힌다
+      return { ...r, ...(editBase ? { editBase } : {}), error: null };
     } catch (e) { return { svg: '', width: 0, height: 0, error: e.message }; }
   }, [result, pg.theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -606,7 +609,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
         else if (r.type === 'site') spec.cols = bestCols(Math.max(1, (spec.panels || []).length), aspect, SITE_PANEL_W, SITE_PANEL_H, 3);
         else if (r.type === 'massing') spec.cols = bestCols(Math.max(1, (spec.steps || []).length), aspect, MASSING_PANEL_W, MASSING_PANEL_H, 3);
         const eng = renderThemed(r.type, spec, r.baseImage ? { baseImage: r.baseImage } : undefined, tid);
-        return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0, crop: Array.isArray(r.crop) ? r.crop : null };
+        return { id, render: { svg: edited ? applyEdits(eng.svg, r.edits, { theme: tid }).svg : eng.svg }, caption: edited ? '' : (r.spec?.title || ''), cropTop: r.type === 'sketch' ? sketchContentTop(spec) : 0, crop: Array.isArray(r.crop) ? r.crop : null };
       });
       const preview = composePage(page, items, { ...base, preview: true, selected: selCell });
       const out = wantOut ? composePage(page, items, base) : null; // 저장용(칸 테두리·빈 칸 표시 없음)
@@ -623,7 +626,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
       if (pageOn) { const o = composeAll(pg.layoutId, pg.custom, true, null, id)?.out; return o ? { svg: o.svg, w: o.width, h: o.height } : null; }
       if (!result) return null;
       const r = renderThemed(result.type, result.spec, result.baseImage ? { baseImage: result.baseImage } : undefined, id);
-      return { svg: result.type !== 'sketch' && hasEdits(result.edits) ? applyEdits(r.svg, result.edits).svg : r.svg, w: r.width, h: r.height };
+      return { svg: result.type !== 'sketch' && hasEdits(result.edits) ? applyEdits(r.svg, result.edits, { theme: id }).svg : r.svg, w: r.width, h: r.height };
     } catch { return null; }
   };
   const themeThumbs = useMemo(() => (themeOpen ? Object.fromEntries(THEMES.map((t) => [t.id, thumbFor(t.id)])) : {}), [themeOpen, result, pageOn, pg, cells]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1711,7 +1714,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           )}
           {result?.type !== 'sketch' && rendered?.svg && (
             <div data-testid="inline-view" onPointerDownCapture={() => { ctxRef.current = 'sketch'; }}>
-              <SvgEditor sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.baseSvg || rendered.svg} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
+              <SvgEditor sideHost={leftHidden ? null : sideHost} sideOpen={leftTab === 'shape'} onOpenSide={() => setLeftTab('shape')} onPick={() => setLeftTab('shape')} onCopy={onEditorCopy} pasteSignal={pasteSig} onAddImageClick={() => myImgFileRef.current?.click()} ptInfo={ptInfoOf(pageModel)} svg={rendered.editBase || rendered.baseSvg || rendered.svg} themeId={pg.theme} edits={result.edits} onEdits={onSvgEdits} fields={fields} maxWidth={rendered.width} disabled={busy || reading}
                 shortcutsEnabled={() => (!pageOn || ctxRef.current !== 'page') && !themeOpen}
                 onTextEdit={(f, v) => { const h = textHist.current; h.past = [...h.past.slice(-49), { ver: result.ver, spec: result.spec, edits: result.edits }]; h.future = []; setResult((r) => ({ ...r, spec: setByPath(r.spec, f.path, v), isReadPreview: false })); }}
                 onMiss={() => addToast?.('info', '이 글자는 자동으로 만들어진 글자라 여기서 바로 고칠 수 없습니다', '왼쪽 “글자 수정” 목록에서 고칠 수 있는 글자인지 확인해 보세요.')} />

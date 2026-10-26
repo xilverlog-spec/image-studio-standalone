@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { applyEdits, hasEdits, editReplaceImage, editCropImage, editUpdateAdd, editRemoveAdd, editAddShape, editUpdateShape, editRemoveShape, newShape, rawShift, rawSetText, editSet, editMove, editMoveTo, editDelete, editRestore, editAsPath, editTranslate, editScale, editLineSpacing, LH_MIN, LH_MAX, addScalePatch, SCALE_MIN, SCALE_MAX, DASH_PRESETS, DASH_GAP_MIN, DASH_GAP_MAX, dashKind, dashNumsEven, dashSameParts, dashGapFactor, dashScaled, dashPatch, parsePath, pathD, pathNodes, pathMoveNode, pathMoveCtrl, pathToggleCurve, pathAddNode, pathDelNode, parsePoints, pointsStr, lineToCurveD } from './conceptDiagram/svgedit';
 import { normText, pickByText, responsiveSvg } from './conceptDiagram/inlineText';
+import { restoreOriginals } from './conceptDiagram/theme';
 import { textAtPoint, InlineInput, textUnitSize, PtReadout } from './InlineText';
 import { schedulePaste, markInternalCopy } from './conceptDiagram/clip';
 import { readImageFile, bakeCrop, imageSize } from './conceptDiagram/imgio';
@@ -54,8 +55,8 @@ function Colors({ value, onChange, none, onNone }) {
 
 let SV_CLIP = null; let SV_PASTE_N = 0; // 복사해 둔 요소(다른 칸의 그림에도 붙일 수 있게 모듈에 둔다)와 연속 붙여넣기 횟수
 
-export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
-  const view = useMemo(() => applyEdits(svg, edits, { ids: true }), [svg, edits]);
+export default function SvgEditor({ svg, themeId, edits, onEdits, fields, onTextEdit, onMiss, maxWidth, disabled, shortcutsEnabled, ptInfo, onAddImageClick, onCopy, pasteSignal, sideHost, sideOpen, onOpenSide, onPick }) {
+  const view = useMemo(() => applyEdits(svg, edits, { ids: true, theme: themeId, orig: true }), [svg, edits, themeId]); // 안(스타일)을 따라가는 도형·부속에는 원래 색 표시(data-o-*)를 남긴다(복사 때 되돌림)
   const html = useMemo(() => ({ __html: responsiveSvg(view.svg) }), [view.svg]); // 같은 객체여야 React 가 그림을 매번 다시 만들지 않는다(다시 만들면 표시·마우스 올림이 사라진다)
   const E = useMemo(() => (edits && edits.sig === view.sig ? edits : { sig: view.sig, ops: {}, ...(edits?.adds ? { adds: edits.adds } : {}), ...(edits?.shapes ? { shapes: edits.shapes } : {}) }), [edits, view.sig]); // 구조가 달라져도 내가 넣은 이미지는 남긴다
   const stale = !!edits && edits.sig !== view.sig && hasEdits(edits);
@@ -535,12 +536,17 @@ export default function SvgEditor({ svg, edits, onEdits, fields, onTextEdit, onM
     if (m.isIdentity) c.removeAttribute('transform'); else c.setAttribute('transform', `matrix(${[m.a, m.b, m.c, m.d, m.e, m.f].map((v) => Math.round(v * 10000) / 10000).join(' ')})`);
     const st = getComputedStyle(el0); const tg = el0.tagName.toLowerCase();
     const bake = (a, v) => { if (!c.hasAttribute(a) && v !== '' && v != null) c.setAttribute(a, v); };
-    bake('fill', st.fill === 'none' ? 'none' : hexOf(st.fill)); if (tg !== 'text') { bake('stroke', st.stroke === 'none' ? 'none' : hexOf(st.stroke)); if (st.stroke !== 'none') { bake('stroke-width', String(num(st.strokeWidth, 1))); if (st.strokeDasharray && st.strokeDasharray !== 'none') bake('stroke-dasharray', st.strokeDasharray.replace(/px/g, '').replace(/,/g, ' ')); bake('stroke-linecap', st.strokeLinecap); } }
+    const inherited = (a, v) => { // 안이 입혀진 조상에게서 물려받은 값이면 입혀지기 전 값으로(붙여넣은 뒤 안이 한 번 더 입혀지지 않게)
+      if (c.hasAttribute(a)) return v;
+      for (let n = el0.parentNode; n && n.nodeType === 1 && n.nodeName.toLowerCase() !== 'svg'; n = n.parentNode) { if (n.hasAttribute(a)) { const o = n.getAttribute(`data-o-${a}`); return o != null ? o : v; } }
+      return v;
+    };
+    bake('fill', st.fill === 'none' ? 'none' : inherited('fill', hexOf(st.fill))); if (tg !== 'text') { bake('stroke', st.stroke === 'none' ? 'none' : inherited('stroke', hexOf(st.stroke))); if (st.stroke !== 'none') { bake('stroke-width', String(num(st.strokeWidth, 1))); if (st.strokeDasharray && st.strokeDasharray !== 'none') bake('stroke-dasharray', st.strokeDasharray.replace(/px/g, '').replace(/,/g, ' ')); bake('stroke-linecap', st.strokeLinecap); } }
     if (st.opacity !== '1') bake('opacity', st.opacity);
     if (tg === 'text') { bake('font-family', st.fontFamily); bake('font-size', String(num(st.fontSize, 14))); bake('font-weight', st.fontWeight); bake('text-anchor', st.textAnchor); }
     const defs = []; let k = 0;
     [...c.attributes].forEach((a) => { const mm = /url\(["']?#([^"')]+)["']?\)/.exec(a.value); if (!mm) return; const def = root.querySelector(`[id="${mm[1]}"]`); if (!def) return; const nid = `cp${Date.now().toString(36)}${k++}_${mm[1]}`; const dc = def.cloneNode(true); dc.setAttribute('id', nid); defs.push(dc.outerHTML); c.setAttribute(a.name, a.value.replace(mm[1], nid)); });
-    return { kind: 'raw', defs: defs.length ? `<defs>${defs.join('')}</defs>` : '', el: c.outerHTML };
+    return { kind: 'raw', defs: defs.length ? restoreOriginals(`<defs>${defs.join('')}</defs>`, themeId) : '', el: restoreOriginals(c.outerHTML, themeId) };
   };
   const copySel = () => {
     const items = [];

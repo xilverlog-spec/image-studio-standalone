@@ -39,7 +39,7 @@ export default function ThemeCompare({ open, onClose, themeId, onPick, thumbs })
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div id="theme-dialog-title" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>스타일 안 비교</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>같은 그림을 안마다 색·글씨체·제목 크기(페이지 모드)만 바꿔 보여 줍니다. 눌러서 적용하고, “지금 모습”을 누르면 원래대로 돌아갑니다. 구조형 결과에서 직접 칠한 색과 손으로 고친 내용은 그대로 남고, 손스케치 결과는 직접 고른 색도 같은 계열이면 같이 바뀝니다.</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>같은 그림을 안마다 색·글씨체·제목 크기(페이지 모드)만 바꿔 보여 줍니다. 눌러서 적용하고, “지금 모습”을 누르면 원래대로 돌아갑니다. 구조형 결과에서 그림 본체에 직접 칠한 색과 손으로 고친 내용은 그대로 남고, 새로 넣거나 복사해 붙인 도형과 손스케치 결과는 직접 고른 색도 같은 계열이면 같이 바뀝니다.</div>
           </div>
           <button type="button" ref={closeRef} onClick={onClose} data-testid="theme-close" style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontSize: 12.5 }}>닫기</button>
         </div>
