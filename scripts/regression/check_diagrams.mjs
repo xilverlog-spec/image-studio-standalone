@@ -29,6 +29,7 @@ const tabledocJs = path.resolve(here, '../../src/conceptDiagram/tabledoc.js');
 const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const themeJs = path.resolve(here, '../../src/conceptDiagram/theme.js');
+const aerialJs = path.resolve(here, '../../src/aerialRecover.js');
 const fontcheckJs = path.resolve(here, '../../src/conceptDiagram/fontcheck.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
@@ -73,6 +74,7 @@ export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCurs
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
+export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from ${fwd(aerialJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
@@ -2257,6 +2259,40 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const orig = m.applyEdits(base, E, { ids: true }).svg; const th = m.applyEdits(base, E, { ids: true, theme: 'avg', orig: true }).svg;
     expect(th !== orig && th.includes('data-o-stroke="#E8832A"') && m.restoreOriginals(th, 'avg') === orig, '편집 화면 그림(도형·복사본 포함)이 정확히 원래 색으로 복원됨'); }
   expect(m.restoreOriginals('<rect fill="#123456"/>', 'avg') === '<rect fill="#123456"/>' && m.restoreOriginals('', 'avg') === '' && m.restoreOriginals(undefined, 'avg') === '', '복원할 표시가 없으면 그대로');
+}
+// 조감도: 새로고침해도 진행 중이던 작업을 되찾는다(2026-10-27) — 진행 중 메모 관리·서버 기록에서 결과 고르기·기다림 판정
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`조감도 되찾기: ${label}`); };
+  const now = 1_800_000_000_000;
+  const r1 = { ticket: 't1', t0: now - 5000, label: '화창한 오후', mode: 'render', kind: 'gen' };
+  let L = m.pendingAdd([], r1); L = m.pendingAdd(L, { ...r1, label: '같은 번호표를 다시 넣음' });
+  expect(L.length === 1 && L[0].label === '같은 번호표를 다시 넣음', '같은 번호표는 하나로(최신으로 바뀜)');
+  let many = []; for (let i = 0; i < 12; i++) many = m.pendingAdd(many, { ticket: `x${i}`, t0: now }); expect(many.length === m.MAX_PENDING && many[0].ticket === 'x11', `메모는 최대 ${m.MAX_PENDING}개, 최근 것이 앞`);
+  expect(m.pendingRemove([r1, { ...r1, ticket: 't2' }], 't1').map((x) => x.ticket).join() === 't2' && m.pendingRemove(null, 't1').length === 0, '번호표로 메모 지우기(목록이 비어도 안전)');
+  const fresh = m.pendingFresh([r1, { ...r1, ticket: 'old', t0: now - m.MAX_AGE_MS - 1 }, { ticket: '' , t0: now }, null, { ticket: 'nt', t0: 'x' }, { ...r1, ticket: 'fut', t0: now + 10 * 60000 }], now);
+  expect(fresh.length === 1 && fresh[0].ticket === 't1', '6시간 지난 메모·번호표 없는 메모·시각이 이상한 메모·먼 미래 메모는 버림');
+  expect(m.pendingFresh('망가진 값', now).length === 0 && m.pendingFresh(undefined, now).length === 0, '저장값이 망가져도 빈 목록');
+  // 서버 기록에서 되찾을 결과: 조감도 파일(aerial_)이고 작업 시작 이후에 만들어졌고 이미 가진 파일이 아닌 것 중 가장 이른 것
+  const gen = (id, file, t) => ({ id, imageFilename: file, createdAt: t, seed: id, prompt: `p${id}`, checkpoint: 'Juggernaut' });
+  const G = [gen(5, 'DX설계본부/aerial_20261027_100500_aaaaaa.png', now / 1000 + 30), gen(4, 'DX설계본부/gen_20261027_100400_bbbbbb.png', now / 1000 - 3),
+             gen(3, 'DX설계본부/aerial_20261027_095000_cccccc.png', now / 1000 - 600), gen(6, 'DX설계본부/aerial_20261027_100600_dddddd.png', now / 1000 + 60)];
+  expect(m.matchRecovered(r1, G, new Set())?.id === 5, '작업 시작 이후의 조감도 결과 중 가장 이른 것(일반 생성 gen_·시작 전 것은 제외)');
+  expect(m.matchRecovered(r1, G, new Set(['DX설계본부/aerial_20261027_100500_aaaaaa.png']))?.id === 6, '이미 결과 목록에 있는 파일은 건너뜀');
+  expect(m.matchRecovered(r1, G, new Set(), new Set([5]))?.id === 6, '다른 메모가 이미 가져간 결과는 건너뜀');
+  expect(m.matchRecovered(r1, G, new Set(), new Set([5, 6])) === null && m.matchRecovered(r1, [], new Set()) === null && m.matchRecovered(r1, undefined, new Set()) === null, '고를 게 없으면 null(기록이 비어도 안전)');
+  expect(m.matchRecovered({ ...r1, t0: now - 1000 }, [gen(9, 'aerial_20261027_x.png', now / 1000 - 2.5)], new Set())?.id === 9, '시작 직전 2초 이내(시계 오차)에 만들어진 것도 인정(프로젝트 폴더 없는 파일명도 인정)');
+  // 판정: 서버 줄에 있으면 기다림, 줄에서 사라졌고 기록이 있으면 가져옴, 기록이 없으면 유예 후 잃어버림으로
+  const D = (pos, match, t, gone) => m.decidePending(r1, pos, match, t, gone);
+  expect(D(2, null, now, null).action === 'wait' && D(1, G[0], now, 123).action === 'wait' && D(1, G[0], now, 123).goneSince === null, '아직 서버 줄에 있으면(1=지금 만드는 중) 기다림, 사라짐 표시는 지움');
+  expect(D(0, G[0], now, null).action === 'collect', '줄에서 사라졌고 결과가 있으면 가져옴');
+  const w1 = D(0, null, now, null); expect(w1.action === 'wait' && w1.goneSince === now, '줄에서 막 사라졌고 기록이 아직 없으면 유예를 시작');
+  expect(D(0, null, now + m.GRACE_MS - 1, now).action === 'wait' && D(0, null, now + m.GRACE_MS, now).action === 'lost', '유예(15초) 안엔 기다리고 지나면 잃어버림');
+  // 유료 엔진(OpenAI·Gemini)은 서버 줄 번호표를 쓰지 않아 새로고침 직후부터 '줄에 없음'으로 보이고 결과도 늦게 올라온다 → 유예를 길게(3분)
+  const rp = { ...r1, paid: true };
+  expect(m.GRACE_PAID_MS >= 120000 && m.decidePending(rp, 0, null, now + m.GRACE_MS + 1000, now).action === 'wait' && m.decidePending(rp, 0, null, now + m.GRACE_PAID_MS, now).action === 'lost' && m.decidePending(rp, 0, G[0], now, null).action === 'collect', '유료 작업은 3분 유예, 결과가 올라오면 바로 가져옴');
+  // 되찾은 결과 항목: 화면 결과 목록이 쓰는 필드
+  const e = m.recoveredEntry(r1, G[0], now);
+  expect(e.filename === G[0].imageFilename && e.model === 'Juggernaut' && e.score === null && e.mode === 'render' && e.label === '화창한 오후' && e.recovered === true && e.sec === Math.round(G[0].createdAt - r1.t0 / 1000) && typeof e.id === 'string' && e.note.includes('되찾'), `되찾은 결과 항목 ${JSON.stringify(e)}`);
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from './aerialRecover';
 
 // 조감도 탭 — 모델링(스케치업 캡처·매스·3D 모델) 이미지를 실사 렌더로 만든다.
 // 작업 방식 3가지: 분위기 렌더(시간대·날씨 비교) / 입면 비교(형태는 두고 재료만 바꿔 여러 안) / 레퍼런스 적용(원하는 사진의 재료·분위기를 내 건물에).
@@ -93,6 +94,8 @@ const nearestAspect = (w, h) => {
 const readConsent = () => { try { return sessionStorage.getItem('aerial_consent') === '1'; } catch { return false; } };
 const readSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } };
 const writeSaved = (list) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, MAX_SAVED))); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
+const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch { return []; } };
+const writePending = (list) => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
 
 // 원본(왼쪽)과 결과(오른쪽)를 가운데 선을 끌어 비교한다.
 function CompareSlider({ before, after }) {
@@ -147,6 +150,9 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [results, setResults] = useState(readSaved);
+  const resultsRef = useRef(results); resultsRef.current = results;
+  const liveTickets = useRef(new Set());          // 이번 접속에서 보낸 요청의 번호표(되찾기 대상이 아니다)
+  const [recovering, setRecovering] = useState(0);  // 새로고침 전에 시작해 서버에서 확인 중인 작업 수
   const [thumbs, setThumbs] = useState({});           // 결과 id → 원본 썸네일(이번 접속에서만)
   const [compareOn, setCompareOn] = useState({});     // 결과 id → 슬라이더 비교 펼침
   const [picked, setPicked] = useState([]);           // 나란히 비교용 선택 id
@@ -235,6 +241,45 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     poll();
     return () => { alive = false; clearInterval(id); };
   }, [busy, editBusy, apiFetch]);
+
+  // 새로고침 전에 시작한 작업의 결과 되찾기: 서버는 끝까지 만들어 파일·이력에 저장하므로, 남은 진행 중 메모를 서버 줄(번호표)·이력과 맞춰 본다.
+  useEffect(() => {
+    let alive = true; let timer = null; const gone = {}; const claimed = new Set();
+    const step = async () => {
+      const now = Date.now();
+      writePending(pendingFresh(readPending(), now));                                           // 오래되거나 망가진 메모 정리
+      const list = pendingFresh(readPending(), now).filter((r) => !liveTickets.current.has(r.ticket));
+      if (!alive) return;
+      setRecovering(list.length);
+      if (!list.length) return;
+      let gens = null;
+      for (const rec of list) {
+        let pos = 0;
+        try { const r = await apiFetch(`/v1/image/aerial/queue?ticket=${encodeURIComponent(rec.ticket)}`); if (!r.ok) continue; pos = Number((await r.json()).position) || 0; } catch { continue; }
+        let match = null;
+        if (pos === 0) {
+          if (gens === null) { try { const r = await apiFetch('/v1/image/history?limit=80'); gens = r.ok ? ((await r.json()).generations || []) : null; } catch { gens = null; } }
+          if (gens === null) continue;
+          match = matchRecovered(rec, gens, new Set(resultsRef.current.map((x) => x.filename)), claimed);
+        }
+        const d = decidePending(rec, pos, match, Date.now(), gone[rec.ticket] ?? null);
+        gone[rec.ticket] = d.goneSince;
+        if (!alive) return;
+        if (d.action === 'collect') {
+          claimed.add(match.id); writePending(pendingRemove(readPending(), rec.ticket));
+          setResults((prev) => [recoveredEntry(rec, match, Date.now()), ...prev]);
+          addToast?.('success', '새로고침 전에 시작한 조감도를 되찾았습니다', `${rec.label || '조감도'} — 서버에서 끝난 결과를 결과 목록에 넣었습니다.`);
+          onGenerated?.();
+        } else if (d.action === 'lost') {
+          writePending(pendingRemove(readPending(), rec.ticket));
+          addToast?.('info', '새로고침 전에 시작한 조감도 작업이 끝나지 않았습니다', '서버가 재시작됐거나 생성에 실패했을 수 있습니다. 다시 만들어 주세요.');
+        }
+      }
+      if (alive) timer = setTimeout(step, 5000);
+    };
+    step();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [apiFetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setConsentSaved = (v) => {
     setConsent(v);
@@ -329,15 +374,22 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
   const newTicket = () => { ticketRef.current = `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; return ticketRef.current; };
 
-  const oneGeneration = (variant, prompt, ex, meta = refMeta) => postJson('/v1/image/aerial/generate', {
-    ticket: newTicket(),
+  // 진행 중 메모: 시작할 때 남기고, 요청이 끝나면(성공·실패 모두) 지운다. 새로고침으로 화면이 사라지면 지워지지 않고 남아 다시 열렸을 때 되찾는 근거가 된다.
+  const track = (rec, p) => {
+    liveTickets.current.add(rec.ticket);
+    writePending(pendingAdd(readPending(), rec));
+    return p.finally(() => { liveTickets.current.delete(rec.ticket); writePending(pendingRemove(readPending(), rec.ticket)); });
+  };
+
+  const oneGeneration = (variant, prompt, ex, meta = refMeta, label = '') => { const ticket = newTicket(); return track({ ticket, t0: Date.now(), label, mode, kind: 'gen', paid }, postJson('/v1/image/aerial/generate', {
+    ticket,
     mode, variant, depth: activeDepth, common_prompt: prompt, extra_en: ex, provider, aspect_ratio: aspect, keep_form: keepForm,
     input_image_base64: image.dataUrl.split(',').pop(),
     reference_images: refs.map((r) => ({ role: r.role, base64: r.dataUrl.split(',').pop() })),
     external_consent: consent,
     prompt_style: promptEdited ? 'long' : 'auto',   // 사용자가 프롬프트를 직접 고쳤으면 그 글을 그대로 쓰는 긴 방식으로 보낸다
     ref_roles: meta.roles, ref_hints_en: meta.hints, ref_notes: meta.notes,
-  });
+  })); };
 
   const addResult = (data, extraFields) => {
     const entry = {
@@ -371,19 +423,19 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     const jobs = [];
     chosen.forEach((id) => { for (let i = 0; i < perVariant; i++) jobs.push(id); });
     setProgress({ current: 0, total: jobs.length });
+    const labelOf = (id) => { const v = id === '' ? '분위기 지정 없음' : ((mode === 'facade' ? opts.facades : opts.atmospheres).find((x) => x.id === id)?.label || id); return redesigned ? `${v} · ${mode === 'reference' ? '참고 제안' : '재디자인'}` : v; };
     let ok = 0; let lastError = ''; let stop = false;
     for (let i = 0; i < jobs.length && !stop; i++) {
       try {
-        let data = await oneGeneration(jobs[i], prompt, ex, meta);
+        let data = await oneGeneration(jobs[i], prompt, ex, meta, labelOf(jobs[i]));
         let retried = false;
         if (autoRetry && data.form_score != null && data.form_score < AUTO_RETRY_BELOW) {
-          const again = await oneGeneration(jobs[i], prompt, ex, meta);
+          const again = await oneGeneration(jobs[i], prompt, ex, meta, labelOf(jobs[i]));
           retried = true;
           if ((again.form_score ?? -1) >= (data.form_score ?? -1)) data = again;   // 점수가 더 높은 쪽을 남긴다
         }
         ok++;
-        const vLabel = jobs[i] === '' ? '분위기 지정 없음' : ((mode === 'facade' ? opts.facades : opts.atmospheres).find((v) => v.id === jobs[i])?.label || jobs[i]);
-        const entry = addResult(data, { label: redesigned ? `${vLabel} · ${mode === 'reference' ? '참고 제안' : '재디자인'}` : vLabel, cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
+        const entry = addResult(data, { label: labelOf(jobs[i]), cost: (data.est_cost_usd || 0) * (retried ? 2 : 1) });
         if (thumb) setThumbs((t) => ({ ...t, [entry.id]: thumb }));
         onGenerated?.();
       } catch (e) {
@@ -409,9 +461,10 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     setEditBusy(r.id);
     try {
       const img = await urlToDataUrl(`/generated/${r.filename}`);
-      const data = await postJson('/v1/image/aerial/edit', {
-        image_base64: img.split(',').pop(), instruction: text, provider: editProvider, aspect_ratio: aspect, external_consent: consent, ticket: newTicket(),
-      });
+      const editTicket = newTicket();
+      const data = await track({ ticket: editTicket, t0: Date.now(), label: `수정: ${text.slice(0, 14)}`, mode, kind: 'edit', paid: !ep.free }, postJson('/v1/image/aerial/edit', {
+        image_base64: img.split(',').pop(), instruction: text, provider: editProvider, aspect_ratio: aspect, external_consent: consent, ticket: editTicket,
+      }));
       const entry = addResult(data, { label: `수정: ${text.slice(0, 14)}`, parent: r.id });
       const th = await makeThumb(img);
       if (th) setThumbs((t) => ({ ...t, [entry.id]: th }));
@@ -746,6 +799,11 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       </div>
 
       <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16 }}>
+        {recovering > 0 && (
+          <div data-testid="aerial-recovering" style={{ marginBottom: 10, padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            새로고침 전에 시작한 조감도 작업 {recovering}건을 서버에서 확인하는 중입니다. 서버에서 끝났다면 아래 결과에 자동으로 추가됩니다.
+          </div>
+        )}
         {results.length === 0 ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
             왼쪽에서 이미지와 방식을 고르고 생성하면<br />결과가 여기에 쌓입니다. 결과는 AI 이미지 탭의 보관함에도 저장됩니다.
