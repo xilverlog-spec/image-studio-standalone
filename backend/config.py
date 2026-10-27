@@ -23,12 +23,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2.5-flare")
 GEMINI_IMAGE_API_KEY = os.getenv("GEMINI_IMAGE_API_KEY", "")
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
+# 2026-10-27: 구글 이미지 해상도 단계. 지정하지 않으면 1K(약 100만 화소, 16:9 에서 1376×768)로 나온다. 공식 가격표상 2K(약 400만 화소)는 1K 와 같은 요금($0.134)이고 4K(약 1,600만 화소)는 $0.24 다.
+# 값은 1K / 2K / 4K 뿐이며 대문자 K 여야 한다(소문자는 거절됨). 그 밖의 값이나 빈 값이면 단계를 보내지 않고 구글 기본값(1K)을 쓴다.
+GEMINI_IMAGE_SIZE = os.getenv("GEMINI_IMAGE_SIZE", "2K").strip().upper()
 # 비용 통제: 기본은 중간 품질. 필요하면 .env에서 high 등으로 올린다.
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 # 2026-10-07: 한 장당 예상 비용(USD)과 하루 사용 한도. 예상값은 공식 가격표의 대략치이고 실제 청구액과 다를 수 있다 —
 # 모델·품질을 바꾸면 .env 에서 맞춰 준다. 한도를 넘으면 그날은 유료 생성이 막힌다(0이면 한도 없음).
 PAID_COST_OPENAI_USD = float(os.getenv("PAID_COST_OPENAI_USD", "0.07"))
 PAID_COST_GEMINI_USD = float(os.getenv("PAID_COST_GEMINI_USD", "0.13"))
+PAID_COST_GEMINI_4K_USD = float(os.getenv("PAID_COST_GEMINI_4K_USD", "0.24"))   # GEMINI_IMAGE_SIZE=4K 일 때의 한 장 예상 비용
 PAID_DAILY_LIMIT_USD = float(os.getenv("PAID_DAILY_LIMIT_USD", "10"))
 # 2026-10-16: 유료 API 누적 총 한도(원). 이미지 생성·정밀 읽기 등 모든 유료 호출의 예상 비용을 한 장부에 합산해서, 이 금액을 넘기는 호출은 막는다(0 이하면 검사 안 함).
 # 예상 비용은 달러로 잡혀 있어 USD_KRW(환율 가정, 기본 1400원/$)로 원화로 바꿔 비교한다. 실제 청구액과 다를 수 있으니 Google Cloud·OpenAI 쪽 예산 알림도 같이 걸어 두는 것이 안전하다.

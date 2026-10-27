@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EmptyState } from './Icon';
 import { toIllustratorSvg, externalImageRefs } from './conceptDiagram/svgexport';
 import { DIAGRAM_TYPES, OFFERED_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPrompt, parseJsonLoose, renderSpec, getTextFields, setByPath } from './conceptDiagram/spec';
-import { SUBJECT_KINDS, OFFERED_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
+import { SUBJECT_KINDS, OFFERED_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, styleRefHint, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
 import { composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
@@ -1116,6 +1116,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
       const job = await pollEditJob(jobId, t0); if (!job) return;
       editJobClear(); // 받았으니 더 기억할 필요 없다(받은 뒤 그리기에 실패해도 같은 작업을 되풀이해 받지 않는다)
       await finishEdit(job.result, askText(), subjectImage);
+      if (styleImage) addToast?.('info', '스타일 참고 이미지는 쓰이지 않았습니다', '"도면 위에 표시"는 원본 도면에 색과 동선만 얹는 방식입니다. 참고 이미지 느낌으로 만들려면 "그대로 바탕"을 고르거나 소재 이미지를 빼고 설명과 스타일 참고만 쓰세요.');
     } catch (e) { addToast?.('error', '다이어그램 생성 실패', e.message); setGenError(`다이어그램 생성 실패: ${e.message}`); }
     finally { setBusy(false); setEditProg(null); }
   };
@@ -1296,11 +1297,12 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           <span style={slotTitle}>1. 설명</span>
           <textarea value={userText} onChange={(e) => { setUserText(e.target.value); setStaleText(false); setScopeNotice(null); }} rows={5} style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit' }}
             placeholder={effKind === 'axon' ? '예) 전 세대 남향배치로 채광을 확보하고 맞통풍과 수변조망을 극대화\n\n(평면도의 어느 쪽이 남쪽인지는 아래 "남쪽 방향"에서 고르세요)' : '예) 공동주택 단지. 중앙 광장에서 사방으로 퍼지는 보행 흐름, 5가지 테마 정원, 외부공간과 프로그램의 순환 구조\n\n예) 이 건물이 직육면체에서 덜어내고 더해져 최종 형태가 되는 4단계'} />
-          {(effKind === 'axon' || (styleImage && subjectImage)) && (
-            <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: userText.trim() ? 'var(--text-tertiary, #64748b)' : '#9a3412', background: userText.trim() ? 'transparent' : '#fff7ed', padding: userText.trim() ? 0 : '6px 8px', borderRadius: 6 }} data-testid="concept-hint">
-              {userText.trim() ? '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' : '설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화'}
-            </p>
-          )}
+          {(() => { // '도면 위에 표시'는 스타일 참고 이미지를 쓰지 못하므로 그때는 쓰는 것처럼 말하지 않는다(안내 문구는 styleRefHint 한 곳)
+            const h = styleRefHint({ kind: readMode ? effKind : '', hasStyle: !!styleImage, hasSubject: !!subjectImage, hasText: !!userText.trim() });
+            return h && (
+              <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.5, color: h.warn ? 'var(--warn)' : 'var(--text-tertiary, #64748b)', background: h.warn ? 'var(--warn-soft)' : 'transparent', padding: h.warn ? '6px 8px' : 0, borderRadius: 6 }} data-testid="concept-hint">{h.text}</p>
+            );
+          })()}
         </div>
 
         {staleText && userText.trim() && (

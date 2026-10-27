@@ -12,18 +12,20 @@ import threading
 import time
 
 from config import (
-    DATA_DIR, GEMINI_API_URL, GEMINI_IMAGE_API_KEY, GEMINI_IMAGE_MODEL,
+    DATA_DIR, GEMINI_API_URL, GEMINI_IMAGE_API_KEY, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_SIZE,
     OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_QUALITY,
-    PAID_COST_GEMINI_USD, PAID_COST_OPENAI_USD, PAID_DAILY_LIMIT_USD, PAID_TOTAL_LIMIT_KRW, USD_KRW,
+    PAID_COST_GEMINI_4K_USD, PAID_COST_GEMINI_USD, PAID_COST_OPENAI_USD, PAID_DAILY_LIMIT_USD, PAID_TOTAL_LIMIT_KRW, USD_KRW,
 )
 
 _TIMEOUT_SEC = 240
 _GEMINI_RATIOS = {"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"}
+_GEMINI_SIZES = {"1K", "2K", "4K"}   # 해상도 단계(대문자 K 만 받는다). 그 밖의 값이면 보내지 않고 구글 기본값(1K)을 쓴다
 MAX_REFERENCE_IMAGES = 3
 
 PROVIDERS = {
     "openai": {"label": "OpenAI (GPT Image)", "key": lambda: OPENAI_API_KEY, "model": lambda: OPENAI_IMAGE_MODEL, "cost": lambda: PAID_COST_OPENAI_USD},
-    "gemini": {"label": "Google (Nano Banana)", "key": lambda: GEMINI_IMAGE_API_KEY, "model": lambda: GEMINI_IMAGE_MODEL, "cost": lambda: PAID_COST_GEMINI_USD},
+    "gemini": {"label": "Google (Nano Banana)", "key": lambda: GEMINI_IMAGE_API_KEY, "model": lambda: GEMINI_IMAGE_MODEL,
+               "cost": lambda: PAID_COST_GEMINI_4K_USD if GEMINI_IMAGE_SIZE == "4K" else PAID_COST_GEMINI_USD},   # 1K·2K 는 같은 요금, 4K 만 비싸다
 }
 
 # ── 비용 장부: 하루 단위로 예상 비용을 누적해 한도를 넘으면 막는다(서버 재시작 후에도 유지) ──
@@ -194,8 +196,13 @@ def _generate_gemini(prompt: str, aspect_ratio: str | None, input_image: bytes |
     for b in ([input_image] if input_image else []) + list(extra_images or []):
         parts.append({"inline_data": {"mime_type": "image/png", "data": base64.b64encode(b).decode()}})
     gen_cfg = {"responseModalities": ["IMAGE"]}
+    image_cfg = {}
     if aspect_ratio in _GEMINI_RATIOS:
-        gen_cfg["imageConfig"] = {"aspectRatio": aspect_ratio}
+        image_cfg["aspectRatio"] = aspect_ratio
+    if GEMINI_IMAGE_SIZE in _GEMINI_SIZES:   # 지정하지 않으면 구글이 1K 로 만든다 — 화질을 올리려면 GEMINI_IMAGE_SIZE(기본 2K)
+        image_cfg["imageSize"] = GEMINI_IMAGE_SIZE
+    if image_cfg:
+        gen_cfg["imageConfig"] = image_cfg
     data = _http_json(
         f"{GEMINI_API_URL}/{GEMINI_IMAGE_MODEL}:generateContent",
         {"contents": [{"role": "user", "parts": parts}], "generationConfig": gen_cfg},

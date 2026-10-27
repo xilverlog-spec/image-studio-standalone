@@ -36,7 +36,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
 fs.writeFileSync(path.join(tmp, 'entry.js'), `export { renderSpec, EXAMPLE_SPECS, getTextFields, buildConceptPrompt, REF_TYPES, DIAGRAM_TYPES, OFFERED_TYPES, HIDDEN_TYPES, SITE_RULES, normalizeSpec, setByPath } from ${fwd(spec)};
 export { snapSegToWall, sketchSnapToWall, pickConsensusSketch, sketchSnapshot, sketchPaste, sketchView, sketchSetVia, sketchSetAmp, sketchMoveBy, sketchSetEnd, FORMS, SHAPES, DASHES, DGAP_MIN, DGAP_MAX, isPlainMemo, sketchBoxFor, sketchUnionBox, sketchAlignMany, sketchDistribute, sketchMoveMany, sketchDeleteMany, sketchUpdateMany, sketchDetachName, renderSketch, normalizeSketchRead, makeSketchSpec, sketchUpdate, sketchDelete, sketchFlip, sketchSetEnds, sketchAdd, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildSketchReadPrompt, normalizeSketch, sketchBox, sketchAxes, sketchSnapGuides, sketchSnapPointG, sketchAlign, sketchMirrorPlace, sketchMirrorCopy, sketchSameSize, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, axonProject, legendInk, arrowsToWinds, sketchAddImage, sketchLockAspect, sketchResizeRect, sketchSetPt, sketchAddPt, sketchDelPt, sketchSetZone } from ${fwd(sketch)};
-export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, OFFERED_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject } from ${fwd(subjectJs)};
+export { SUBJECT_TYPES, SUBJECT_TYPE_LABEL, SUBJECT_KINDS, OFFERED_KINDS, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, styleRefHint } from ${fwd(subjectJs)};
 export { judgeTextPt, moveCellContent, autoCellLabels, wrapLines, emphParts, stripBg, textWidth, LABEL_PREFIXES } from ${fwd(pageJs)};
 export { sketchReplaceImage, sketchCropImage } from ${fwd(sketch)};
 export { editReplaceImage, editCropImage } from ${fwd(svgeditJs)};
@@ -2310,6 +2310,26 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(m.pickPaidProvider([], true) === '' && m.pickPaidProvider(undefined, true) === '' && m.pickPaidProvider([null], true) === '', '목록이 비었거나 없어도 안전');
   expect(m.paidEngines(all, true).map((x) => x.id).join() === 'gemini,openai', '쓸 수 있는 유료 엔진: gemini 가 앞');
   expect(m.paidEngines(all, false).length === 0 && m.paidEngines([P('openai', false, false)], true).length === 0 && m.paidEngines(undefined, true).length === 0, '외부 전송 금지·키 없음·목록 없음이면 없음');
+}
+// 설명칸 아래 안내(스타일 참고 이미지): '도면 위에 표시(edit)'는 소재 이미지와 설명만 서버로 보내 참고 이미지를 쓰지 못한다 → 쓰는 것처럼 안내하면 안 된다(2026-10-27 사용자 지적)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`참고 이미지 안내: ${label}`); };
+  const H = m.styleRefHint;
+  const e1 = H({ kind: 'edit', hasStyle: true, hasSubject: true, hasText: true });
+  expect(e1 && e1.text.includes('쓰지 않') && e1.text.includes('그대로 바탕') && !e1.text.includes('구성(칸 나눔·표현 방식)은 따르고'), '도면 위 표시 + 참고 이미지: 쓰지 않는다고 알리고 대안(그대로 바탕)을 안내, "따르고" 문구는 없다');
+  expect(e1 && e1.warn === true, '도면 위 표시 + 참고 이미지: 눈에 띄는 경고 톤');
+  const e2 = H({ kind: 'edit', hasStyle: true, hasSubject: true, hasText: false });
+  expect(e2 && e2.text.includes('쓰지 않') && !e2.text.includes('설명이 비어 있습니다'), '설명이 비어 있어도 도면 위 표시이면 같은 안내(설명 비었다는 말은 아니다)');
+  expect(H({ kind: 'edit', hasStyle: false, hasSubject: true, hasText: true }) === null, '도면 위 표시이고 참고 이미지가 없으면 안내 없음');
+  const f1 = H({ kind: '', hasStyle: true, hasSubject: true, hasText: true });
+  expect(f1 && f1.warn === false && f1.text.includes('구성(칸 나눔·표현 방식)은 따르고'), '종류를 아직 모를 때 소재+참고 이미지·설명 있음: 기존 안내 그대로');
+  const f2 = H({ kind: 'form', hasStyle: true, hasSubject: true, hasText: false });
+  expect(f2 && f2.warn === true && f2.text.includes('설명이 비어 있습니다'), '다른 방식 + 소재+참고 이미지 + 설명 없음: 기존 "설명이 비어 있습니다" 안내 그대로');
+  const a1 = H({ kind: 'axon', hasStyle: false, hasSubject: true, hasText: true });
+  expect(a1 && a1.warn === false, '분석 축측도는 참고 이미지가 없어도 기존 안내(설명 있으면 일반 톤)');
+  expect(H({ kind: 'axon', hasStyle: false, hasSubject: true, hasText: false }).warn === true, '분석 축측도 + 설명 없음: 경고 톤');
+  expect(H({ kind: 'form', hasStyle: true, hasSubject: false, hasText: true }) === null && H({ kind: '', hasStyle: false, hasSubject: true, hasText: true }) === null, '소재 이미지가 없거나 참고 이미지가 없으면(축측도 제외) 안내 없음');
+  expect(H({ kind: 'edit', hasStyle: true, hasSubject: false, hasText: true }) === null, '소재 이미지가 없으면 도면 위 표시 안내도 없음');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');

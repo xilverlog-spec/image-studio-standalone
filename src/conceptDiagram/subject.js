@@ -53,6 +53,22 @@ export function routeSubject(type, { hasRef = false, text = '' } = {}) {
   }
 }
 
+// 설명칸 아래 안내(스타일 참고 이미지). '도면 위에 표시(edit)'는 소재 이미지와 설명만 서버로 보내 참고 이미지를 쓰지 못하는데, 평면도는 참고 이미지가 있어도 이 방식으로 가므로(위 routeSubject) 쓰는 것처럼 안내하면 안 된다.
+// kind 는 '지금 적용되는 읽기 방식'(모르면 ''). 돌려주는 값: { warn, text } 또는 null(안내 없음)
+export function styleRefHint({ kind = '', hasStyle = false, hasSubject = false, hasText = false } = {}) {
+  if (kind === 'edit') {
+    return hasStyle && hasSubject
+      ? { warn: true, text: '"도면 위에 표시" 방식은 스타일 참고 이미지를 쓰지 않습니다. 평면도의 선·글자는 그대로 두고 색과 동선만 얹습니다. 참고 이미지 느낌으로 만들려면 위에서 "그대로 바탕"을 고르거나, 소재 이미지를 빼고 설명과 스타일 참고만 쓰세요.' }
+      : null;
+  }
+  if (kind === 'axon' || (hasStyle && hasSubject)) {
+    return hasText
+      ? { warn: false, text: '참고 이미지의 구성(칸 나눔·표현 방식)은 따르고, 내용·문구는 이 설명을 근거로 만듭니다.' }
+      : { warn: true, text: '설명이 비어 있습니다. 참고 이미지의 개념(예: 맞통풍·일조)을 모르면 AI가 임의로 정하니, 만들려는 개념을 한 줄로 적어 주세요. 예) 전 세대 남향배치 및 맞통풍, 수변조망 극대화' };
+  }
+  return null;
+}
+
 const READ_SCHEMA = `{
   "kind": "form" | "plan" | "site" | "other",
   "summary": "이미지가 무엇이고 어떻게 읽었는지 한국어 한두 문장(예: 평면도로 판단. 방 7개, 중앙 복도형)",

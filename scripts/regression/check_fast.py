@@ -114,6 +114,37 @@ try:
 finally:
     _pi._USAGE_FILE, _pi.PAID_TOTAL_LIMIT_KRW, _pi.USD_KRW, _pi.PAID_DAILY_LIMIT_USD = _saved
 
+# 구글 이미지 생성 해상도(2026-10-27): 요청에 화질 단계(imageSize)를 싣고(비율이 없어도), 허용 값이 아니면 보내지 않고, 4K 는 예상 비용을 올린다
+import base64 as _b64
+_sent = []
+def _fake_http(url, body, headers):
+    _sent.append(body)
+    return {"candidates": [{"content": {"parts": [{"inlineData": {"data": _b64.b64encode(_png(_Img.new("RGB", (4, 4), "white"))).decode()}}]}}]}
+_saved_img = (_pi._http_json, getattr(_pi, "GEMINI_IMAGE_SIZE", None))
+try:
+    _pi._http_json = _fake_http
+    for _size, _ratio, _want in (("2K", "16:9", {"aspectRatio": "16:9", "imageSize": "2K"}), ("1K", "16:9", {"aspectRatio": "16:9", "imageSize": "1K"}),
+                                 ("4K", "3:2", {"aspectRatio": "3:2", "imageSize": "4K"}), ("2K", None, {"imageSize": "2K"}),
+                                 ("", "16:9", {"aspectRatio": "16:9"}), ("8K", "16:9", {"aspectRatio": "16:9"}), ("2k", "16:9", {"aspectRatio": "16:9"})):
+        _pi.GEMINI_IMAGE_SIZE = _size
+        _sent.clear()
+        _pi._generate_gemini("p", _ratio, None)
+        _got = _sent[0]["generationConfig"].get("imageConfig") if _sent else None
+        check(_got == _want, f"구글 이미지 요청의 imageConfig 이상: 단계 {_size!r}/비율 {_ratio} → {_got} (기대 {_want})")
+    _c4 = getattr(_pi, "PAID_COST_GEMINI_4K_USD", None)
+    for _size in ("1K", "2K"):
+        _pi.GEMINI_IMAGE_SIZE = _size
+        check(abs(_pi.estimate_cost("gemini") - _pi.PAID_COST_GEMINI_USD) < 1e-9, f"{_size} 예상 비용은 기본 단가여야 함: {_pi.estimate_cost('gemini')}")
+    _pi.GEMINI_IMAGE_SIZE = "4K"
+    check(_c4 is not None and _c4 > _pi.PAID_COST_GEMINI_USD and abs(_pi.estimate_cost("gemini") - _c4) < 1e-9, f"4K 예상 비용은 4K 단가여야 함: {_pi.estimate_cost('gemini')} / 4K 단가 {_c4}")
+    check(abs(_pi.estimate_cost("gemini", 3) - 3 * (_c4 or 0)) < 1e-3 and any(p["id"] == "gemini" and abs(p["est_cost_usd"] - (_c4 or 0)) < 1e-9 for p in _pi.provider_status()), "4K: 여러 장 비용·공급자 목록의 예상 비용도 4K 단가")
+finally:
+    _pi._http_json = _saved_img[0]
+    if _saved_img[1] is None:
+        if hasattr(_pi, "GEMINI_IMAGE_SIZE"): del _pi.GEMINI_IMAGE_SIZE
+    else:
+        _pi.GEMINI_IMAGE_SIZE = _saved_img[1]
+
 # 도면 위에 표시(AI 이미지 편집): 합성은 원본 선·글자를 지키고 색·화살표만 가져오는지, 범례는 실제 나온 색만 만드는지(GPU·서버 불필요)
 from PIL import Image, ImageDraw  # noqa: E402
 from services import diagram_edit as de  # noqa: E402
