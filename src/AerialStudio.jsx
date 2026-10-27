@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from './aerialRecover';
+import { pickPaidProvider } from './aerialEngine';
 
 // 조감도 탭 — 모델링(스케치업 캡처·매스·3D 모델) 이미지를 실사 렌더로 만든다.
 // 작업 방식 3가지: 분위기 렌더(시간대·날씨 비교) / 입면 비교(형태는 두고 재료만 바꿔 여러 안) / 레퍼런스 적용(원하는 사진의 재료·분위기를 내 건물에).
-// 엔진: 무료(로컬 ComfyUI: 빠른 초안·정밀 편집) 또는 유료 API(OpenAI·Google). 같은 화면·같은 흐름이고, 유료는 키가 있을 때만 켜진다.
+// 엔진: 유료 API(Google 먼저, 없으면 OpenAI)만 쓰고 고르는 칸은 없다(2026-10-27). 쓸 수 있는 유료 엔진이 없으면(키 없음·프로젝트 외부 전송 금지) 생성을 막고 이유를 안내한다.
 // 선택지·문구는 백엔드(aerial_modes.py)가 한 곳에서 내려준다.
 
 const ASPECTS = ['16:9', '3:2', '4:3', '1:1', '3:4', '9:16'];
@@ -113,7 +114,7 @@ function CompareSlider({ before, after }) {
   );
 }
 
-// isEasyMode(앱 상단 이지/프로 스위치): 이지 = 이미지 + 글만 넣고 바로 생성(무료 고품질 엔진, 나머지는 기본값). 프로 = 작업 방식·참조 사진 역할·입면·분위기·엔진 등 전부 지정.
+// isEasyMode(앱 상단 이지/프로 스위치): 이지 = 이미지 + 글만 넣고 바로 생성(나머지는 기본값). 프로 = 작업 방식·참조 사진 역할·입면·분위기 등 전부 지정. 엔진은 두 모드 모두 유료 전용.
 export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMode = false }) {
   const easy = !!isEasyMode;
   const fileRef = useRef(null);
@@ -139,7 +140,6 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptBusy, setPromptBusy] = useState(false);
   const [aspect, setAspect] = useState('16:9');
-  const [providerSel, setProvider] = useState('');
   const [keepForm, setKeepForm] = useState(85);
   const [keepSiteSel, setKeepSite] = useState(true);   // 부지·주변은 원본 그대로 두고 건물만 바꾼다
   const [depths, setDepths] = useState({});            // 방식별 변경 폭. 입면 비교: material 재료만 | redesign 재디자인(형태 약 70%) / 레퍼런스: ref_apply 그대로 입히기 | ref_propose 참고해서 새로 제안
@@ -170,18 +170,17 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const keepSite = easy ? true : keepSiteSel;
   const modeInfo = opts?.modes.find((m) => m.id === mode);
   const providers = opts?.providers || [];
-  const provider = easy ? (providers.find((p) => p.available && p.free)?.id || '') : providerSel;   // 이지: 사용 가능한 무료 엔진 중 첫 번째(고품질 Kontext)
+  const provider = pickPaidProvider(providers, opts?.external_allowed);   // 쓸 수 있는 유료 엔진 하나(Google 먼저). 없으면 ''
   const providerInfo = providers.find((p) => p.id === provider);
   const paid = !!providerInfo && !providerInfo.free;
-  const isKontext = provider === 'local_kontext';
-  const isSdxl = provider === 'local_sdxl';
+  const retryOn = autoRetry && !easy;   // 이지 모드엔 끄는 칸이 없어서, 몰래 두 번 과금되지 않도록 자동 재생성을 쓰지 않는다(프로는 칸이 있고 기본 켜짐)
   const variantList = mode === 'facade' ? opts?.facades : opts?.atmospheres;
   const picked0 = easy ? [] : (picks[mode] || []);
   const chosen = picked0.length === 0 && VARIANT_OPTIONAL(mode) ? [''] : picked0;   // 분위기를 안 고르면 변형 문구 없이 1가지로 만든다
   const totalJobs = chosen.length * perVariant;
   const unitCost = providerInfo?.est_cost_usd || 0;
   const estTotal = unitCost * totalJobs;
-  const perImageMin = isKontext ? 3 : isSdxl ? 1 : 0.5;
+  const perImageMin = 1;   // 유료 이미지 한 장에 걸리는 시간(분, 대략) — 진행 표시의 남은 시간용
   const refsNeeded = !!modeInfo?.needs_ref;
   const refsOk = !refsNeeded || refs.length > 0;
   const canGenerate = !!image && totalJobs > 0 && !!provider && refsOk && (!paid || consent) && !busy && !promptBusy;
@@ -189,8 +188,6 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const loadOptions = () => apiFetch('/v1/image/aerial-options').then((r) => r.json()).then((d) => {
     if (d.status !== 'success') return;
     setOpts(d);
-    const firstFree = d.providers.find((p) => p.available && p.free) || d.providers.find((p) => p.available);
-    setProvider((cur) => (d.providers.some((p) => p.id === cur && p.available) ? cur : (firstFree?.id || '')));
   }).catch(() => {});
 
   useEffect(() => {
@@ -405,7 +402,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
     if (!canGenerate) return;
     if (paid) {
       const limitLeft = usage && usage.limit_usd > 0 ? usage.limit_usd - usage.usd : null;
-      const retryNote = autoRetry ? `\n(형태 점수가 ${AUTO_RETRY_BELOW} 미만이면 1회 자동 재생성되어 최대 $${(unitCost * totalJobs * 2).toFixed(2)}까지 늘 수 있습니다)` : '';
+      const retryNote = retryOn ? `\n(형태 점수가 ${AUTO_RETRY_BELOW} 미만이면 1회 자동 재생성되어 최대 $${(unitCost * totalJobs * 2).toFixed(2)}까지 늘 수 있습니다)` : '';
       const msg = `${totalJobs}장 생성합니다. 예상 비용 약 $${estTotal.toFixed(2)} (${providerInfo?.label}, 추정치이며 실제 청구액과 다를 수 있습니다).`
         + (limitLeft != null ? `\n오늘 남은 한도 약 $${Math.max(0, limitLeft).toFixed(2)}.` : '') + retryNote + '\n진행할까요?';
       if (!window.confirm(msg)) return;
@@ -429,7 +426,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
       try {
         let data = await oneGeneration(jobs[i], prompt, ex, meta, labelOf(jobs[i]));
         let retried = false;
-        if (autoRetry && data.form_score != null && data.form_score < AUTO_RETRY_BELOW) {
+        if (retryOn && data.form_score != null && data.form_score < AUTO_RETRY_BELOW) {
           const again = await oneGeneration(jobs[i], prompt, ex, meta, labelOf(jobs[i]));
           retried = true;
           if ((again.form_score ?? -1) >= (data.form_score ?? -1)) data = again;   // 점수가 더 높은 쪽을 남긴다
@@ -454,7 +451,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   const editResult = async (r) => {
     const text = (editText[r.id] || '').trim();
     if (!text || editBusy) return;
-    const editProvider = paid ? provider : 'local_kontext';
+    const editProvider = provider;
     const ep = providers.find((p) => p.id === editProvider);
     if (!ep?.available) { addToast?.('error', '수정할 수 없음', '수정에 쓸 엔진을 사용할 수 없습니다.'); return; }
     if (!ep.free && !window.confirm(`약 $${(ep.est_cost_usd || 0).toFixed(2)}가 듭니다(추정). 수정할까요?`)) return;
@@ -518,6 +515,24 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   );
 
   // 이지: 여러 장을 한 번에 첨부하고, 첫 번째가 원본·나머지가 참조. 번호표와 순서 바꾸기로 원본/참조가 뒤바뀌는 실수를 막는다.
+  // 유료 엔진을 골랐을 때만 보이는 외부 전송 동의와 사용액(이지·프로 공통)
+  const paidNotice = (
+    <>
+      {paid && (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
+          <input type="checkbox" checked={consent} onChange={(e) => setConsentSaved(e.target.checked)} style={{ marginTop: 3 }} data-testid="aerial-consent" />
+          <span style={{ color: 'var(--warn)' }}>이 이미지와 설명이 외부 서버(OpenAI/Google)로 전송되는 것에 동의합니다. 대외비 도면은 올리지 마세요. (이번 접속 동안 유지)</span>
+        </label>
+      )}
+      {paid && usage && (
+        <p style={hint} data-testid="aerial-usage">
+          오늘 유료 사용 약 ${usage.usd.toFixed(2)}{usage.limit_usd > 0 ? ` / 하루 한도 $${usage.limit_usd.toFixed(0)}` : ''} ({usage.count}회, 추정치)
+          {usage.total_limit_krw > 0 && <> · <b>누적 약 {(usage.total_krw || 0).toLocaleString()}원 / 총 한도 {usage.total_limit_krw.toLocaleString()}원</b> (남은 약 {(usage.remaining_krw || 0).toLocaleString()}원)</>}
+        </p>
+      )}
+    </>
+  );
+
   const easyImageBlock = (
     <div style={card}>
       <span style={label}>1. 이미지 첨부 (여러 장 가능)</span>
@@ -556,12 +571,18 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         onClick={generate} disabled={!canGenerate}>
         {busy
           ? `생성 중… (${progress.current}/${progress.total})${elapsedHint}`
-          : `조감도 생성${totalJobs ? ` (${totalJobs}장, ${paid ? `약 $${estTotal.toFixed(2)}` : `무료 · 약 ${Math.max(1, Math.round(perImageMin * totalJobs))}분`})` : ''}`}
+          : `조감도 생성${totalJobs && paid ? ` (${totalJobs}장, 약 $${estTotal.toFixed(2)})` : ''}`}
       </button>
       {busy && queue.position > 1 && <p style={{ ...hint, color: 'var(--warn)' }}>다른 작업이 먼저 진행 중입니다. 내 앞에 {queue.position - 1}건 대기 중이며, 앞 작업이 끝나면 자동으로 시작합니다. 창을 닫지 마세요.</p>}
       {busy && queue.position === 1 && queue.total > 1 && <p style={hint}>지금 내 작업을 만들고 있습니다. 뒤에 {queue.total - 1}건이 기다리고 있습니다.</p>}
       {!paid ? null : (!consent && image && totalJobs > 0 && <p style={{ ...hint, color: 'var(--err)', marginTop: -6 }}>외부 전송 동의에 체크해야 생성할 수 있습니다.</p>)}
-      {easy && !providerInfo && opts && <p style={{ ...hint, color: 'var(--err)' }}>사용할 수 있는 무료 이미지 엔진이 없습니다(ComfyUI가 꺼져 있을 수 있습니다). 관리자에게 알려 주세요.</p>}
+      {opts && !providerInfo && (
+        <p style={{ ...hint, color: 'var(--err)' }} data-testid="aerial-no-engine">
+          {opts.external_allowed === false
+            ? '이 프로젝트는 외부 서버 전송이 금지되어 있어 조감도를 만들 수 없습니다. 프로 모드의 \'프로젝트 외부 전송 설정\'에서 허용으로 바꿀 수 있습니다(프로젝트 비밀번호 필요).'
+            : '조감도는 유료 엔진(Google)만 씁니다. 지금은 사용할 수 있는 유료 엔진이 없습니다. 관리자가 backend/.env 에 결제가 연결된 API 키를 넣어야 합니다.'}
+        </p>
+      )}
     </>
   );
 
@@ -603,13 +624,14 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
                 {[1, 2, 3].map((n) => <option key={n} value={n}>{n}장</option>)}
               </select>
             </div>
-            <p style={hint}>사진마다 역할 지정, 입면·분위기 여러 개 한 번에 비교, 엔진 선택 같은 세부 설정은 상단의 <strong>프로 모드</strong>에서 쓸 수 있습니다.</p>
+            {paidNotice}
+            <p style={hint}>사진마다 역할 지정, 입면·분위기 여러 개 한 번에 비교 같은 세부 설정은 상단의 <strong>프로 모드</strong>에서 쓸 수 있습니다.</p>
           </>
         ) : (
           <>
         <div ref={topRef} style={card}>
           <div style={{ ...label, fontSize: 13, marginBottom: 4 }}>조감도 · 프로 모드</div>
-          <p style={hint}>스케치업 캡처·매스·3D 모델 이미지를 올리면 형태를 지킨 실사 렌더로 만들어 줍니다. 무료(로컬) 엔진은 초안용, 유료 엔진은 형태를 더 정확히 지키는 최종본용입니다.</p>
+          <p style={hint}>스케치업 캡처·매스·3D 모델 이미지를 올리면 형태를 지킨 실사 렌더로 만들어 줍니다. 유료 엔진(Google)으로 만들며 장당 비용이 듭니다.</p>
         </div>
 
         <div style={card}>
@@ -708,7 +730,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           {showPrompt && (
             <>
               <textarea value={commonPrompt} onChange={(e) => { setCommonPrompt(e.target.value); setPromptEdited(true); }} rows={7} disabled={busy}
-                placeholder={'"프롬프트 만들기"를 누르면 형태 고정 문구, 참조 이미지 역할, 한글 요청의 영어 확장이 합쳐져 나타납니다. 비워 두고 생성하면 자동으로 만들어서 씁니다.\n선택한 분위기·입면 문구는 장마다 뒤에 붙습니다. 유료·정밀 편집 엔진이 이 문장을 쓰고, 빠른 초안 엔진은 장면 묘사로 자동 변환해 씁니다.'}
+                placeholder={'"프롬프트 만들기"를 누르면 형태 고정 문구, 참조 이미지 역할, 한글 요청의 영어 확장이 합쳐져 나타납니다. 비워 두고 생성하면 자동으로 만들어서 씁니다.\n선택한 분위기·입면 문구는 장마다 뒤에 붙습니다. 유료 엔진이 이 문장을 그대로 씁니다.'}
                 style={{ ...inputBase, resize: 'vertical', fontFamily: 'inherit', fontSize: 11.5, lineHeight: 1.5 }} />
               {promptStale && !promptEdited && <p style={{ ...hint, color: 'var(--warn)' }}>요구사항·참조 역할이 바뀌었습니다. 생성할 때 자동으로 다시 만듭니다.</p>}
             </>
@@ -737,20 +759,16 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
 
         <div style={card}>
           <span style={label}>AI 엔진</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {providers.map((p) => (
-              <button key={p.id} disabled={!p.available || busy} style={{ ...chip(provider === p.id, !p.available || busy), textAlign: 'left' }}
-                title={p.available ? `${p.model}` : (p.free ? '로컬 이미지 엔진(ComfyUI)을 쓸 수 없습니다' : 'API 키가 설정되지 않았습니다 (backend/.env)')}
-                onClick={() => setProvider(p.id)}>
-                <div>{p.label}{p.available ? (p.free ? ' · 무료' : ` · ~$${(p.est_cost_usd || 0).toFixed(2)}/장`) : (p.free ? ' · 사용 불가' : ' · 키 없음')}</div>
-                <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>{p.note}</div>
-              </button>
-            ))}
-          </div>
-          {opts?.external_allowed === false ? (
+          {providerInfo ? (
+            <div style={{ ...chip(true, false), cursor: 'default', textAlign: 'left' }} data-testid="aerial-engine" title={providerInfo.model}>
+              <div>{providerInfo.label} · ~${(providerInfo.est_cost_usd || 0).toFixed(2)}/장</div>
+              <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>{providerInfo.note}</div>
+            </div>
+          ) : (
+            <p style={hint}>사용할 수 있는 유료 엔진이 없습니다.</p>
+          )}
+          {opts?.external_allowed === false && (
             <p style={{ ...hint, color: 'var(--err)' }} data-testid="external-locked">이 프로젝트는 외부 서버 전송이 금지되어 있습니다. 유료 엔진은 쓸 수 없고, 한글 요구사항도 이 PC의 모델로만 변환합니다.</p>
-          ) : providers.length > 0 && !providers.some((p) => !p.free && p.available) && (
-            <p style={hint}>유료 엔진은 관리자가 backend/.env 에 API 키를 넣으면 켜집니다. 지금은 무료 엔진만 쓸 수 있습니다.</p>
           )}
           <button style={{ ...chip(false), padding: '4px 8px', fontSize: 11.5, alignSelf: 'flex-start' }} onClick={() => setPolicyOpen((v) => !v)} data-testid="policy-toggle">
             {policyOpen ? '▼' : '▶'} 프로젝트 외부 전송 설정
@@ -767,26 +785,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
           )}
         </div>
 
-        {isSdxl && (
-          <div style={card}>
-            <span style={label}>형태 유지 정도: {keepForm}%</span>
-            <input type="range" min="50" max="100" step="5" value={keepForm} onChange={(e) => setKeepForm(Number(e.target.value))} disabled={busy} />
-            <p style={hint}>높을수록 원본 윤곽을 그대로 두고, 낮을수록 AI가 자유롭게 다시 그립니다(입면·재료가 더 많이 바뀜).</p>
-          </div>
-        )}
-
-        {paid && (
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
-            <input type="checkbox" checked={consent} onChange={(e) => setConsentSaved(e.target.checked)} style={{ marginTop: 3 }} />
-            <span style={{ color: 'var(--warn)' }}>이 이미지와 설명이 외부 서버(OpenAI/Google)로 전송되는 것에 동의합니다. 대외비 도면은 올리지 마세요. (이번 접속 동안 유지)</span>
-          </label>
-        )}
-        {paid && usage && (
-          <p style={hint} data-testid="aerial-usage">
-            오늘 유료 사용 약 ${usage.usd.toFixed(2)}{usage.limit_usd > 0 ? ` / 하루 한도 $${usage.limit_usd.toFixed(0)}` : ''} ({usage.count}회, 추정치)
-            {usage.total_limit_krw > 0 && <> · <b>누적 약 {(usage.total_krw || 0).toLocaleString()}원 / 총 한도 {usage.total_limit_krw.toLocaleString()}원</b> (남은 약 {(usage.remaining_krw || 0).toLocaleString()}원)</>}
-          </p>
-        )}
+        {paidNotice}
         <label style={{ ...cardPad, display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={autoRetry} onChange={(e) => setAutoRetry(e.target.checked)} style={{ marginTop: 3 }} />
           <span>형태 점수가 낮으면(&lt;{AUTO_RETRY_BELOW}) 1회 자동 재생성하고 더 나은 쪽을 남김{paid ? ' (추가 비용)' : ' (시간이 더 걸림)'}</span>

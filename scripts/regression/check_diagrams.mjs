@@ -30,6 +30,7 @@ const symbolsJs = path.resolve(here, '../../src/conceptDiagram/symbols.js');
 const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const themeJs = path.resolve(here, '../../src/conceptDiagram/theme.js');
 const aerialJs = path.resolve(here, '../../src/aerialRecover.js');
+const engineJs = path.resolve(here, '../../src/aerialEngine.js');
 const fontcheckJs = path.resolve(here, '../../src/conceptDiagram/fontcheck.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
@@ -75,6 +76,7 @@ export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResi
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
 export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from ${fwd(aerialJs)};
+export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
@@ -2293,6 +2295,21 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   // 되찾은 결과 항목: 화면 결과 목록이 쓰는 필드
   const e = m.recoveredEntry(r1, G[0], now);
   expect(e.filename === G[0].imageFilename && e.model === 'Juggernaut' && e.score === null && e.mode === 'render' && e.label === '화창한 오후' && e.recovered === true && e.sec === Math.round(G[0].createdAt - r1.t0 / 1000) && typeof e.id === 'string' && e.note.includes('되찾'), `되찾은 결과 항목 ${JSON.stringify(e)}`);
+}
+// 조감도 탭: 엔진은 유료(Google·OpenAI)만 쓰고 고르는 칸이 없다(2026-10-27) — 쓸 수 있는 유료 엔진 중 Google 을 먼저, 없으면 OpenAI, 그것도 없으면 빈 값(무료로 대신하지 않는다)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`조감도 유료 전용: ${label}`); };
+  const P = (id, free, available) => ({ id, free, available, label: id, est_cost_usd: free ? 0 : 0.1 });
+  const all = [P('local_kontext', true, true), P('local_sdxl', true, true), P('openai', false, true), P('gemini', false, true)];   // 서버 목록 순서: 무료 둘, openai, gemini
+  expect(m.pickPaidProvider(all, true) === 'gemini', 'Google(gemini)을 먼저 — 목록에서 openai 가 앞에 있어도');
+  expect(m.pickPaidProvider([P('local_kontext', true, true), P('openai', false, true), P('gemini', false, false)], true) === 'openai', 'gemini 를 쓸 수 없고 openai 만 되면 openai');
+  expect(m.pickPaidProvider([P('local_kontext', true, true), P('openai', false, false), P('gemini', false, false)], true) === '', '쓸 수 있는 유료가 없으면 빈 값 — 무료 엔진이 켜져 있어도 무료로 대신하지 않는다');
+  expect(m.pickPaidProvider(all, false) === '', '프로젝트가 외부 전송 금지면 빈 값(무료로 대신하지 않는다)');
+  expect(m.pickPaidProvider(all, undefined) === 'gemini', '외부 전송 허용 여부를 아직 모르면(옵션 로딩 전) 허용으로 본다 — 서버가 어차피 막는다');
+  expect(m.pickPaidProvider([P('local_kontext', true, true), P('local_sdxl', true, true)], true) === '', '유료 항목이 아예 없으면 빈 값');
+  expect(m.pickPaidProvider([], true) === '' && m.pickPaidProvider(undefined, true) === '' && m.pickPaidProvider([null], true) === '', '목록이 비었거나 없어도 안전');
+  expect(m.paidEngines(all, true).map((x) => x.id).join() === 'gemini,openai', '쓸 수 있는 유료 엔진: gemini 가 앞');
+  expect(m.paidEngines(all, false).length === 0 && m.paidEngines([P('openai', false, false)], true).length === 0 && m.paidEngines(undefined, true).length === 0, '외부 전송 금지·키 없음·목록 없음이면 없음');
 }
 let threw = false; try { m.normalizeSketchRead({ blocks: [] }, null); } catch { threw = true; }
 if (!threw) fails.push('도형이 없는 스케치 읽기는 오류여야 함');
