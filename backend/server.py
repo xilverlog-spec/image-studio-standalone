@@ -72,8 +72,17 @@ if os.path.isdir(DRAWIO_STATIC_DIR):
     app.mount("/drawio", StaticFiles(directory=DRAWIO_STATIC_DIR, html=True), name="drawio")
 
 @app.get("/health")
-def health_check():
+async def health_check():
+    # async: 스레드 풀이 찬 상태에서도 즉시 응답한다(감시 스크립트가 '멈춤'으로 오해해 서버를 재시작하지 않게)
     return {"status": "ok", "app": "image-studio-standalone"}
+
+
+@app.on_event("startup")
+async def _start_hang_probe():
+    # 이벤트 루프가 막히면 그 순간의 호출 기록을 logs/hang_*.log 로 남긴다(원인을 찾기 위해)
+    import asyncio
+    from services import hang_probe
+    hang_probe.start(asyncio.get_running_loop(), os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs")))
 
 # 2026-09-04: 100명 규모 사내 배포를 위해 각 PC에 Node.js/npm 설치를 요구하지 않도록,
 # `npm run build`로 미리 빌드해둔 정적 파일(dist/)을 백엔드가 직접 서빙한다 — 이러면

@@ -531,8 +531,9 @@ _dg = dr.draw_arrows(_ri, _A)
 _dq = _np.asarray(_dg).astype(int)
 _mid = _a0["pts"][len(_a0["pts"]) // 2]
 _sm = lambda a_: (int(round((a_["pts"][0][0] + a_["pts"][1][0]) / 2)), int(round((a_["pts"][0][1] + a_["pts"][1][1]) / 2)))     # 첫 선분의 가운데
-def _orange_share(img_arr, a_):     # 그려진 곡선을 따라(곡선 위 점 둘레 1화소 안에) 주황 화소가 있는 점의 비율(점선이라 틈이 있고 선이 가늘다)
-    ks = [(int(round(x)), int(round(y))) for x, y in dr.spline_points([tuple(p) for p in a_["pts"]], per=20)]
+def _orange_share(img_arr, a_):     # 그려진 꺾은선을 따라(점 둘레 1화소 안에) 주황 화소가 있는 점의 비율(점선이라 틈이 있고 선이 가늘다)
+    pts_ = [tuple(p) for p in a_["pts"]]
+    ks = [(int(round(p[0] + (q[0] - p[0]) * t / 20)), int(round(p[1] + (q[1] - p[1]) * t / 20))) for p, q in zip(pts_, pts_[1:]) for t in range(21)]
     hit = 0
     for x, y in ks:
         win = img_arr[max(0, y - 1):y + 2, max(0, x - 1):x + 2].reshape(-1, 3)
@@ -554,13 +555,20 @@ for _x in range(100, 1700, 9):                                     # 가는 세�
 _bR = [{"label": "주 동선", "kind": "main", "color": "orange", "dash": "dashed", "points": [(60, 600), (1750, 650)]},
        {"label": "차량", "kind": "vehicle", "color": "red", "dash": "dashed", "points": [(60, 200), (900, 240), (1750, 200)]}]
 _bA, _bl, _bs = dr.build_arrows(_bi, _bR)
-check(len(_bA) == 2 and _bA[0]["width"] >= 6.5 and _bA[1]["width"] >= 5.5 and all(a["dash"] == "dashed" and a["smooth"] is True for a in _bA), f"굵기·점선·부드러운 곡선 {[(a['width'], a['dash'], a['smooth']) for a in _bA]}")
-check(all(len(a["pts"]) <= 9 for a in _bA), f"꼭짓점 수는 9개 이하(AI 방식은 2~10개) {[len(a['pts']) for a in _bA]}")
+check(len(_bA) == 2 and _bA[0]["width"] >= 6.5 and _bA[1]["width"] >= 5.5 and all(a["dash"] == "dashed" and a["smooth"] is False for a in _bA), f"굵기·점선·직선(곡선 아님: smooth=False) {[(a['width'], a['dash'], a['smooth']) for a in _bA]}")
+check(all(len(a["pts"]) <= 7 for a in _bA), f"꼭짓점 수는 7개 이하(직선 구간을 이은 단순한 꺾은선) {[len(a['pts']) for a in _bA]}")
 _zz = [(float(x), 300 + (12 if (x // 40) % 2 else -12)) for x in range(0, 1200, 20)]
 _zs = dr.simplify_path(_zz, eps=30.0, max_pts=9)
 check(len(_zs) <= 9 and _zs[0] == _zz[0] and _zs[-1] == _zz[-1], f"지그재그는 시작·끝을 지키며 9점 이하로 줄어야 함 {len(_zs)}")
-_sp = dr.spline_points([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], per=8)
-check(len(_sp) > 3 and _sp[0] == (0.0, 0.0) and _sp[-1] == (100.0, 100.0) and any(abs(x - 100) < 1e-9 and abs(y) < 1e-9 for x, y in _sp), "스플라인은 시작·끝과 모든 꼭짓점을 정확히 지나는 부드러운 곡선(복도 모서리를 정확히 지남)")
+check(not hasattr(dr, "spline_points"), "곡선(스플라인) 처리는 없어야 함 — 선은 직선만")
+_sx = dr.snap_axes([(0.0, 0.0), (100.0, 6.0), (104.0, 100.0), (200.0, 140.0)], tol_deg=14.0)
+check(_sx == [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (200.0, 140.0)], f"거의 수평·수직인 구간은 정확한 수평·수직으로(시작·끝은 그대로, 비스듬한 구간은 그대로) {_sx}")
+_sy = dr.snap_axes([(0.0, 0.0), (100.0, 40.0), (200.0, 80.0)], tol_deg=14.0)
+check(_sy == [(0.0, 0.0), (100.0, 40.0), (200.0, 80.0)], f"비스듬한 직선(약 22°)은 건드리지 않음 {_sy}")
+_sb = dr.snap_axes([(0.0, 0.0), (100.0, 6.0), (104.0, 100.0), (200.0, 140.0)], tol_deg=14.0, bad=lambda p: p == (100.0, 0.0))
+check(_sb[1] == (100.0, 6.0), f"맞춘 자리가 벽·글자 위면 맞추지 않고 원래 자리로 {_sb}")
+_ar = dr.build_arrows(_bi, _bR)[0]
+check(all(all(abs(a["pts"][i + 1][0] - a["pts"][i][0]) > 0.1 or abs(a["pts"][i + 1][1] - a["pts"][i][1]) > 0.1 for i in range(len(a["pts"]) - 1)) for a in _ar), "꼭짓점이 겹쳐 길이 0인 구간이 없어야 함")
 check(dr.draw_arrows(_bi, _bA[:1]).getbbox() is not None, "굵은 점선 화살표 그리기")
 
 # 경로 다듬기: 큰 흐름은 따르되 잔 지그재그는 펴고, 시작·끝과 고정한 점(문 틈 같은 좁은 곳)은 그대로
@@ -625,6 +633,106 @@ try:
         check(int(_np.abs(_bs4 - _np.asarray(_ri).astype(int)).sum(axis=2).max()) <= 3, "층의 바탕에는 화살표가 없어야 함(원본 그대로)")
 finally:
     de.build_plan, de.run_qwen, de.verify_zone_legend, de._out_dir, de._up, de._free, de.ensure_server = _saved4
+
+# 서버 멈춤 대비(2026-10-26): ① /health 는 스레드 풀과 무관하게 즉시 응답(async) ② 조감도 옵션이 부르는 ComfyUI 사용 가능 확인은 20초 동안 기억 ③ 이벤트 루프가 막히면 그 순간의 모든 스레드 호출 기록을 파일로 남김
+import ast as _ast  # noqa: E402
+_srv = open(os.path.join(ROOT, "backend", "server.py"), encoding="utf-8").read()
+_fns = {n.name: n for n in _ast.walk(_ast.parse(_srv)) if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))}
+check(isinstance(_fns.get("health_check"), _ast.AsyncFunctionDef), "/health 는 async 여야 함(스레드 풀이 찼어도 즉시 응답)")
+check("hang_probe" in _srv and any(isinstance(n, _ast.AsyncFunctionDef) and any(isinstance(d, _ast.Call) and getattr(d.func, "attr", "") == "on_event" for d in n.decorator_list) for n in _fns.values()), "서버 시작 때 멈춤 진단(hang_probe)을 켜야 함")
+
+import urllib.request as _ur  # noqa: E402
+import comfyui_client as _cc  # noqa: E402
+from services import aerial_local as _al  # noqa: E402
+
+
+class _FT:
+    t = 1000.0
+
+    @staticmethod
+    def monotonic():
+        return _FT.t
+
+
+_cnt = {"up": 0, "canny": 0, "kontext": 0}
+
+
+class _Resp:
+    def read(self):
+        return b"{}"
+
+
+def _fake_open(*a, **k):
+    _cnt["up"] += 1
+    if _cnt.get("down"):
+        raise OSError("down")
+    return _Resp()
+
+
+_al_saved = (getattr(_al, "time", None), _ur.urlopen, _cc.is_controlnet_canny_available, _cc.is_flux_kontext_available)
+try:
+    _al.time = _FT
+    _ur.urlopen = _fake_open
+    _cc.is_controlnet_canny_available = lambda: (_cnt.__setitem__("canny", _cnt["canny"] + 1), True)[1]
+    _cc.is_flux_kontext_available = lambda: (_cnt.__setitem__("kontext", _cnt["kontext"] + 1), True)[1]
+    if hasattr(_al, "_AVAIL"):
+        _al._AVAIL.update(t=-1e9, v=None)
+    _a1 = _al.available()
+    _a2 = _al.available()
+    check(_a1 == {"sdxl": True, "kontext": True} and _a2 == _a1 and _cnt == {"up": 1, "canny": 1, "kontext": 1}, f"20초 안의 두 번째 호출은 ComfyUI 를 다시 부르지 않아야 함 {_cnt}")
+    _FT.t += 21
+    _al.available()
+    check(_cnt["up"] == 2, f"20초가 지나면 다시 확인해야 함 {_cnt}")
+    _a2["sdxl"] = False
+    check(_al.available()["sdxl"] is True, "돌려준 값을 고쳐도 기억해 둔 값이 바뀌면 안 됨")
+    _cnt["down"] = True
+    _FT.t += 21
+    _ad = _al.available()
+    _FT.t += 6
+    _al.available()
+    check(_ad == {"sdxl": False, "kontext": False} and _cnt["up"] == 4, f"ComfyUI 가 꺼져 있으면 짧게(5초)만 기억해 켜지면 곧 알아채야 함 {_ad} {_cnt}")
+finally:
+    _al.time = _al_saved[0]
+    _ur.urlopen, _cc.is_controlnet_canny_available, _cc.is_flux_kontext_available = _al_saved[1:]
+    if hasattr(_al, "_AVAIL"):
+        _al._AVAIL.update(t=-1e9, v=None)
+
+import asyncio as _aio  # noqa: E402
+import glob as _gl  # noqa: E402
+import tempfile as _tf  # noqa: E402
+import threading as _th  # noqa: E402
+import time as _tm  # noqa: E402
+from services import hang_probe as _hp  # noqa: E402
+
+
+def _probe_case(block_sec):
+    out = _tf.mkdtemp()
+    loop = _aio.new_event_loop()
+    t = _th.Thread(target=loop.run_forever, name="loop-test", daemon=True)
+    t.start()
+    pr = _hp.HangProbe(loop, out, interval=0.1, threshold=0.4, cooldown=0.0)
+    pr.start()
+    _tm.sleep(0.6)
+    healthy = _gl.glob(os.path.join(out, "hang_*.log"))
+
+    def _blocker():
+        _tm.sleep(block_sec)
+
+    loop.call_soon_threadsafe(_blocker)
+    _tm.sleep(block_sec + 1.0)
+    files = _gl.glob(os.path.join(out, "hang_*.log"))
+    pr.stop()
+    loop.call_soon_threadsafe(loop.stop)
+    return healthy, files
+
+
+_h0, _f0 = _probe_case(1.3)
+check(_h0 == [] and len(_f0) >= 1, f"건강한 동안엔 기록이 없고, 루프가 막히면 기록이 생겨야 함 {_h0} {_f0}")
+if _f0:
+    _txt = open(_f0[0], encoding="utf-8").read()
+    check("_blocker" in _txt and "loop-test" in _txt and "recovered" in _txt, f"기록에 막은 함수(_blocker)·스레드 이름·풀린 시간이 있어야 함 {_txt[:200]!r}")
+_h1, _f1 = _probe_case(0.05)
+check(_f1 == [], f"짧게 막힌 것(임계값 미만)은 기록하지 않아야 함 {_f1}")
 
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")

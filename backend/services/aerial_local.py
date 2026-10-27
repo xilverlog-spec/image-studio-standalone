@@ -7,6 +7,8 @@
 import io
 import math
 import os
+import threading
+import time
 
 from PIL import Image
 
@@ -31,8 +33,13 @@ def keep_to_params(keep_form: int) -> dict:
     return {"controlnet_strength": round(0.5 + k * 0.45, 3), "denoise": round(0.95 - k * 0.20, 3)}
 
 
-def available() -> dict:
-    """엔진별 사용 가능 여부(ComfyUI 응답·모델 설치 여부)."""
+_AVAIL = {"t": -1e9, "v": None}
+_AVAIL_LOCK = threading.Lock()
+AVAIL_TTL_UP = 20.0       # ComfyUI 가 켜져 있을 때 확인 결과를 기억하는 시간(초) — 화면이 조감도 옵션을 자주 불러도 ComfyUI 를 매번 두드리지 않게
+AVAIL_TTL_DOWN = 5.0      # 꺼져 있을 때는 짧게(켜지면 곧 알아챈다)
+
+
+def _probe_available() -> dict:
     import urllib.request
     try:
         urllib.request.urlopen(f"{comfyui_client.COMFYUI_URL}/system_stats", timeout=3).read()
@@ -46,6 +53,19 @@ def available() -> dict:
         except Exception:
             sdxl = False
     return {"sdxl": up and sdxl, "kontext": up and comfyui_client.is_flux_kontext_available()}
+
+
+def available() -> dict:
+    """엔진별 사용 가능 여부(ComfyUI 응답·모델 설치 여부). 확인에 4~6초가 걸리고(생성이 도는 중엔 더) 화면이 자주 부르므로 결과를 잠깐 기억한다
+    (2026-10-26: 이 확인이 겹쳐 서버가 느려졌다는 의심이 있어 20초 기억 + 한 번에 하나만 확인)."""
+    with _AVAIL_LOCK:
+        now = time.monotonic()
+        v = _AVAIL["v"]
+        if v is not None and now - _AVAIL["t"] < (AVAIL_TTL_UP if (v["sdxl"] or v["kontext"]) else AVAIL_TTL_DOWN):
+            return dict(v)
+        v = _probe_available()
+        _AVAIL.update(t=time.monotonic(), v=v)
+        return dict(v)
 
 
 def render_sdxl(input_png: bytes, prompt: str, out_path: str, seed: int, keep_form: int = 85, refs: list | None = None, ref_weight: float = 0.6) -> tuple:
