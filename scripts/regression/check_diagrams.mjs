@@ -31,6 +31,7 @@ const iconsetJs = path.resolve(here, '../../src/conceptDiagram/iconset.js');
 const themeJs = path.resolve(here, '../../src/conceptDiagram/theme.js');
 const aerialJs = path.resolve(here, '../../src/aerialRecover.js');
 const engineJs = path.resolve(here, '../../src/aerialEngine.js');
+const blendJs = path.resolve(here, '../../src/blendSlots.js');
 const fontcheckJs = path.resolve(here, '../../src/conceptDiagram/fontcheck.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
@@ -77,6 +78,7 @@ export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg
 export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
 export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from ${fwd(aerialJs)};
 export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
+export { buildEasyBlendSlots, blendIpWeight, BLEND_STRUCTURE_STOP_AT, BLEND_EMPHASIS_STOP_AT } from ${fwd(blendJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
@@ -2310,6 +2312,22 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(m.pickPaidProvider([], true) === '' && m.pickPaidProvider(undefined, true) === '' && m.pickPaidProvider([null], true) === '', '목록이 비었거나 없어도 안전');
   expect(m.paidEngines(all, true).map((x) => x.id).join() === 'gemini,openai', '쓸 수 있는 유료 엔진: gemini 가 앞');
   expect(m.paidEngines(all, false).length === 0 && m.paidEngines([P('openai', false, false)], true).length === 0 && m.paidEngines(undefined, true).length === 0, '외부 전송 금지·키 없음·목록 없음이면 없음');
+}
+// 이미지 블렌딩 이지 모드의 슬롯 구성(2026-10-28): '형태 유지'를 켜면 기존 이미지를 구조(ControlNet) 슬롯으로 넣되, 참조 이미지와 같이 써도 원본 큰 덩어리가 남도록 적용 구간을 80%로 한다
+// (같은 원본·참조·시드로 설정만 바꿔 본 시험: 구간 50%·강도 0.4는 참조 건물이 원본을 덮어썼고, 강도 1.0·구간 80% 이상은 왼쪽 테라스·오른쪽 높은 볼륨 같은 덩어리가 유지됨)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`블렌딩 슬롯: ${label}`); };
+  const B = m.buildEasyBlendSlots;
+  const s1 = B({ base: 'data:image/png;base64,BASE', refs: ['data:image/png;base64,R1', 'R2'], structureEnabled: true, structureType: 'PyraCanny', influence: 50, emphasis: 'balanced' });
+  expect(s1.length === 3 && s1[0].type === 'PyraCanny' && s1[0].image === 'BASE' && s1[0].weight === 1.0 && s1[0].stop_at === 0.8 && m.BLEND_STRUCTURE_STOP_AT === 0.8, `형태 유지: 첫 슬롯은 기존 이미지(구조, 강도 1.0, 구간 0.8): ${JSON.stringify(s1[0])}`);
+  expect(s1[1].type === 'ImagePrompt' && s1[1].image === 'R1' && s1[2].image === 'R2' && Math.abs(s1[1].weight - 0.95) < 1e-9 && s1[1].stop_at === 0.5, `참조 슬롯은 데이터 URL 머리를 떼고 영향도 50% → 강도 0.95, 균형 구간 0.5: ${JSON.stringify(s1[1])}`);
+  const s2 = B({ base: 'BASE', refs: ['R1'], structureEnabled: false, structureType: 'PyraCanny', influence: 50, emphasis: 'balanced' });
+  expect(s2.length === 1 && s2[0].type === 'ImagePrompt', '형태 유지를 끄면 참조 슬롯만');
+  const s3 = B({ base: 'BASE', refs: ['R1'], structureEnabled: true, structureType: 'CPDS', influence: 0, emphasis: 'material' });
+  expect(s3[0].type === 'CPDS' && Math.abs(s3[1].weight - 0.4) < 1e-9 && s3[1].stop_at === 0.75, '구조 타입은 그대로 전달, 영향도 0% → 참조 강도 0.4, 질감 위주 구간 0.75');
+  expect(Math.abs(m.blendIpWeight(100) - 1.5) < 1e-9 && Math.abs(m.blendIpWeight(50) - 0.95) < 1e-9, '참조 강도는 영향도 0~100% 에 0.4~1.5');
+  const s4 = B({ base: 'BASE', refs: ['R1'], structureEnabled: true, structureType: 'PyraCanny', influence: 50, emphasis: 'nope' });
+  expect(s4[1].stop_at === 0.5 && m.BLEND_EMPHASIS_STOP_AT.color === 0.35, '모르는 강조 값은 균형(0.5)');
 }
 // 설명칸 아래 안내(스타일 참고 이미지): '도면 위에 표시(edit)'는 소재 이미지와 설명만 서버로 보내 참고 이미지를 쓰지 못한다 → 쓰는 것처럼 안내하면 안 된다(2026-10-27 사용자 지적)
 {

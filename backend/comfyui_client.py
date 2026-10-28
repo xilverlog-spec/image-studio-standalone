@@ -2087,7 +2087,9 @@ FOOOCUS_SLOT_DEFAULTS = {
 FOOOCUS_STRUCTURE_TYPES = {"PyraCanny", "CPDS"}
 FOOOCUS_REFERENCE_TYPES = {"ImagePrompt", "FaceSwap"}
 # 구조(ControlNet)와 참조(IP-Adapter)를 같이 쓸 때의 두 값(블렌딩 형태 유지 시험용으로 상수로 뺐다, 2026-10-28).
-BLEND_STRUCTURE_CAP_WITH_REF = 0.4   # 구조 슬롯 강도 상한(참조가 있을 때만)
+# 구조 슬롯 강도 상한(참조가 있을 때만). 없음(None) = 깎지 않는다. 예전에는 0.4 였는데(2026-09-10, 참조와 같이 쓰면 색이 뒤집히는 문제를 피하려고) 참조 건물이 원본 형태를 덮어썼다.
+# 2026-10-28 같은 원본·참조·시드로 바꿔 본 시험: 강도 1.0·적용 구간 80% 이상에서 원본의 큰 덩어리가 남고 색도 자연스러웠다(기본 프롬프트가 사실적 색을 잡아 준다).
+BLEND_STRUCTURE_CAP_WITH_REF = None
 BLEND_DENOISE_STRUCTURE_REF = 0.85   # 구조+참조일 때 기존 이미지 latent 에서 시작하는 denoise
 
 

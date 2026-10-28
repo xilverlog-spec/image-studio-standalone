@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DiagramModule from './DiagramModule';
 import AerialStudio from './AerialStudio';
+import { buildEasyBlendSlots, BLEND_STRUCTURE_STOP_AT } from './blendSlots';
 import { ARCH_STYLE_PRESETS } from './archStyles';
 import {
   Sparkles,
@@ -190,9 +191,7 @@ const FOOOCUS_SLOT_TYPE_LABELS = {
   ImagePrompt: 'ImagePrompt (재질/분위기)',
 };
 
-// 이지 모드의 "강조" 옵션 → IP-Adapter stop_at 매핑. 확산 초반에만 적용하면(값이 낮으면)
-// 전체적인 색감/구도 위주로, 후반까지 적용하면(값이 높으면) 질감/디테일까지 반영된다.
-const BLEND_EMPHASIS_STOP_AT = { balanced: 0.5, color: 0.35, material: 0.75 };
+// 이지 모드의 "강조" 옵션(→ stop_at 매핑은 blendSlots.js).
 const BLEND_EMPHASIS_OPTIONS = [
   { value: 'balanced', label: '균형있게' },
   { value: 'color', label: '색감 위주' },
@@ -819,7 +818,7 @@ function App() {
   const [blendDenoise, setBlendDenoise] = useState(100);
   // 프로 모드 전용: 기존 이미지도 슬롯처럼 Stop At/Weight를 갖는다 — 블렌딩 시 base image를
   // PyraCanny 구조 슬롯으로 자동 포함시켜, ControlNet 강도/적용 구간을 직접 조절할 수 있게 한다.
-  const [blendBaseStopAt, setBlendBaseStopAt] = useState(0.5);
+  const [blendBaseStopAt, setBlendBaseStopAt] = useState(BLEND_STRUCTURE_STOP_AT);
   const [blendBaseWeight, setBlendBaseWeight] = useState(1.0);
   const [isDraggingOverBlend, setIsDraggingOverBlend] = useState(false);
   const [isDraggingOverBlendRef, setIsDraggingOverBlendRef] = useState(false);
@@ -1992,16 +1991,10 @@ function App() {
 
     let slots;
     if (isEasyMode) {
-      const ipWeight = 0.4 + (blendInfluence / 100) * 1.1; // 0.4 ~ 1.5
-      const ipStopAt = BLEND_EMPHASIS_STOP_AT[blendEmphasis] ?? 0.5;
-      slots = [
-        ...(blendStructureEnabled
-          ? [{ image: blendBaseImage.split(',')[1] || blendBaseImage, type: blendStructureType, stop_at: 0.5, weight: 1.0 }]
-          : []),
-        ...blendReferenceImages.map(img => ({
-          image: img.split(',')[1] || img, type: 'ImagePrompt', stop_at: ipStopAt, weight: ipWeight
-        }))
-      ];
+      slots = buildEasyBlendSlots({
+        base: blendBaseImage, refs: blendReferenceImages, structureEnabled: blendStructureEnabled,
+        structureType: blendStructureType, influence: blendInfluence, emphasis: blendEmphasis,
+      });
       addToast('info', '블렌딩 시작', `참조 ${blendReferenceImages.length}장, ${blendInfluence}% 영향도로 블렌딩하고 있습니다.`);
     } else {
       // 기존 이미지도 슬롯 카드와 동일하게 Stop At/Weight를 가지므로, PyraCanny 구조 슬롯으로

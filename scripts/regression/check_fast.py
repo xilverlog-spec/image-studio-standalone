@@ -145,6 +145,45 @@ finally:
     else:
         _pi.GEMINI_IMAGE_SIZE = _saved_img[1]
 
+# 이미지 블렌딩 형태 유지(2026-10-28): 참조 이미지와 같이 써도 구조(ControlNet) 고정 강도를 서버가 깎지 않는다.
+# 예전에는 참조가 있으면 강도를 0.4 로 깎아서 참조 건물이 원본 형태를 덮어썼다(같은 원본·참조·시드 시험: 강도 1.0·적용 구간 80% 이상에서 원본의 큰 덩어리가 유지됨).
+import comfyui_client as _cc
+_wf = []
+_cc_names = ("_upload_image_bytes_to_comfyui", "get_available_checkpoint", "is_offset_lora_available", "is_fooocus_advanced_settings_available", "queue_prompt", "get_history", "get_image")
+_cc_saved = {n: getattr(_cc, n) for n in _cc_names}
+try:
+    _cc._upload_image_bytes_to_comfyui = lambda b, name: name
+    _cc.get_available_checkpoint = lambda *a, **k: "ckpt.safetensors"
+    _cc.is_offset_lora_available = lambda: False
+    _cc.is_fooocus_advanced_settings_available = lambda: False
+    _cc.queue_prompt = lambda w: (_wf.append(w), {"prompt_id": "p"})[1]
+    _cc.get_history = lambda pid: {"p": {"outputs": {"11": {"images": [{"filename": "a.png", "subfolder": "", "type": "output"}]}}}}
+    _cc.get_image = lambda *a: _png(_Img.new("RGB", (8, 8), "white"))
+    _bimg = _png(_Img.new("RGB", (64, 48), "white"))
+
+    def _blend_wf(slots):
+        _wf.clear()
+        _cc.blend_images_or_raise(_bimg, slots, os.path.join(_tf.mkdtemp(), "o.png"), 1)
+        return _wf[0]
+
+    def _nodes(w, cls):
+        return [n for n in w.values() if n["class_type"] == cls]
+
+    _st = lambda t, stop, w: {"image_bytes": _bimg, "type": t, "stop_at": stop, "weight": w}
+    _w1 = _blend_wf([_st("PyraCanny", 0.8, 1.0), _st("ImagePrompt", 0.5, 0.95)])
+    _cn = _nodes(_w1, "ControlNetApplyAdvanced")
+    check(len(_cn) == 1 and abs(_cn[0]["inputs"]["strength"] - 1.0) < 1e-9 and abs(_cn[0]["inputs"]["end_percent"] - 0.8) < 1e-9,
+          f"구조+참조: 구조 강도가 깎이지 않고(1.0) 적용 구간이 그대로(0.8)여야 함: {[(c['inputs']['strength'], c['inputs']['end_percent']) for c in _cn]}")
+    check(abs(_nodes(_w1, "KSampler")[0]["inputs"]["denoise"] - 0.85) < 1e-9, "구조+참조: 시작 denoise 는 0.85 그대로")
+    check(len(_nodes(_w1, "FooocusIPAdapterPreprocess")) == 1 and abs(_nodes(_w1, "FooocusIPAdapterPreprocess")[0]["inputs"]["weight"] - 0.95) < 1e-9, "참조 슬롯의 강도는 그대로 전달")
+    _w2 = _blend_wf([_st("PyraCanny", 0.5, 1.4), _st("ImagePrompt", 0.5, 0.6)])
+    check(abs(_nodes(_w2, "ControlNetApplyAdvanced")[0]["inputs"]["strength"] - 1.4) < 1e-9, "프로 모드: 슬라이더로 올린 구조 강도(1.4)도 참조가 있다고 깎지 않음")
+    _w3 = _blend_wf([_st("PyraCanny", 0.5, 1.0)])
+    check(abs(_nodes(_w3, "ControlNetApplyAdvanced")[0]["inputs"]["strength"] - 1.0) < 1e-9 and abs(_nodes(_w3, "KSampler")[0]["inputs"]["denoise"] - 1.0) < 1e-9, "구조만: 강도 1.0, denoise 1.0 그대로")
+finally:
+    for _n, _f in _cc_saved.items():
+        setattr(_cc, _n, _f)
+
 # 도면 위에 표시(AI 이미지 편집): 합성은 원본 선·글자를 지키고 색·화살표만 가져오는지, 범례는 실제 나온 색만 만드는지(GPU·서버 불필요)
 from PIL import Image, ImageDraw  # noqa: E402
 from services import diagram_edit as de  # noqa: E402
