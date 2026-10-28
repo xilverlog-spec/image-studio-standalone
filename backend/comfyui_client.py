@@ -2086,6 +2086,9 @@ FOOOCUS_SLOT_DEFAULTS = {
 }
 FOOOCUS_STRUCTURE_TYPES = {"PyraCanny", "CPDS"}
 FOOOCUS_REFERENCE_TYPES = {"ImagePrompt", "FaceSwap"}
+# 구조(ControlNet)와 참조(IP-Adapter)를 같이 쓸 때의 두 값(블렌딩 형태 유지 시험용으로 상수로 뺐다, 2026-10-28).
+BLEND_STRUCTURE_CAP_WITH_REF = 0.4   # 구조 슬롯 강도 상한(참조가 있을 때만)
+BLEND_DENOISE_STRUCTURE_REF = 0.85   # 구조+참조일 때 기존 이미지 latent 에서 시작하는 denoise
 
 
 def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode="normal",
@@ -2196,7 +2199,7 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
         # 같이 쓰면 두 조건이 서로 과하게 경합해 채도가 뒤집힌 추상적 결과가 나온다.
         # 0.4 정도로 낮추면 건물 형태는 그대로 유지되면서 훨씬 안정적으로 섞인다 — 슬롯 하나만
         # 쓸 때(구조 단독)는 그대로 강하게 둬도 문제없다.
-        structure_weight_cap = 0.4 if len(reference_slots) > 0 else None
+        structure_weight_cap = BLEND_STRUCTURE_CAP_WITH_REF if len(reference_slots) > 0 else None
 
         for n, (i, slot) in enumerate(structure_slots):
             stop_at = slot.get("stop_at", FOOOCUS_SLOT_DEFAULTS[slot["type"]]["stop_at"])
@@ -2244,7 +2247,7 @@ def blend_images_or_raise(base_image_bytes, slots, output_path, seed, blend_mode
             # 두 조건이 서로 경합해 채도가 뒤집힌 추상적인 결과가 나온다. 실제 이미지 픽셀에서
             # 살짝만(0.85) denoise해 최소한의 색감 기준점을 남겨두면 훨씬 안정적으로 섞인다.
             workflow["6"] = {"inputs": {"pixels": ["2", 0], "vae": ["1", 2]}, "class_type": "VAEEncode"}
-            denoise = 0.85
+            denoise = BLEND_DENOISE_STRUCTURE_REF
         else:
             # Structure 슬롯이 하나도 없으면 기본 이미지 latent에서 부분 denoise로 시작
             # (참조 슬롯들의 평균 weight가 셀수록 원본에서 더 멀어지게).
