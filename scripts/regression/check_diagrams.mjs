@@ -32,6 +32,7 @@ const themeJs = path.resolve(here, '../../src/conceptDiagram/theme.js');
 const aerialJs = path.resolve(here, '../../src/aerialRecover.js');
 const engineJs = path.resolve(here, '../../src/aerialEngine.js');
 const blendJs = path.resolve(here, '../../src/blendSlots.js');
+const autosaveJs = path.resolve(here, '../../src/conceptDiagram/autosave.js');
 const fontcheckJs = path.resolve(here, '../../src/conceptDiagram/fontcheck.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'diagram-reg-'));
 const fwd = (p) => JSON.stringify(p.split(path.sep).join('/'));
@@ -79,6 +80,7 @@ export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
 export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, HISTORY_LIMIT, mergeFromHistory, recoveryHave, collectRecovered, isAerialFile, withoutAerial } from ${fwd(aerialJs)};
 export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
 export { buildEasyBlendSlots, blendIpWeight, BLEND_STRUCTURE_STOP_AT, BLEND_EMPHASIS_STOP_AT } from ${fwd(blendJs)};
+export { WORK_KEY, WORK_MAX_CHARS, packWork, unpackWork } from ${fwd(autosaveJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
 export { TEST_PAGE, PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
@@ -988,6 +990,35 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const a = m.anchorScroll({ left: 0, top: 0, px: 300, py: 200, z0: 1, z1: 2 }); expect(a.left === 300 && a.top === 200, '확대해도 마우스 아래 그림 점이 제자리에 남는다'); }
   { const a = m.anchorScroll({ left: 500, top: 80, px: 300, py: 100, z0: 2, z1: 1 }); expect(near(a.left, 100, 0.001) && a.top === 0, '축소할 때도 같은 점 유지(계산값이 음수면 0)'); }
   expect(m.anchorScroll({ left: 0, top: 0, px: 300, py: 300, z0: 2, z1: 1 }).left === 0, '스크롤 위치는 음수가 되지 않는다');
+}
+// 다이어그램 자동 저장·복원(2026-10-29): 만든 다이어그램과 고친 내용을 이 브라우저에 남겨 새로고침해도 되살린다 — 저장 모양·크기 한도·망가진 저장값 거르기
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`다이어그램 자동 저장: ${label}`); };
+  const R = (type, extra = {}) => ({ type, spec: { title: '배치', type, blocks: [] }, ver: 1, ...extra });
+  const full = { result: R('site'), cells: { c1: R('site'), c2: R('massing', { edits: { a: 1 } }) }, selCell: 'c2' };
+  const p = m.packWork(full);
+  expect(p && typeof p.json === 'string' && p.dropped === 0, '저장할 작업이 있으면 문자열과 "버린 것 0"을 돌려줌');
+  const u = m.unpackWork(p.json);
+  expect(u && u.selCell === 'c2' && u.result.type === 'site' && u.cells.c2.edits.a === 1 && JSON.stringify(u.cells) === JSON.stringify(full.cells), '꺼내면 칸 내용·고른 칸·결과·손으로 고친 내용이 그대로');
+  // 읽기 미리보기(손스케치를 읽은 직후 상자를 조정하는 중)는 완성된 결과가 아니라 저장하지 않는다
+  const pv = m.packWork({ result: R('sketch', { isReadPreview: true }), cells: { c1: R('sketch', { isReadPreview: true }), c2: R('site') }, selCell: 'c1' });
+  const pvu = pv && m.unpackWork(pv.json);
+  expect(pvu && pvu.result === null && Object.keys(pvu.cells).join() === 'c2' && pvu.selCell === 'c2', `읽기 미리보기는 빼고 저장, 고른 칸이 저장에 없으면 남은 칸으로 ${JSON.stringify(pvu && pvu.selCell)}`);
+  expect(m.packWork({ result: null, cells: {}, selCell: 'c1' }) === null && m.packWork({ result: R('sketch', { isReadPreview: true }), cells: {}, selCell: 'c1' }) === null && m.packWork(undefined) === null && m.packWork({}) === null, '저장할 게 없으면 null — 빈 화면이 이미 저장된 작업을 덮어쓰지 않도록');
+  // 크기 한도: 큰 것부터 버린다 — ① 되돌리기용 원본·AI 수정 원본 사진(aiEdit.src·undoSpec) ② 바탕 사진(baseImage) ③ 그래도 크면 저장 포기(null)
+  const big = (n) => 'x'.repeat(n);
+  const heavy = { result: R('sketch', { baseImage: big(5000), aiEdit: { src: big(5000), undoSpec: { z: big(5000) }, ask: 'q' } }), cells: {}, selCell: 'c1' };
+  const a0 = m.packWork(heavy, 20000); expect(a0 && a0.dropped === 0 && JSON.parse(a0.json).result.aiEdit.src.length === 5000, '여유가 있으면 그대로');
+  const a1 = m.packWork(heavy, 11000), r1 = a1 && m.unpackWork(a1.json).result;
+  expect(a1 && a1.dropped === 1 && r1.baseImage.length === 5000 && r1.aiEdit.src === undefined && r1.aiEdit.undoSpec === undefined && r1.aiEdit.ask === 'q', '넘치면 먼저 aiEdit 의 원본 사진·되돌리기 값을 버리고 나머지는 지킴');
+  const a2 = m.packWork(heavy, 3000), r2 = a2 && m.unpackWork(a2.json).result;
+  expect(a2 && a2.dropped === 2 && r2.baseImage === undefined && r2.type === 'sketch' && r2.spec.title === '배치', '그래도 넘치면 바탕 사진도 버리되 그림(spec)은 지킴');
+  expect(m.packWork(heavy, 100) === null, '그림 자체가 한도를 넘으면 저장 포기(null) — 일부만 저장해 망가뜨리지 않음');
+  expect(m.WORK_MAX_CHARS > 1_000_000 && m.WORK_MAX_CHARS < 4_500_000, '기본 한도는 브라우저 저장 공간(보통 5MB) 안쪽');
+  // 망가진 저장값은 화면을 깨지 않게 걸러 낸다
+  expect(m.unpackWork(null) === null && m.unpackWork('') === null && m.unpackWork('not json') === null && m.unpackWork('{"v":2,"cells":{"c1":{"type":"site","spec":{}}}}') === null && m.unpackWork('{"v":1,"cells":"x"}') === null, '없음·빈 값·JSON 아님·다른 판·쓸 게 없는 값은 null');
+  const dirty = m.unpackWork(JSON.stringify({ v: 1, selCell: 'zz', result: { type: 5 }, cells: { a: null, b: { type: 5, spec: {} }, c: { type: 'site' }, d: R('site'), e: R('massing') } }));
+  expect(dirty && dirty.result === null && Object.keys(dirty.cells).join() === 'd,e' && dirty.selCell === 'd', `종류·내용이 없는 항목은 버리고, 고른 칸이 없으면 첫 칸으로 ${JSON.stringify(dirty && Object.keys(dirty.cells))}`);
 }
 // "테스트: 만든 것처럼 바로 보기" 버튼이 채우는 예시(2026-10-29): 배치 개념도·매스 과정도 두 가지만, 칸 수와 같은 틀(좌우 2칸)
 {

@@ -6,6 +6,7 @@ import { SUBJECT_KINDS, OFFERED_KINDS, buildReadPrompt, normalizeRead, readToPre
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
 import { TEST_PAGE, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
+import { WORK_KEY, packWork, unpackWork } from './conceptDiagram/autosave';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -294,6 +295,34 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   const [cells, setCells] = useState({});     // 칸 번호 → 그 칸의 결과 { type, spec, ... }
   const [selCell, setSelCell] = useState('c1');
   useEffect(() => { try { localStorage.setItem('cd_page_v1', JSON.stringify({ on: pageOn, pg: { ...pg, title: '', subtitle: '', kicker: '', corner: '', pageNo: '', cellMeta: {} } })); } catch { /* 저장 없이 진행 */ } }, [pageOn, pg]);
+  // ── 자동 저장·복원(2026-10-29): 만든 결과를 이 브라우저에 남기고 새로고침해도 되살린다(다른 PC·다른 주소에서는 안 보인다). 모양·크기 한도는 conceptDiagram/autosave.js ──
+  const [savedAt, setSavedAt] = useState(0);   // 마지막으로 자동 저장한 시각(0 = 이번 접속에서 아직 저장 안 함)
+  const [restored, setRestored] = useState(false);   // 이번 접속에서 지난 작업을 되살렸는지
+  const workRestored = useRef(false);
+  useEffect(() => { // 처음 열 때 한 번: 남은 작업이 있으면 되살린다. 그릴 수 없는 항목은 버려서 옛 저장값 때문에 화면이 깨지지 않게 한다
+    if (workRestored.current) return;
+    workRestored.current = true;
+    let w = null; try { w = unpackWork(localStorage.getItem(WORK_KEY)); } catch { w = null; }
+    if (!w) return;
+    const drawable = (r) => { try { renderSpec(r.type, r.spec, r.baseImage ? { baseImage: r.baseImage } : undefined); return true; } catch { return false; } };
+    const cs = Object.fromEntries(Object.entries(w.cells).filter(([, r]) => drawable(r)));
+    const res = (w.result && drawable(w.result)) ? w.result : (cs[w.selCell] || Object.values(cs)[0] || null);
+    if (!res) return;
+    setCells(cs); setSelCell(cs[w.selCell] ? w.selCell : (Object.keys(cs)[0] || 'c1')); setResult(res); setRestored(true);   // 알림은 토스트가 아니라 저장 줄의 글로 보여 준다(다른 탭을 보는 중에 뜨지 않도록)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // 바뀐 뒤 0.8초 조용하면 저장한다. 저장할 게 없으면(빈 화면·읽기 미리보기뿐) 아무것도 하지 않아 이미 저장된 작업을 덮어쓰지 않는다
+    const id = setTimeout(() => {
+      const p = packWork({ result, cells, selCell });
+      if (!p) return;
+      try { localStorage.setItem(WORK_KEY, p.json); setSavedAt(Date.now()); } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
+    }, 800);
+    return () => clearTimeout(id);
+  }, [result, cells, selCell]);
+  const clearSavedWork = () => {
+    if (!window.confirm('저장된 작업을 지우고 화면도 비웁니다. (SVG·PNG로 내려받은 파일은 그대로입니다)')) return;
+    try { localStorage.removeItem(WORK_KEY); } catch { /* 저장 공간이 막혀 있으면 화면만 비움 */ }
+    setResult(null); setCells({}); setSelCell('c1'); setSavedAt(0); setRestored(false);
+  };
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
   const refreshPaid = () => {
     apiFetch('/v1/paid/vision-status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) setPaidVision(j); }).catch(() => {});
@@ -1584,6 +1613,8 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
           <button style={btn(true, !outRes?.svg)} disabled={!outRes?.svg} onClick={saveSvg}>SVG 저장</button>
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={savePng}>PNG 저장</button>
+          <button style={btn(false, !result && !Object.keys(cells).length)} disabled={!result && !Object.keys(cells).length} onClick={clearSavedWork} data-testid="clear-saved-work" title="이 브라우저에 자동 저장된 다이어그램을 지우고 화면을 비웁니다">저장된 작업 지우기</button>
+          {(savedAt > 0 || restored) && <span data-testid="autosave-note" style={{ fontSize: 11.5, color: 'var(--text-tertiary, #64748b)' }}>{restored ? '지난 작업을 불러왔습니다' : ''}{restored && savedAt > 0 ? ' · ' : ''}{savedAt > 0 ? `자동 저장됨 ${new Date(savedAt).toTimeString().slice(0, 5)} · 새로고침해도 이 브라우저에 남습니다` : ''}</span>}
           <button style={btn(false, !outRes?.svg)} disabled={!outRes?.svg} onClick={() => setThemeOpen(true)} data-testid="theme-open" title="같은 그림을 색·글씨체·제목 크기 안 3개로 나란히 보고 고릅니다(AI 를 부르지 않습니다)">스타일 안 비교</button>
           <ThemeCompare open={themeOpen} onClose={() => setThemeOpen(false)} themeId={pg.theme} onPick={(id) => setPg((p) => ({ ...p, theme: id }))} thumbs={themeThumbs} />
           <button style={btn(false, busy)} disabled={busy} onClick={() => myImgFileRef.current?.click()} data-testid="my-image-btn" title={result ? '내 사진·로고·스케치를 지금 다이어그램 안에 넣습니다(끌어 옮기고 크기 조절). 여러 장을 한꺼번에 고를 수 있고, 캡처한 그림은 Ctrl+V 로 바로 붙여넣을 수도 있습니다' : '이 칸(화면)을 내 이미지로 채웁니다. 그 위에 화살표·글자를 얹어 고칠 수 있습니다. 여러 장을 고르면 빈 칸을 차례로 채웁니다(페이지 모드)'}>내 이미지 넣기</button>
