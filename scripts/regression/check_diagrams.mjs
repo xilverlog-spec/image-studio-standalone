@@ -81,7 +81,7 @@ export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
 export { buildEasyBlendSlots, blendIpWeight, BLEND_STRUCTURE_STOP_AT, BLEND_EMPHASIS_STOP_AT } from ${fwd(blendJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
 export { SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, SPLIT_DIV_W, EDITOR_MIN_W, PAGE_MIN_W, clampSplit, splitFromPointer, splitColumns, clampZoom, stepZoom, wheelZoom, anchorScroll, ZOOM_STEPS } from ${fwd(viewlayoutJs)};
-export { PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
+export { TEST_PAGE, PAGE_PRESETS, PAGE_LAYOUTS, FONT_OPTIONS, ENGINE_FONT, PT_MM, recommendType, recommendFont, typeTiers, scaleTexts, fitPage, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, fontById, layoutById, cellIds, resolveCells, bestCols, presetToCustom, normalizeCustom, scopeIds, getCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, overlappingCells, nextCellId, MAX_CELLS } from ${fwd(pageJs)};
 export { sketchContentTop } from ${fwd(sketch)};
 export { sketchGScale, sketchUnzoomPt, sketchZoomPt, sketchComposeScale, sketchTranslateAll, GSCALE_MIN, GSCALE_MAX } from ${fwd(sketch)};
 export { normText, pickByText, responsiveSvg, sketchTextTargets, sketchApplyText } from ${fwd(inlineJs)};
@@ -988,6 +988,14 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   { const a = m.anchorScroll({ left: 0, top: 0, px: 300, py: 200, z0: 1, z1: 2 }); expect(a.left === 300 && a.top === 200, '확대해도 마우스 아래 그림 점이 제자리에 남는다'); }
   { const a = m.anchorScroll({ left: 500, top: 80, px: 300, py: 100, z0: 2, z1: 1 }); expect(near(a.left, 100, 0.001) && a.top === 0, '축소할 때도 같은 점 유지(계산값이 음수면 0)'); }
   expect(m.anchorScroll({ left: 0, top: 0, px: 300, py: 300, z0: 2, z1: 1 }).left === 0, '스크롤 위치는 음수가 되지 않는다');
+}
+// "테스트: 만든 것처럼 바로 보기" 버튼이 채우는 예시(2026-10-29): 배치 개념도·매스 과정도 두 가지만, 칸 수와 같은 틀(좌우 2칸)
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`테스트 예시: ${label}`); };
+  const T = m.TEST_PAGE;
+  expect(T && T.types.join() === 'site,massing', `예시 종류는 배치 개념도(site)·매스 과정도(massing) 두 가지, 이 순서 ${T && T.types}`);
+  expect(T && m.layoutById(T.layoutId).id === T.layoutId && m.getCells(T.layoutId, null).length === T.types.length, `틀(${T && T.layoutId})의 칸 수가 예시 수와 같음`);
+  expect(T && m.getCells(T.layoutId, null).length === 2 && m.overlappingCells(m.getCells(T.layoutId, null)).length === 0, '칸 2개, 서로 겹치지 않음');
 }
 // 보드 틀 v1: 배치 프리셋·칸 라벨·머리·꼬리·제목 강조·자동 투명
 {

@@ -45,6 +45,8 @@ export const PAGE_LAYOUTS = [
   { id: 'W4', label: '위 4칸 + 아래 와이드 칸', cells: [...[0, 1, 2, 3].map((i) => [i / 4, 0, (i + 1) / 4, 0.34]), [0, 0.34, 1, 1]] },
   { id: 'L4', label: '왼쪽 세로 4칸 + 오른쪽 큰 칸', cells: [...[0, 1, 2, 3].map((i) => [0, i / 4, 0.2, (i + 1) / 4]), [0.2, 0, 1, 1]] },
 ];
+// "테스트: 만든 것처럼 바로 보기" 버튼이 채우는 예시(2026-10-29): 배치 개념도(site)와 매스 과정도(massing) 두 가지만, 좌우 2칸에 놓는다.
+export const TEST_PAGE = { layoutId: '2x1', types: ['site', 'massing'] };
 // 'g4x3' 같은 이름은 가로 4 × 세로 3 균등 격자(직접 지정, 최대 6×6)
 export function layoutById(id) {
   const g = /^g([1-6])x([1-6])$/.exec(String(id));

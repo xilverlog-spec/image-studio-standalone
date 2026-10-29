@@ -5,7 +5,7 @@ import { DIAGRAM_TYPES, OFFERED_TYPES, EXAMPLE_SPECS, REF_TYPES, buildConceptPro
 import { SUBJECT_KINDS, OFFERED_KINDS, buildReadPrompt, normalizeRead, readToPreview, buildSubjectPrompt, mergeSiteGeometry, aspectFixShapes, groundOf, pickConsensusRead, buildSubjectClassifyPrompt, normalizeSubjectType, routeSubject, styleRefHint, SUBJECT_TYPE_LABEL } from './conceptDiagram/subject';
 import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
-import { composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
+import { TEST_PAGE, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -34,20 +34,6 @@ const skCachePut = (k, v) => {
     localStorage.setItem(SK_CACHE_KEY, JSON.stringify(out));
   } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
 };
-// 테스트 버튼용 손스케치 예시(좌표는 0~100): 방 5개·칸막이 선 2개·바람 화살표 2개·글자 2개
-const testSketchSpec = () => normalizeSketch({
-  title: '', subtitle: '',
-  blocks: [
-    { id: 'b1', kind: 'slab', rect: [8, 14, 52, 60], name: '거실' }, { id: 'b2', kind: 'slab', rect: [54, 14, 92, 40], name: '주방' },
-    { id: 'b3', kind: 'slab', rect: [54, 42, 92, 60], name: '침실' }, { id: 'b4', kind: 'core', rect: [8, 62, 28, 88], name: '코어' }, { id: 'b5', kind: 'slab', rect: [30, 62, 92, 88], name: '테라스' },
-  ],
-  lines: [{ id: 'p1', pts: [[53, 14], [53, 60]], dash: 'solid', width: 2 }, { id: 'p2', pts: [[8, 61], [92, 61]], dash: 'dashed', width: 2 }],
-  winds: [
-    { id: 'w1', pts: [[12, 74], [40, 52], [72, 30]], smooth: true, head: 'end', dash: 'dashed', width: 4.5, color: '#1E88C8' },
-    { id: 'w2', pts: [[90, 76], [62, 80], [34, 76]], smooth: true, head: 'end', dash: 'solid', width: 4, color: '#F28C28' },
-  ],
-  memos: [{ id: 'm1', x: 24, y: 38, text: '맞통풍', size: 22 }, { id: 'm2', x: 68, y: 52, text: '채광', size: 22 }],
-});
 // 그림(안쪽 svg 조각)을 작은 비트맵으로 그려 투명하지 않은 곳의 바깥 상자를 그림 좌표로 돌려준다(실패하면 null)
 const measureInk = (inner, vb) => new Promise((resolve) => {
   try {
@@ -450,14 +436,14 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     const src = srcOfCell(); if (!src) { addToast?.('info', '복사할 그림이 없습니다', '그림이 있는 칸을 고른 뒤 눌러 주세요.'); return false; }
     cellClip.current = src; cellCopyAtRef.current = Date.now(); setClipFilled(true); addToast?.('success', '칸 내용을 복사했습니다', '붙여넣을 칸을 고르고 "칸에 붙여넣기"를 누르세요(Ctrl+V 도 됩니다).'); return true;
   };
-  // 테스트: AI 없이 만든 것처럼 페이지 칸 4개에 예시 그림(손스케치·배치 개념도·매스 과정도·개요표)을 채워 페이지 편집 화면을 바로 시험한다(Ctrl+Z 로 되돌림)
+  // 테스트: AI 없이 만든 것처럼 페이지 칸 2개에 예시 그림(배치 개념도·매스 과정도)을 채워 페이지 편집 화면을 바로 시험한다(Ctrl+Z 로 되돌림)
   const loadTestState = () => {
     pushHistory();
-    const ids = cellIds('T3', null); const mk = (t) => ({ type: t, spec: JSON.parse(JSON.stringify(EXAMPLE_SPECS[t])), ver: Date.now() });
-    const work = { [ids[0]]: { type: 'sketch', spec: testSketchSpec(), ver: Date.now() }, [ids[1]]: mk('site'), [ids[2]]: mk('massing'), [ids[3]]: mk('table') };
-    setPageOn(true); setPg((q) => ({ ...q, layoutId: 'T3', custom: null, basePreset: 'T3', cellMeta: {} }));
+    const ids = cellIds(TEST_PAGE.layoutId, null); const mk = (t) => ({ type: t, spec: JSON.parse(JSON.stringify(EXAMPLE_SPECS[t])), ver: Date.now() });
+    const work = Object.fromEntries(TEST_PAGE.types.map((t, i) => [ids[i], mk(t)]));
+    setPageOn(true); setPg((q) => ({ ...q, layoutId: TEST_PAGE.layoutId, custom: null, basePreset: TEST_PAGE.layoutId, cellMeta: {} }));
     setCells(work); setSelCell(ids[0]); setResult(work[ids[0]]); setLeftTab('page'); setGenError(''); setRegionSel(null);
-    addToast?.('info', '테스트 화면을 불러왔습니다', '손스케치·배치 개념도·매스 과정도·개요표 예시가 페이지 칸 4개에 들어갔습니다. 이전 상태는 Ctrl+Z 로 되돌릴 수 있습니다.');
+    addToast?.('info', '테스트 화면을 불러왔습니다', '배치 개념도·매스 과정도 예시가 페이지 칸 2개에 들어갔습니다. 이전 상태는 Ctrl+Z 로 되돌릴 수 있습니다.');
   };
   // 영역 복사: 편집 화면 위에서 복사할 영역을 끌어 고르면, 그 영역만 보이는 그림이 복사된다(붙여넣은 칸에는 그 영역만 보임, 편집 내용은 그대로)
   const [regionCopy, setRegionCopy] = useState(false); const [rcBand, setRcBand] = useState(null); const edWrapRef = useRef(null);
@@ -1498,7 +1484,7 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
           <button style={btn(true, !canGenerate)} disabled={!canGenerate} onClick={() => generate()}>
             {reading ? '이미지 읽는 중…' : editProg ? `AI가 그리는 중… ${editProg.percent}%` : busy ? '만드는 중… (10~30초)' : '다이어그램 만들기'}
           </button>
-          <button style={{ ...btn(false, busy), fontSize: 11.5, padding: '5px 8px' }} disabled={busy} onClick={loadTestState} data-testid="test-fill" title="AI 없이, 다이어그램을 만든 것처럼 페이지 칸 4개에 예시 그림을 바로 채워서 페이지 편집 화면을 시험합니다. Ctrl+Z 로 되돌릴 수 있습니다">테스트: 만든 것처럼 바로 보기</button>
+          <button style={{ ...btn(false, busy), fontSize: 11.5, padding: '5px 8px' }} disabled={busy} onClick={loadTestState} data-testid="test-fill" title="AI 없이, 다이어그램을 만든 것처럼 페이지 칸 2개에 배치 개념도·매스 과정도 예시를 바로 채워서 페이지 편집 화면을 시험합니다. Ctrl+Z 로 되돌릴 수 있습니다">테스트: 만든 것처럼 바로 보기</button>
           {effKind === 'edit' && !editProg && <p style={{ ...slotNote, margin: 0 }} data-testid="edit-note"><b>AI 이미지 편집</b> 방식: 무료(이 PC에서 그림)이고 <b>약 3~6분</b> 걸립니다. 도면의 선·글자·치수는 원본 그대로, 색과 동선만 얹습니다. 다른 방식(건물 형태 읽기 등 몇 초짜리)을 쓰려면 “이미지 종류 직접 지정”에서 고르세요. 사진·3D 뷰는 장면이 다시 그려져 세부(간판 글자 등)가 조금 달라질 수 있습니다.</p>}
           {editProg && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="edit-progress">
