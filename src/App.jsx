@@ -3,6 +3,7 @@ import DiagramModule from './DiagramModule';
 import AerialStudio from './AerialStudio';
 import { buildEasyBlendSlots, BLEND_STRUCTURE_STOP_AT } from './blendSlots';
 import { ARCH_STYLE_PRESETS } from './archStyles';
+import { withoutAerial } from './aerialRecover';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -1036,7 +1037,8 @@ function App() {
         const data = await res.json();
         // beforeImageFilename(블렌딩 전 원본, 서버에 파일로 저장됨)이 있으면 라이트박스의
         // 전/후 비교 슬라이더가 쓸 수 있게 beforeImage 경로로 변환해둔다.
-        const generations = (data.generations || []).map(g => ({
+        // 조감도 탭이 만든 이미지는 조감도 탭에 따로 모이므로 이 보관함에서는 뺀다(서버 이력에는 그대로 있다).
+        const generations = withoutAerial(data.generations).map(g => ({
           ...g,
           ...(g.beforeImageFilename ? { beforeImage: `/generated/${g.beforeImageFilename}` } : {})
         }));

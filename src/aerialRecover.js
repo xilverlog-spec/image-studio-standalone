@@ -37,3 +37,38 @@ export const recoveredEntry = (rec, g, now) => ({
   id: `${now}-r${String(g.id)}`, filename: g.imageFilename, model: g.checkpoint || '', score: null, note: '새로고침 중에 끝난 결과를 되찾았습니다', cost: 0,
   seed: g.seed, sec: Math.max(0, Math.round(Number(g.createdAt) - rec.t0 / 1000)), prompt: g.prompt || '', mode: rec.mode, t: now, label: rec.label, recovered: true,
 });
+
+// 지난 조감도 모으기(2026-10-29): 결과 목록은 그 브라우저(주소)의 localStorage 에만 남아, 주소가 다르거나 다른 PC 에서 열면 비어 보였다. 그래서 열 때 서버 이력(AI 이미지 탭 보관함과 같은 곳)에서
+// 조감도 파일(aerial_·aerial_edit_)만 골라 목록에 합친다. 이미 가진 파일은 그대로 두고(점수·비용 같은 자세한 정보가 이 브라우저에만 있다), 서버에서 온 항목은 fromHistory 로 표시한다.
+export const HISTORY_LIMIT = 200;
+
+// 조감도 탭이 만든 파일(생성 aerial_, 수정 aerial_edit_ — 프로젝트 폴더가 앞에 붙을 수 있다)인지
+export const isAerialFile = (f) => typeof f === 'string' && /(^|\/)aerial_/.test(f);
+
+// AI 이미지 탭 보관함에 보여 줄 목록에서 조감도 결과를 뺀다 — 조감도 결과는 조감도 탭에 따로 모인다. 조감도 파일이 아닌 항목은 그대로 둔다.
+export const withoutAerial = (generations) => (Array.isArray(generations) ? generations : []).filter((g) => !(g && isAerialFile(g.imageFilename)));
+
+export function mergeFromHistory(prev, generations, clearedAt = 0) {
+  const base = Array.isArray(prev) ? prev : [];
+  if (!Array.isArray(generations)) return base;
+  const have = new Set(base.map((x) => x && x.filename));
+  const extra = [];
+  for (const g of generations) {
+    if (!g || !isAerialFile(g.imageFilename) || have.has(g.imageFilename)) continue;
+    const t = Number(g.createdAt) * 1000;
+    if (!Number.isFinite(t) || t <= (Number(clearedAt) || 0)) continue;       // '목록 비우기' 이전 것은 다시 올리지 않는다
+    have.add(g.imageFilename);
+    extra.push({
+      id: `h${g.id}`, filename: g.imageFilename, model: g.checkpoint || '', score: null, note: '', cost: null, seed: g.seed ?? null, sec: null,
+      prompt: g.prompt || '', mode: '', t, label: g.style || '조감도', fromHistory: true,
+    });
+  }
+  if (!extra.length) return base;
+  return [...base, ...extra].sort((a, b) => (Number(b.t) || 0) - (Number(a.t) || 0)).slice(0, HISTORY_LIMIT);
+}
+
+// 새로고침 전에 시작한 작업을 되찾을 때 '이미 가진 파일'에서 서버 기록 항목은 뺀다(서버 기록으로 먼저 올라온 같은 파일을 '없다'고 오해해 잃어버린 작업으로 처리하지 않도록).
+export const recoveryHave = (results) => new Set((Array.isArray(results) ? results : []).filter((x) => x && !x.fromHistory).map((x) => x.filename));
+
+// 되찾은 항목을 맨 앞에 넣고, 같은 파일의 서버 기록 항목은 대체한다.
+export const collectRecovered = (prev, entry) => [entry, ...(Array.isArray(prev) ? prev : []).filter((x) => x && x.filename !== entry.filename)];

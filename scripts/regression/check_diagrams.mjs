@@ -76,7 +76,7 @@ export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCurs
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
-export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from ${fwd(aerialJs)};
+export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, HISTORY_LIMIT, mergeFromHistory, recoveryHave, collectRecovered, isAerialFile, withoutAerial } from ${fwd(aerialJs)};
 export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
 export { buildEasyBlendSlots, blendIpWeight, BLEND_STRUCTURE_STOP_AT, BLEND_EMPHASIS_STOP_AT } from ${fwd(blendJs)};
 export { fontInstalled, fontReady } from ${fwd(fontcheckJs)};
@@ -2297,6 +2297,45 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   // 되찾은 결과 항목: 화면 결과 목록이 쓰는 필드
   const e = m.recoveredEntry(r1, G[0], now);
   expect(e.filename === G[0].imageFilename && e.model === 'Juggernaut' && e.score === null && e.mode === 'render' && e.label === '화창한 오후' && e.recovered === true && e.sec === Math.round(G[0].createdAt - r1.t0 / 1000) && typeof e.id === 'string' && e.note.includes('되찾'), `되찾은 결과 항목 ${JSON.stringify(e)}`);
+}
+// 조감도: 서버에 쌓인 지난 조감도를 결과 목록에 합친다(2026-10-29) — 결과 목록이 그 브라우저(주소)에만 저장돼, 주소가 다르거나 다른 PC에서 열면 비어 보이던 문제
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`조감도 지난 결과: ${label}`); };
+  const now = 1_800_000_000_000;
+  const gen = (id, file, t, extra = {}) => ({ id, imageFilename: file, createdAt: t, seed: id, prompt: `p${id}`, checkpoint: 'gemini-x', style: `화창${id}`, ...extra });
+  const AA = 'P/aerial_20261029_100000_aa.png', CC = 'P/aerial_edit_20261029_095800_cc.png', DD = 'P/aerial_20261029_095000_dd.png';
+  const G = [gen(9, AA, now / 1000 - 10), gen(8, 'P/gen_20261029_095900_bb.png', now / 1000 - 20), gen(7, CC, now / 1000 - 30), gen(6, DD, now / 1000 - 600)];
+  const local = [{ id: 'L1', filename: AA, t: now - 9000, label: '화창한 오후', score: 77, cost: 0.13 }];
+  const r = m.mergeFromHistory(local, G, 0);
+  expect(r.map((x) => x.filename).join() === [AA, CC, DD].join(), `조감도 파일(aerial_·aerial_edit_)만, 이미 있는 파일은 한 번만, 최신순 ${r.map((x) => x.filename)}`);
+  expect(r[0] === local[0] && r[0].score === 77 && !r[0].fromHistory, '이미 가진 항목(형태 점수·비용 등 자세한 정보)은 그대로 둔다');
+  const h = r[1];
+  expect(h.fromHistory === true && h.id === 'h7' && h.label === '화창7' && h.model === 'gemini-x' && h.prompt === 'p7' && h.seed === 7 && h.score === null && h.cost === null && h.t === now - 30000, `서버 기록에서 만든 항목 ${JSON.stringify(h)}`);
+  const c = m.mergeFromHistory([], G, now - 20000);
+  expect(c.length === 1 && c[0].filename === AA, '"목록 비우기" 시각 이전의 기록은 다시 올리지 않는다');
+  expect(m.mergeFromHistory(r, G, 0) === r, '새로 넣을 게 없으면 같은 목록을 그대로 돌려줌(불필요한 다시 그리기·저장 없음)');
+  expect(m.mergeFromHistory(undefined, undefined).length === 0 && m.mergeFromHistory(local, 'x') === local && m.mergeFromHistory(local, [null, {}, { imageFilename: 5 }]) === local, '기록이 없거나 망가져도 안전');
+  const many = Array.from({ length: m.HISTORY_LIMIT + 50 }, (_, i) => gen(1000 + i, `P/aerial_${i}.png`, now / 1000 - i));
+  const big = m.mergeFromHistory([], many, 0);
+  expect(big.length === m.HISTORY_LIMIT && big[0].filename === 'P/aerial_0.png', `최대 ${m.HISTORY_LIMIT}개, 최신 것부터`);
+  // 새로고침 전에 시작한 작업을 되찾는 쪽: 서버 기록에서 온 항목은 '이미 가진 파일'로 치지 않고, 되찾으면 같은 파일의 항목을 대체한다
+  const mixed = [{ id: 'h1', filename: 'a', fromHistory: true }, { id: 'x', filename: 'b' }];
+  const have = m.recoveryHave(mixed);
+  expect(have.has('b') && !have.has('a') && m.recoveryHave(undefined).size === 0, '되찾기 때 이미 가진 파일에서 서버 기록 항목은 뺀다');
+  const col = m.collectRecovered(mixed, { id: 'new', filename: 'a' });
+  expect(col.length === 2 && col[0].id === 'new' && col.every((x) => x.id !== 'h1') && m.collectRecovered(undefined, { id: 'n', filename: 'z' }).length === 1, '되찾은 항목이 맨 앞에 들어가고 같은 파일의 서버 기록 항목은 대체됨');
+}
+// AI 이미지 탭 보관함에서 조감도 탭이 만든 이미지는 빼고 보여 준다(2026-10-29) — 조감도 결과는 조감도 탭에 따로 모인다
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`보관함에서 조감도 제외: ${label}`); };
+  const g = (id, f) => ({ id, imageFilename: f });
+  expect(m.isAerialFile('DX설계본부/aerial_20261029_100000_aa.png') && m.isAerialFile('aerial_edit_20261029_x.png') && m.isAerialFile('default/aerial_edit_1.png'), '조감도 생성·수정 파일(프로젝트 폴더가 있든 없든)은 조감도 파일');
+  expect(!m.isAerialFile('P/gen_1.png') && !m.isAerialFile('P/kontext_edit_1.png') && !m.isAerialFile('P/blend_1.png') && !m.isAerialFile('P/myaerial_1.png') && !m.isAerialFile(undefined) && !m.isAerialFile(5), '일반 생성·편집·블렌딩 파일이나 비슷한 이름·잘못된 값은 조감도 파일이 아님');
+  const list = [g(1, 'P/gen_1.png'), g(2, 'P/aerial_1.png'), g(3, 'P/kontext_edit_1.png'), g(4, 'P/aerial_edit_1.png'), g(5, 'blend_1.png'), g(6, undefined), null];
+  const out = m.withoutAerial(list);
+  expect(out.map((x) => x?.id).join() === '1,3,5,6,', `조감도 파일만 빠지고 나머지는 순서대로 그대로 ${JSON.stringify(out.map((x) => x?.id))}`);
+  expect(out.length === 5 && out[0] === list[0], '남는 항목은 같은 객체(복사하지 않음)');
+  expect(m.withoutAerial(undefined).length === 0 && m.withoutAerial('x').length === 0 && m.withoutAerial([]).length === 0, '목록이 없거나 망가져도 빈 목록');
 }
 // 조감도 탭: 엔진은 유료(Google·OpenAI)만 쓰고 고르는 칸이 없다(2026-10-27) — 쓸 수 있는 유료 엔진 중 Google 을 먼저, 없으면 OpenAI, 그것도 없으면 빈 값(무료로 대신하지 않는다)
 {

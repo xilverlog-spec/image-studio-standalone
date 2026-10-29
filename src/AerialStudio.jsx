@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry } from './aerialRecover';
+import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, mergeFromHistory, recoveryHave, collectRecovered } from './aerialRecover';
 import { pickPaidProvider } from './aerialEngine';
 
 // 조감도 탭 — 모델링(스케치업 캡처·매스·3D 모델) 이미지를 실사 렌더로 만든다.
@@ -95,6 +95,9 @@ const nearestAspect = (w, h) => {
 const readConsent = () => { try { return sessionStorage.getItem('aerial_consent') === '1'; } catch { return false; } };
 const readSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } };
 const writeSaved = (list) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, MAX_SAVED))); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
+const CLEARED_KEY = 'aerial_cleared_at_v1';   // '목록 비우기'를 누른 시각 — 이보다 앞선 서버 기록은 목록에 다시 올리지 않는다
+const readCleared = () => { try { return Number(localStorage.getItem(CLEARED_KEY)) || 0; } catch { return 0; } };
+const writeCleared = (t) => { try { localStorage.setItem(CLEARED_KEY, String(t)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
 const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch { return []; } };
 const writePending = (list) => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
 
@@ -223,6 +226,20 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
   // 결과 목록은 새로고침해도 남긴다(파일은 서버 보관함에 있으므로 이름과 설정만 저장).
   useEffect(() => { writeSaved(results); }, [results]);
 
+  // 서버에 쌓인 지난 조감도(서버 생성 이력 중 조감도 파일)를 열 때 한 번 합친다 — 주소가 다르거나 다른 PC 에서 열어도 같은 결과가 보이도록. 못 읽어도 이 브라우저의 목록은 그대로 쓴다.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await apiFetch('/v1/image/history?limit=500');   // 조감도 아닌 이미지가 섞여 있어 넉넉히 받아 조감도만 고른다
+        if (!r.ok || !alive) return;
+        const gens = (await r.json()).generations || [];
+        if (alive) setResults((prev) => mergeFromHistory(prev, gens, readCleared()));
+      } catch { /* 서버 기록을 못 읽어도 이 브라우저의 목록은 그대로 */ }
+    })();
+    return () => { alive = false; };
+  }, [apiFetch]);
+
   // 생성·수정 중에는 4초마다 내 순서를 묻는다(다른 직원이 먼저 누른 작업이 있으면 그만큼 기다린다)
   useEffect(() => {
     if (!busy && !editBusy) { setQueue({ position: 0, total: 0 }); return undefined; }
@@ -257,14 +274,14 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         if (pos === 0) {
           if (gens === null) { try { const r = await apiFetch('/v1/image/history?limit=80'); gens = r.ok ? ((await r.json()).generations || []) : null; } catch { gens = null; } }
           if (gens === null) continue;
-          match = matchRecovered(rec, gens, new Set(resultsRef.current.map((x) => x.filename)), claimed);
+          match = matchRecovered(rec, gens, recoveryHave(resultsRef.current), claimed);
         }
         const d = decidePending(rec, pos, match, Date.now(), gone[rec.ticket] ?? null);
         gone[rec.ticket] = d.goneSince;
         if (!alive) return;
         if (d.action === 'collect') {
           claimed.add(match.id); writePending(pendingRemove(readPending(), rec.ticket));
-          setResults((prev) => [recoveredEntry(rec, match, Date.now()), ...prev]);
+          setResults((prev) => collectRecovered(prev, recoveredEntry(rec, match, Date.now())));
           addToast?.('success', '새로고침 전에 시작한 조감도를 되찾았습니다', `${rec.label || '조감도'} — 서버에서 끝난 결과를 결과 목록에 넣었습니다.`);
           onGenerated?.();
         } else if (d.action === 'lost') {
@@ -805,7 +822,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
         )}
         {results.length === 0 ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #64748b)', fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-            왼쪽에서 이미지와 방식을 고르고 생성하면<br />결과가 여기에 쌓입니다. 결과는 AI 이미지 탭의 보관함에도 저장됩니다.
+            왼쪽에서 이미지와 방식을 고르고 생성하면<br />결과가 여기에 쌓입니다. 새로고침하거나 다른 PC에서 열어도 이 탭의 결과는 남아 있습니다.
           </div>
         ) : (
           <>
@@ -821,7 +838,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
                   <option value="recent">최신순</option>
                   <option value="score">형태 점수 높은 순</option>
                 </select>
-                <button style={{ ...chip(false), padding: '5px 10px' }} onClick={() => { if (window.confirm('이 화면의 결과 목록을 비웁니다. (파일은 보관함에 남습니다)')) { setResults([]); setPicked([]); } }}>목록 비우기</button>
+                <button style={{ ...chip(false), padding: '5px 10px' }} onClick={() => { if (window.confirm('이 화면의 결과 목록을 비웁니다. (파일은 서버에 남고, 이후에 만든 결과부터 다시 쌓입니다)')) { writeCleared(Date.now()); setResults([]); setPicked([]); } }}>목록 비우기</button>
               </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
@@ -844,7 +861,7 @@ export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMo
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
                       <span title={r.note || '입력 이미지의 뼈대 선이 결과에 남은 정도(0~100)'} style={{ color: si.color, fontWeight: 700 }}>{si.text}</span>
                       <span style={{ color: 'var(--text-tertiary, #64748b)' }}>
-                        {r.cost > 0 ? `약 $${r.cost.toFixed(2)}` : '무료'}{r.sec ? ` · ${r.sec}초` : ''}{r.seed != null ? ` · 시드 ${r.seed}` : ''}
+                        {r.cost > 0 ? `약 $${r.cost.toFixed(2)}` : (r.cost === 0 ? '무료' : '비용 기록 없음')}{r.sec ?` · ${r.sec}초` : ''}{r.seed != null ? ` · 시드 ${r.seed}` : ''}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
