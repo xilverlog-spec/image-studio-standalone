@@ -804,6 +804,67 @@ if _f0:
 _h1, _f1 = _probe_case(0.05)
 check(_f1 == [], f"짧게 막힌 것(임계값 미만)은 기록하지 않아야 함 {_f1}")
 
+# 한 요청이 서버 전체를 멈추면 안 된다(2026-10-29): 다이어그램 읽기(구글 서버 호출, 길면 1~2분)가 이벤트 루프를 막으면 그동안
+# 이미지 생성 요청·상태 확인이 전부 대기하고, 감시 프로그램이 "응답 없음"으로 보고 서버를 껐다 켜서 진행 중이던 작업이 끊겼다.
+# 막는 호출은 스레드에서 돌아야 하므로, 1초 걸리는 호출을 넣고 그동안 루프가 제때 깨어나는지(0.25초 잠자기가 0.7초 안에 끝나는지) 본다.
+import asyncio
+import time as _time
+
+import httpx
+from fastapi import FastAPI
+
+import comfyui_client as _cc_mod
+from routes import chat as _chat_route
+from routes import media as _media_route
+from services import paid_vision as _paid_vision
+
+
+def _slow(result):
+    def f(*a, **k):
+        _time.sleep(1.0)
+        return result
+    return f
+
+
+def _loop_lag(router, url, body):
+    app = FastAPI()
+    app.include_router(router)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            req = asyncio.create_task(c.post(url, json=body))
+            t0 = _time.monotonic()
+            await asyncio.sleep(0.25)
+            lag = _time.monotonic() - t0
+            r = await req
+            return lag, r.status_code
+    return asyncio.run(run())
+
+
+_saved = (_chat_route.gemini_chat_completion, _chat_route.chat_completion, _paid_vision.status, _paid_vision.chat,
+          _media_route.chat_completion, _cc_mod.list_available_checkpoints, _cc_mod.list_available_loras)
+try:
+    _chat_route.gemini_chat_completion = _slow("ok")
+    _chat_route.chat_completion = _slow("ok")
+    _paid_vision.status = lambda: {"available": True}
+    _paid_vision.chat = _slow("ok")
+    _media_route.chat_completion = _slow("{}")
+    _cc_mod.list_available_checkpoints = lambda: []
+    _cc_mod.list_available_loras = lambda: []
+    _msgs = [{"role": "user", "content": "hi"}]
+    for _name, _router, _url, _body in (
+        ("구글 대화(다이어그램 읽기)", _chat_route.router, "/v1/chat/completions", {"model": "gemini-test", "messages": _msgs}),
+        ("로컬 LLM 대화", _chat_route.router, "/v1/chat/completions", {"model": "gemma4:e4b", "messages": _msgs}),
+        ("유료 정밀 읽기", _chat_route.router, "/v1/chat/completions", {"messages": _msgs, "paid": True}),
+        ("자동 튜닝", _media_route.router, "/v1/image/auto-tune", {"prompt": "a small cafe"}),
+    ):
+        _lag, _code = _loop_lag(_router, _url, _body)
+        check(_code == 200, f"{_name}: 요청이 성공해야 함(상태 {_code})")
+        check(_lag < 0.7, f"{_name}: 긴 호출이 서버 루프를 막음(0.25초 잠자기가 {_lag:.2f}초 걸림) — 스레드에서 돌려야 함")
+finally:
+    (_chat_route.gemini_chat_completion, _chat_route.chat_completion, _paid_vision.status, _paid_vision.chat,
+     _media_route.chat_completion, _cc_mod.list_available_checkpoints, _cc_mod.list_available_loras) = _saved
+
 # 다이어그램 렌더(node)
 node = subprocess.run(["node", os.path.join(ROOT, "scripts", "regression", "check_diagrams.mjs")], capture_output=True, text=True, encoding="utf-8")
 print(node.stdout.strip())

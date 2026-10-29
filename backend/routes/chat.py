@@ -42,7 +42,9 @@ async def paid_vision_status():
 
 
 @router.post("/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
+def chat_completions(request: ChatCompletionRequest):
+    # async 가 아닌 일반 함수로 둔다(FastAPI 가 스레드에서 실행): 아래 구글·Ollama 호출은 길면 1~2분 걸리는 동기 호출이라,
+    # async 로 두면 그동안 서버 전체(이미지 생성 요청·상태 확인)가 멈추고 감시 프로그램이 서버를 껐다 켠다(2026-10-29 사고).
     if request.paid:
         if request.project:
             from services import project_store

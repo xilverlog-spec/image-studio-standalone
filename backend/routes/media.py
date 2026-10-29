@@ -710,7 +710,7 @@ class AutoTuneRequest(BaseModel):
     prompt: str
 
 @router.post("/image/auto-tune")
-async def image_auto_tune(request: AutoTuneRequest):
+def image_auto_tune(request: AutoTuneRequest):   # async 아님: 아래 LLM·ComfyUI 호출이 동기라서 스레드에서 돌려야 서버가 멈추지 않는다
     """
     프롬프트를 분석하여 고품질 영문 태그로 재작성하고,
     주제/성격에 맞는 최적의 생성 옵션(스타일, 화면비, 성능, 샘플러, 스케줄러 등)을 추천 세팅합니다.
