@@ -77,7 +77,7 @@ export { normDeg, rotPt, rectCenter, rectBBox, rectCorners, rotRectKeep, rotCurs
 export { sketchRotation, sketchPivot, sketchSetAngle, sketchRotateBy, sketchResizeBlock, sketchCanRotate } from ${fwd(sketch)};
 export { CATALOG, checkScope, catalogById, IMAGE_OTHER_NEAREST, PICTOS, pictoSvg, STATUS_LABEL, looksLikeCards, looksLikeTable } from ${fwd(scopeJs)};
 export { THEMES, themeById, applyTheme, restoreOriginals } from ${fwd(themeJs)};
-export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, HISTORY_LIMIT, mergeFromHistory, recoveryHave, collectRecovered, isAerialFile, withoutAerial } from ${fwd(aerialJs)};
+export { PENDING_KEY, GRACE_MS, GRACE_PAID_MS, MAX_AGE_MS, MAX_PENDING, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, HISTORY_LIMIT, mergeFromHistory, recoveryHave, collectRecovered, isAerialFile, withoutAerial, projectDirName, belongsToProject, scopedKey, isPaidModel, onlyPaid } from ${fwd(aerialJs)};
 export { paidEngines, pickPaidProvider } from ${fwd(engineJs)};
 export { buildEasyBlendSlots, blendIpWeight, BLEND_STRUCTURE_STOP_AT, BLEND_EMPHASIS_STOP_AT } from ${fwd(blendJs)};
 export { WORK_KEY, WORK_MAX_CHARS, packWork, unpackWork } from ${fwd(autosaveJs)};
@@ -1019,6 +1019,23 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(m.unpackWork(null) === null && m.unpackWork('') === null && m.unpackWork('not json') === null && m.unpackWork('{"v":2,"cells":{"c1":{"type":"site","spec":{}}}}') === null && m.unpackWork('{"v":1,"cells":"x"}') === null, '없음·빈 값·JSON 아님·다른 판·쓸 게 없는 값은 null');
   const dirty = m.unpackWork(JSON.stringify({ v: 1, selCell: 'zz', result: { type: 5 }, cells: { a: null, b: { type: 5, spec: {} }, c: { type: 'site' }, d: R('site'), e: R('massing') } }));
   expect(dirty && dirty.result === null && Object.keys(dirty.cells).join() === 'd,e' && dirty.selCell === 'd', `종류·내용이 없는 항목은 버리고, 고른 칸이 없으면 첫 칸으로 ${JSON.stringify(dirty && Object.keys(dirty.cells))}`);
+}
+// 프로젝트마다 결과가 따로 보여야 한다(2026-10-30): 저장 키·결과 목록이 프로젝트를 섞지 않는다
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`프로젝트별 분리: ${label}`); };
+  expect(m.projectDirName('DX설계본부') === 'DX설계본부' && m.projectDirName('a/b..c') === 'a_b..c' && m.projectDirName('..x..') === 'x' && m.projectDirName('') === 'default' && m.projectDirName(undefined) === 'default', '프로젝트 이름 → 서버 폴더 이름(서버와 같은 규칙)');
+  expect(m.belongsToProject('DX설계본부/aerial_1.png', 'DX설계본부') && !m.belongsToProject('default/aerial_1.png', 'DX설계본부') && !m.belongsToProject('DX설계본부2/aerial_1.png', 'DX설계본부') && m.belongsToProject('default/aerial_1.png', '') && !m.belongsToProject(undefined, 'x'), '파일이 그 프로젝트 폴더에 있을 때만 그 프로젝트 것');
+  expect(m.scopedKey('aerial_results_v1', 'A') !== m.scopedKey('aerial_results_v1', 'B') && m.scopedKey('k', 'A') === m.scopedKey('k', 'A') && m.scopedKey('k', '') === m.scopedKey('k', undefined) && m.scopedKey('k', 'A').startsWith('k'), '프로젝트마다 다른 저장 키, 같은 프로젝트는 같은 키');
+}
+// 조감도 탭 결과는 유료 API(Google·OpenAI)로 만든 것만 남긴다(2026-10-30) — 예전 무료 엔진 결과는 목록에서 뺀다
+{
+  const expect = (cond, label) => { if (cond) ok++; else fails.push(`조감도 유료 결과만: ${label}`); };
+  expect(m.isPaidModel('gemini:gemini-3-pro-image') && m.isPaidModel('openai:gpt-image-1') && !m.isPaidModel('FLUX Kontext dev') && !m.isPaidModel('Juggernaut XL + ControlNet') && !m.isPaidModel('') && !m.isPaidModel(undefined), '모델 이름이 gemini:·openai: 로 시작하면 유료');
+  const L = [{ id: 1, model: 'gemini:x' }, { id: 2, model: 'FLUX Kontext dev', cost: 0 }, { id: 3, model: 'whatever', cost: 0.13 }, null];
+  expect(m.onlyPaid(L).map((x) => x.id).join() === '1,3' && m.onlyPaid(undefined).length === 0, '유료 모델이거나 비용이 기록된 항목만 남김');
+  const G = [{ id: 9, imageFilename: 'P/aerial_1.png', createdAt: 1800000000, checkpoint: 'gemini:gemini-3-pro-image' }, { id: 8, imageFilename: 'P/aerial_2.png', createdAt: 1800000001, checkpoint: 'FLUX Kontext dev' }];
+  const r = m.mergeFromHistory([], G, 0);
+  expect(r.length === 1 && r[0].filename === 'P/aerial_1.png', '서버 기록에서도 유료로 만든 조감도만 가져옴');
 }
 // "테스트: 만든 것처럼 바로 보기" 버튼이 채우는 예시(2026-10-29): 배치 개념도·매스 과정도 두 가지만, 칸 수와 같은 틀(좌우 2칸)
 {
@@ -2341,7 +2358,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
 {
   const expect = (cond, label) => { if (cond) ok++; else fails.push(`조감도 지난 결과: ${label}`); };
   const now = 1_800_000_000_000;
-  const gen = (id, file, t, extra = {}) => ({ id, imageFilename: file, createdAt: t, seed: id, prompt: `p${id}`, checkpoint: 'gemini-x', style: `화창${id}`, ...extra });
+  const gen = (id, file, t, extra = {}) => ({ id, imageFilename: file, createdAt: t, seed: id, prompt: `p${id}`, checkpoint: 'gemini:x', style: `화창${id}`, ...extra });
   const AA = 'P/aerial_20261029_100000_aa.png', CC = 'P/aerial_edit_20261029_095800_cc.png', DD = 'P/aerial_20261029_095000_dd.png';
   const G = [gen(9, AA, now / 1000 - 10), gen(8, 'P/gen_20261029_095900_bb.png', now / 1000 - 20), gen(7, CC, now / 1000 - 30), gen(6, DD, now / 1000 - 600)];
   const local = [{ id: 'L1', filename: AA, t: now - 9000, label: '화창한 오후', score: 77, cost: 0.13 }];
@@ -2349,7 +2366,7 @@ run('자유 해석: 읽기 정리 → spec → 그리기(회전·이동·흐름�
   expect(r.map((x) => x.filename).join() === [AA, CC, DD].join(), `조감도 파일(aerial_·aerial_edit_)만, 이미 있는 파일은 한 번만, 최신순 ${r.map((x) => x.filename)}`);
   expect(r[0] === local[0] && r[0].score === 77 && !r[0].fromHistory, '이미 가진 항목(형태 점수·비용 등 자세한 정보)은 그대로 둔다');
   const h = r[1];
-  expect(h.fromHistory === true && h.id === 'h7' && h.label === '화창7' && h.model === 'gemini-x' && h.prompt === 'p7' && h.seed === 7 && h.score === null && h.cost === null && h.t === now - 30000, `서버 기록에서 만든 항목 ${JSON.stringify(h)}`);
+  expect(h.fromHistory === true && h.id === 'h7' && h.label === '화창7' && h.model === 'gemini:x' && h.prompt === 'p7' && h.seed === 7 && h.score === null && h.cost === null && h.t === now - 30000, `서버 기록에서 만든 항목 ${JSON.stringify(h)}`);
   const c = m.mergeFromHistory([], G, now - 20000);
   expect(c.length === 1 && c[0].filename === AA, '"목록 비우기" 시각 이전의 기록은 다시 올리지 않는다');
   expect(m.mergeFromHistory(r, G, 0) === r, '새로 넣을 게 없으면 같은 목록을 그대로 돌려줌(불필요한 다시 그리기·저장 없음)');

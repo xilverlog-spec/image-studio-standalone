@@ -54,7 +54,7 @@ export function mergeFromHistory(prev, generations, clearedAt = 0) {
   const have = new Set(base.map((x) => x && x.filename));
   const extra = [];
   for (const g of generations) {
-    if (!g || !isAerialFile(g.imageFilename) || have.has(g.imageFilename)) continue;
+    if (!g || !isAerialFile(g.imageFilename) || !isPaidModel(g.checkpoint) || have.has(g.imageFilename)) continue;   // 조감도 탭은 유료 API 결과만
     const t = Number(g.createdAt) * 1000;
     if (!Number.isFinite(t) || t <= (Number(clearedAt) || 0)) continue;       // '목록 비우기' 이전 것은 다시 올리지 않는다
     have.add(g.imageFilename);
@@ -72,3 +72,13 @@ export const recoveryHave = (results) => new Set((Array.isArray(results) ? resul
 
 // 되찾은 항목을 맨 앞에 넣고, 같은 파일의 서버 기록 항목은 대체한다.
 export const collectRecovered = (prev, entry) => [entry, ...(Array.isArray(prev) ? prev : []).filter((x) => x && x.filename !== entry.filename)];
+
+// 프로젝트별 분리(2026-10-30): 결과 목록·진행 중 메모·자동 저장이 브라우저 하나에 같은 키로 쌓여, 프로젝트를 바꿔도 다른 프로젝트의 결과가 그대로 보였다.
+// 서버는 결과 파일을 프로젝트 폴더(project_dir_name 규칙) 아래에 저장하므로, 폴더로 그 프로젝트의 것인지 가리고 저장 키에는 프로젝트 이름을 붙인다.
+export const projectDirName = (project) => String(project || '').replace(/[^\w\-. 가-힣]/g, '_').trim().replace(/^\.+|\.+$/g, '') || 'default';
+export const belongsToProject = (filename, project) => typeof filename === 'string' && filename.startsWith(`${projectDirName(project)}/`);
+export const scopedKey = (base, project) => `${base}:${projectDirName(project)}`;
+
+// 조감도 탭 결과는 유료 API(Google·OpenAI)로 만든 것만 남긴다(2026-10-30). 서버 기록의 모델 이름은 'gemini:모델'·'openai:모델', 무료 엔진은 'FLUX Kontext dev' 같은 이름이다.
+export const isPaidModel = (model) => typeof model === 'string' && /^(gemini|openai):/i.test(model);
+export const onlyPaid = (list) => (Array.isArray(list) ? list : []).filter((r) => r && (isPaidModel(r.model) || Number(r.cost) > 0));

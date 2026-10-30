@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, mergeFromHistory, recoveryHave, collectRecovered } from './aerialRecover';
+import { PENDING_KEY, pendingAdd, pendingRemove, pendingFresh, matchRecovered, decidePending, recoveredEntry, mergeFromHistory, recoveryHave, collectRecovered, belongsToProject, scopedKey, onlyPaid } from './aerialRecover';
 import { pickPaidProvider } from './aerialEngine';
 
 // 조감도 탭 — 모델링(스케치업 캡처·매스·3D 모델) 이미지를 실사 렌더로 만든다.
@@ -93,13 +93,19 @@ const nearestAspect = (w, h) => {
 };
 
 const readConsent = () => { try { return sessionStorage.getItem('aerial_consent') === '1'; } catch { return false; } };
-const readSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } };
-const writeSaved = (list) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, MAX_SAVED))); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
+const readSavedFor = (project) => { // 프로젝트별 키. 예전(프로젝트 구분 없던) 저장값은 그 프로젝트 폴더의 파일만 골라 쓴다
+  try {
+    const own = localStorage.getItem(scopedKey(SAVED_KEY, project));
+    if (own) return JSON.parse(own);
+    return (JSON.parse(localStorage.getItem(SAVED_KEY) || '[]') || []).filter((r) => r && belongsToProject(r.filename, project));
+  } catch { return []; }
+};
+const writeSavedFor = (list, project) => { try { localStorage.setItem(scopedKey(SAVED_KEY, project), JSON.stringify(list.slice(0, MAX_SAVED))); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
 const CLEARED_KEY = 'aerial_cleared_at_v1';   // '목록 비우기'를 누른 시각 — 이보다 앞선 서버 기록은 목록에 다시 올리지 않는다
-const readCleared = () => { try { return Number(localStorage.getItem(CLEARED_KEY)) || 0; } catch { return 0; } };
-const writeCleared = (t) => { try { localStorage.setItem(CLEARED_KEY, String(t)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
-const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch { return []; } };
-const writePending = (list) => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
+const readClearedFor = (project) => { try { return Number(localStorage.getItem(scopedKey(CLEARED_KEY, project))) || 0; } catch { return 0; } };
+const writeClearedFor = (t, project) => { try { localStorage.setItem(scopedKey(CLEARED_KEY, project), String(t)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
+const readPendingFor = (project) => { try { return JSON.parse(localStorage.getItem(scopedKey(PENDING_KEY, project)) || '[]'); } catch { return []; } };
+const writePendingFor = (list, project) => { try { localStorage.setItem(scopedKey(PENDING_KEY, project), JSON.stringify(list)); } catch { /* 저장 불가여도 화면에서는 동작 */ } };
 
 // 원본(왼쪽)과 결과(오른쪽)를 가운데 선을 끌어 비교한다.
 function CompareSlider({ before, after }) {
@@ -118,7 +124,10 @@ function CompareSlider({ before, after }) {
 }
 
 // isEasyMode(앱 상단 이지/프로 스위치): 이지 = 이미지 + 글만 넣고 바로 생성(나머지는 기본값). 프로 = 작업 방식·참조 사진 역할·입면·분위기 등 전부 지정. 엔진은 두 모드 모두 유료 전용.
-export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMode = false }) {
+export default function AerialStudio({ addToast, apiFetch, onGenerated, isEasyMode = false, project = '' }) {
+  // 이 프로젝트의 저장값만 읽고 쓴다(프로젝트를 바꾸면 App 이 이 화면을 새로 띄운다)
+  const readSaved = () => onlyPaid(readSavedFor(project)); const writeSaved = (l) => writeSavedFor(l, project); const readCleared = () => readClearedFor(project); const writeCleared = (t) => writeClearedFor(t, project);
+  const readPending = () => readPendingFor(project); const writePending = (l) => writePendingFor(l, project);
   const easy = !!isEasyMode;
   const fileRef = useRef(null);
   const refFileRef = useRef(null);

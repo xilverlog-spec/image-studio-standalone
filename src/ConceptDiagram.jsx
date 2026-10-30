@@ -7,6 +7,7 @@ import { checkCoverage } from './conceptDiagram/coverage';
 import { buildSketchReadPrompt, normalizeSketchRead, pickConsensusSketch, fuseSketchReads, applySketchRefine, buildSketchAnnotatePrompt, makeSketchSpec, buildFreeformPrompt, normalizeFreeformRead, makeFreeformSpec, buildAxonPrompt, normalizeAxonRead, makeAxonSpec, makeEditSpec, renderSketch, sketchContentTop, normalizeSketch, sketchAddImage } from './conceptDiagram/sketch';
 import { TEST_PAGE, composePage, pageZoomAbout, ZOOM_MIN, ZOOM_MAX, autoCellLabels, cellIds, bestCols, domMeasure, MM_PX, PT_MM, getCells, resolveCells, dragEdge, dragMove, setCellMm, splitCell, removeCell, moveCellContent as moveItems } from './conceptDiagram/page';
 import { WORK_KEY, packWork, unpackWork } from './conceptDiagram/autosave';
+import { scopedKey } from './aerialRecover';
 import { LAYOUT_PANEL_W, LAYOUT_PANEL_H } from './conceptDiagram/layout2d';
 import { PANEL_W as SITE_PANEL_W, PANEL_H as SITE_PANEL_H } from './conceptDiagram/siteConcept';
 import { MASSING_PANEL_W, MASSING_PANEL_H } from './conceptDiagram/massing';
@@ -194,7 +195,8 @@ function BoxEditor({ boxes, selected, onSelect, onChange, onReset, disabled }) {
 const renderThemed = (type, spec, opts, themeId) => { const r = renderSpec(type, spec, opts); return themeId && themeId !== 'current' ? { ...r, svg: applyTheme(r.svg, themeId) } : r; };
 const AUTO_REROUTE = ['edit', 'form', 'site'];
 
-export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
+export default function ConceptDiagram({ active = true, addToast, apiFetch, project = '' }) {
+  const workKey = scopedKey(WORK_KEY, project);   // 프로젝트마다 따로 저장(다른 프로젝트의 다이어그램이 섞이지 않게)
   const [userText, setUserText] = useState('');
   const [subjectImage, setSubjectImage] = useState(null); // 소재 이미지: 이 이미지의 건물·대지·도면을 다이어그램으로
   const [subjectUse, setSubjectUse] = useState('read'); // 'read' = 형태를 읽어서 다시 그림 / 'asis' = 이미지를 그대로 바탕에 깔기
@@ -302,7 +304,11 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
   useEffect(() => { // 처음 열 때 한 번: 남은 작업이 있으면 되살린다. 그릴 수 없는 항목은 버려서 옛 저장값 때문에 화면이 깨지지 않게 한다
     if (workRestored.current) return;
     workRestored.current = true;
-    let w = null; try { w = unpackWork(localStorage.getItem(WORK_KEY)); } catch { w = null; }
+    let w = null; try { // 프로젝트 구분 없이 저장된 예전 값은 처음 여는 프로젝트가 가져가고(옮기고) 원래 자리는 비운다
+      let raw = localStorage.getItem(workKey);
+      if (!raw) { raw = localStorage.getItem(WORK_KEY); if (raw) { localStorage.setItem(workKey, raw); localStorage.removeItem(WORK_KEY); } }
+      w = unpackWork(raw);
+    } catch { w = null; }
     if (!w) return;
     const drawable = (r) => { try { renderSpec(r.type, r.spec, r.baseImage ? { baseImage: r.baseImage } : undefined); return true; } catch { return false; } };
     const cs = Object.fromEntries(Object.entries(w.cells).filter(([, r]) => drawable(r)));
@@ -314,13 +320,13 @@ export default function ConceptDiagram({ active = true, addToast, apiFetch }) {
     const id = setTimeout(() => {
       const p = packWork({ result, cells, selCell });
       if (!p) return;
-      try { localStorage.setItem(WORK_KEY, p.json); setSavedAt(Date.now()); } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
+      try { localStorage.setItem(workKey, p.json); setSavedAt(Date.now()); } catch { /* 저장 공간이 없거나 막혀 있으면 저장 없이 진행 */ }
     }, 800);
     return () => clearTimeout(id);
   }, [result, cells, selCell]);
   const clearSavedWork = () => {
     if (!window.confirm('저장된 작업을 지우고 화면도 비웁니다. (SVG·PNG로 내려받은 파일은 그대로입니다)')) return;
-    try { localStorage.removeItem(WORK_KEY); } catch { /* 저장 공간이 막혀 있으면 화면만 비움 */ }
+    try { localStorage.removeItem(workKey); } catch { /* 저장 공간이 막혀 있으면 화면만 비움 */ }
     setResult(null); setCells({}); setSelCell('c1'); setSavedAt(0); setRestored(false);
   };
   const paidStepRef = useRef(false); // 이번 '만들기'의 AI 단계를 상위 유료 모델로 부를지
